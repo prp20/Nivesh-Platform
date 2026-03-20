@@ -1,0 +1,27 @@
+{
+    "name": "projects/12110794337320266162",
+    "projectId": "12110794337320266162",
+    "title": "Nivesh Elite - Dark Premium Financial Assistant",
+    "visibility": "PRIVATE",
+    "projectType": "PROJECT_DESIGN",
+    "origin": "STITCH",
+    "deviceType": "DESKTOP",
+    "screens": {
+        "dashboard": {
+            "id": "1d8e2a90",
+            "sourceScreen": "projects/12110794337320266162/screens/1d8e2a90"
+        },
+        "stock_listing": {
+            "id": "71379d3b518748eaba1bde3bdfb48086",
+            "sourceScreen": "projects/12110794337320266162/screens/71379d3b518748eaba1bde3bdfb48086"
+        },
+        "mf_listing": {
+            "id": "23ba5e8f6f0a47ffbec74a9e96f5a03d",
+            "sourceScreen": "projects/12110794337320266162/screens/23ba5e8f6f0a47ffbec74a9e96f5a03d"
+        },
+        "private_portfolio": {
+            "id": "d42a48e97af640659f36e5788c8db466",
+            "sourceScreen": "projects/12110794337320266162/screens/d42a48e97af640659f36e5788c8db466"
+        }
+    }
+}
