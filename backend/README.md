@@ -26,7 +26,7 @@ pip install -r requirements.txt
 ### 4. Run the Server
 Start the FastAPI application using Uvicorn:
 ```bash
-uvicorn app.main:app --reload --port 8000
+uvicorn app.main:app --reload --reload-dir app --port 8000
 ```
 
 ### 5. Verify & Documentation

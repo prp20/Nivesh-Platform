@@ -1,7 +1,7 @@
 from sqlalchemy import select, insert, update, delete
 from sqlalchemy.ext.asyncio import AsyncSession
 from typing import Optional, List
-from .models import FundMaster, BenchmarkMaster, FundNavHistory, BenchmarkNavHistory
+from .models import FundMaster, BenchmarkMaster, FundNavHistory, BenchmarkNavHistory, FundMetrics
 from .schemas import (
     FundMasterCreate, FundMasterUpdate,
     BenchmarkMasterCreate, BenchmarkMasterUpdate,
@@ -159,5 +159,42 @@ async def upsert_fund_metrics(session: AsyncSession, metrics_data: dict):
 
 async def get_fund_metrics(session: AsyncSession, scheme_code: str):
     q = select(FundMetrics).where(FundMetrics.scheme_code == scheme_code)
+    res = await session.execute(q)
+    return res.scalar_one_or_none()
+
+# ============================================================================
+# SYNC JOB CRUD
+# ============================================================================
+
+from .models import SyncJob
+import uuid
+
+from sqlalchemy.exc import IntegrityError
+
+async def create_sync_job(session: AsyncSession, scheme_code: str):
+    job = SyncJob(scheme_code=scheme_code, status="RUNNING", message="Initializing sync...")
+    try:
+        session.add(job)
+        await session.commit()
+        await session.refresh(job)
+        return job, True
+    except IntegrityError:
+        await session.rollback()
+        # Fallback: get the existing running job
+        existing_job = await get_latest_sync_job(session, scheme_code)
+        return existing_job, False
+
+async def update_sync_job(session: AsyncSession, job_id: str, status: Optional[str] = None, message: Optional[str] = None):
+    values = {}
+    if status: values['status'] = status
+    if message: values['message'] = message
+    
+    stmt = update(SyncJob).where(SyncJob.id == job_id).values(**values).returning(SyncJob)
+    res = await session.execute(stmt)
+    await session.commit()
+    return res.scalar_one_or_none()
+
+async def get_latest_sync_job(session: AsyncSession, scheme_code: str):
+    q = select(SyncJob).where(SyncJob.scheme_code == scheme_code).order_by(SyncJob.created_at.desc()).limit(1)
     res = await session.execute(q)
     return res.scalar_one_or_none()

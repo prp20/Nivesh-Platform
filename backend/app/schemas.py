@@ -115,3 +115,24 @@ class FundMetricsRead(FundMetricsBase):
     metrics_calculated_at: datetime
     updated_at: datetime
     model_config = ConfigDict(from_attributes=True)
+
+class FundMetricsResponse(BaseModel):
+    metrics: Optional[FundMetricsRead] = None
+    sync_job_id: Optional[str] = None
+    sync_status: Optional[str] = None
+    sync_message: Optional[str] = None
+
+# ============================================================================
+# SYNC JOB SCHEMAS
+# ============================================================================
+
+class SyncJobBase(BaseModel):
+    scheme_code: str
+    status: str
+    message: Optional[str] = None
+
+class SyncJobRead(SyncJobBase):
+    id: str
+    created_at: datetime
+    updated_at: datetime
+    model_config = ConfigDict(from_attributes=True)

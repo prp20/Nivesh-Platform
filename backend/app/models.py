@@ -1,6 +1,22 @@
-from sqlalchemy import Column, String, Numeric, TIMESTAMP, Date, Boolean, ForeignKey, text, UniqueConstraint
+from sqlalchemy import Column, String, Numeric, TIMESTAMP, Date, Boolean, ForeignKey, text, UniqueConstraint, Index
 from sqlalchemy.sql import func
+import uuid
 from .database import Base
+
+class SyncJob(Base):
+    """Tracks the progress of a background synchronization task"""
+    __tablename__ = "sync_jobs"
+    
+    id = Column(String(50), primary_key=True, default=lambda: str(uuid.uuid4()))
+    scheme_code = Column(String(50), ForeignKey("fund_master.scheme_code", ondelete="CASCADE"), nullable=False)
+    status = Column(String(20), default="RUNNING")  # RUNNING, COMPLETED, FAILED
+    message = Column(String(500))
+    created_at = Column(TIMESTAMP, server_default=func.now())
+    updated_at = Column(TIMESTAMP, server_default=func.now(), onupdate=func.now())
+
+    __table_args__ = (
+        Index('uq_running_sync_job', 'scheme_code', unique=True, postgresql_where=text("status = 'RUNNING'")),
+    )
 
 class FundMaster(Base):
     """Master data for mutual fund schemes"""
@@ -14,6 +30,20 @@ class FundMaster(Base):
     scheme_category = Column(String(100), nullable=False)
     scheme_subcategory = Column(String(100))
     benchmark_index_code = Column(String(50))
+    is_active = Column(Boolean, default=True)
+    created_at = Column(TIMESTAMP, server_default=func.now())
+    updated_at = Column(TIMESTAMP, server_default=func.now(), onupdate=func.now())
+
+
+class BenchmarkMaster(Base):
+    """Master data for benchmark indices"""
+    __tablename__ = "benchmark_master"
+    
+    benchmark_code = Column(String(50), primary_key=True)
+    benchmark_name = Column(String(200), nullable=False)
+    ticker = Column(String(50), nullable=False)
+    benchmark_type = Column(String(100))
+    asset_class = Column(String(50))
     is_active = Column(Boolean, default=True)
     created_at = Column(TIMESTAMP, server_default=func.now())
     updated_at = Column(TIMESTAMP, server_default=func.now(), onupdate=func.now())
