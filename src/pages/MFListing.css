@@ -74,3 +74,67 @@
     transform: translateY(-2px);
     box-shadow: 0 6px 20px rgba(0, 152, 255, 0.4);
 }
+
+.crud-actions-small {
+    display: flex;
+    gap: 1rem;
+}
+
+.crud-actions-small button {
+    background: transparent;
+    border: none;
+    color: var(--color-text-secondary);
+    font-size: 1.1rem;
+    cursor: pointer;
+    padding: 2px;
+}
+
+.crud-actions-small button:hover {
+    color: var(--color-primary);
+}
+
+.modal-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100vw;
+    height: 100vh;
+    background: rgba(0, 0, 0, 0.8);
+    backdrop-filter: blur(10px);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 9999;
+}
+
+.modal-content {
+    background: #111;
+    border: 1px solid var(--color-outline);
+    padding: 4rem;
+    max-width: 600px;
+    width: 90%;
+}
+
+.crud-form {
+    display: flex;
+    flex-direction: column;
+    gap: 1.5rem;
+}
+
+.crud-form input {
+    background: #000;
+    border: 1px solid var(--color-outline);
+    padding: 1.2rem;
+    color: white;
+    font-family: inherit;
+}
+
+.btn-secondary-lux-sm {
+    background: transparent;
+    border: 1px solid var(--color-primary);
+    color: var(--color-primary);
+    padding: 0.8rem 1.5rem;
+    font-size: 0.7rem;
+    font-weight: 800;
+    letter-spacing: 0.1em;
+}

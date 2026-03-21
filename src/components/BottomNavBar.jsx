@@ -17,6 +17,10 @@ const BottomNavBar = () => {
                     <span className="icon">💰</span>
                     <span className="label">Funds</span>
                 </a>
+                <a href="#indices" className="nav-item">
+                    <span className="icon">📊</span>
+                    <span className="label">Indices</span>
+                </a>
                 <a href="#portfolio" className="nav-item">
                     <span className="icon">💼</span>
                     <span className="label">Portfolio</span>

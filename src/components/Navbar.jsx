@@ -15,6 +15,7 @@ const Navbar = () => {
                 <div className="nav-links">
                     <a href="#stocks" className="nav-link">STOCKS</a>
                     <a href="#mf" className="nav-link">FUNDS</a>
+                    <a href="#indices" className="nav-link">INDICES</a>
                     <a href="#portfolio" className="nav-link">PORTFOLIO</a>
                 </div>
 

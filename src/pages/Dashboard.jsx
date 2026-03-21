@@ -1,26 +1,77 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
+import { useSelector, useDispatch } from 'react-redux';
+import { triggerGlobalSync, clearGlobalSync } from '../store/slices/syncSlice';
+import fundService from '../api/services/fundService';
 import './Dashboard.css';
 
 const Dashboard = () => {
+    const dispatch = useDispatch();
+    const globalSync = useSelector(state => state.sync.globalSync);
+    const isSyncing = globalSync.status === 'RUNNING';
+    const [stats, setStats] = useState({ totalFunds: 0 });
+
+    useEffect(() => {
+        const fetchStats = async () => {
+            try {
+                const data = await fundService.getFunds(0, 10);
+                setStats({ totalFunds: data.length });
+            } catch (err) {
+                console.error("Dashboard fetch failed", err);
+            }
+        };
+        fetchStats();
+
+        // Clear global sync message after some time if it's completed or failed
+        if (globalSync.status === 'COMPLETED' || globalSync.status === 'FAILED') {
+            const timer = setTimeout(() => {
+                dispatch(clearGlobalSync());
+            }, 5000);
+            return () => clearTimeout(timer);
+        }
+    }, [globalSync.status]);
+
+    const handleSync = () => {
+        dispatch(triggerGlobalSync());
+    };
+
     return (
         <div className="dashboard reveal active">
+            {globalSync.message && (
+                <div className={`sync-status-banner-dashboard ${globalSync.status.toLowerCase()}`}>
+                    <div className="banner-content">
+                        <span className="spinner-lux small"></span>
+                        <span className="banner-msg">{globalSync.message}</span>
+                    </div>
+                </div>
+            )}
+
             <header className="dashboard-header-lux">
-                <h4 className="label-accent uppercase tracking-widest">Global Portfolio</h4>
-                <h1 className="font-heading heading-xl">Performance Overview</h1>
+                <div className="flex justify-between items-center">
+                    <div>
+                        <h4 className="label-accent uppercase tracking-widest">Elite Portfolio</h4>
+                        <h1 className="font-heading heading-xl">Performance Overview</h1>
+                    </div>
+                    <button
+                        onClick={handleSync}
+                        disabled={isSyncing}
+                        className={`btn-secondary-lux uppercase tracking-widest ${isSyncing ? 'loading' : ''}`}
+                    >
+                        {isSyncing ? 'Synchronizing...' : 'Sync Data Hub'}
+                    </button>
+                </div>
                 <p className="text-secondary max-w-lg">Monitoring international markets and your diversified assets across equity and debt instruments.</p>
             </header>
 
             <div className="stats-grid-lux">
                 <div className="summary-card-lux main-card">
                     <div className="card-top">
-                        <span className="label-accent uppercase">Total Net Worth</span>
-                        <div className="value font-heading">₹2,12,450.50</div>
+                        <span className="label-accent uppercase">Current Holdings</span>
+                        <div className="value font-heading">{stats.totalFunds} <span style={{ fontSize: '1.2rem', color: '#888' }}>Asset Classes</span></div>
                     </div>
                     <div className="card-bottom">
                         <div className="trend-positive">
                             <span className="icon">↑</span>
-                            <span>1.02%</span>
-                            <span className="text-muted">(Last 24h)</span>
+                            <span>Live Integration Active</span>
                         </div>
                     </div>
                 </div>
@@ -55,35 +106,6 @@ const Dashboard = () => {
                         <h3>Private Portfolio</h3>
                         <p>Your aggregated wealth view and historical transaction ledger.</p>
                     </a>
-                </div>
-            </section>
-
-            <section className="section-spacer">
-                <div className="split-header">
-                    <h2 className="section-heading-lux uppercase letter-spacing-lg">Primary Holdings</h2>
-                    <a href="#portfolio" className="link-primary uppercase text-xs tracking-widest">Full Ledger →</a>
-                </div>
-                <div className="holdings-list-lux shadow-card">
-                    <div className="holding-row-lux">
-                        <div className="info">
-                            <div className="symbol">RELIANCE</div>
-                            <div className="full-name">Reliance Industries</div>
-                        </div>
-                        <div className="val text-right">
-                            <div className="price">₹2,845.50</div>
-                            <div className="change positive">+1.42%</div>
-                        </div>
-                    </div>
-                    <div className="holding-row-lux">
-                        <div className="info">
-                            <div className="symbol">QUANT SM</div>
-                            <div className="full-name">Quant Small Cap Fund</div>
-                        </div>
-                        <div className="val text-right">
-                            <div className="price">₹245.10</div>
-                            <div className="change positive">+0.86%</div>
-                        </div>
-                    </div>
                 </div>
             </section>
         </div>

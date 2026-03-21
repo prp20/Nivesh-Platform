@@ -5,11 +5,15 @@ import StockListing from './pages/StockListing';
 import StockDetail from './pages/StockDetail';
 import MFListing from './pages/MFListing';
 import MFDetail from './pages/MFDetail';
+import IndicesListing from './pages/IndicesListing';
+import Login from './pages/Login';
 import { ThemeProvider } from './context/ThemeContext';
+import { AuthProvider, useAuth } from './context/AuthContext';
 import Layout from './components/Layout';
 import './App.css';
 
-function App() {
+const AppContent = () => {
+  const { user, loading } = useAuth();
   const [activeTab, setActiveTab] = useState('dashboard');
   const [activeParams, setActiveParams] = useState('');
 
@@ -33,6 +37,9 @@ function App() {
     return () => window.removeEventListener('hashchange', handleHashChange);
   }, []);
 
+  if (loading) return <div className="loading-screen">Loading Nivesh...</div>;
+  if (!user) return <Login />;
+
   const renderContent = () => {
     switch (activeTab) {
       case 'dashboard':
@@ -46,17 +53,27 @@ function App() {
       case 'mf':
         return <MFListing />;
       case 'mf-detail':
-        return <MFDetail name={activeParams} />;
+        return <MFDetail schemeCode={activeParams} />;
+      case 'indices':
+        return <IndicesListing />;
       default:
         return <Dashboard />;
     }
   };
 
   return (
+    <Layout>
+      {renderContent()}
+    </Layout>
+  );
+};
+
+function App() {
+  return (
     <ThemeProvider>
-      <Layout>
-        {renderContent()}
-      </Layout>
+      <AuthProvider>
+        <AppContent />
+      </AuthProvider>
     </ThemeProvider>
   );
 }
