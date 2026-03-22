@@ -1,0 +1,157 @@
+.detail-header-lux {
+    padding: 4rem 0 2rem;
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-end;
+    border-bottom: 1px solid var(--color-outline);
+}
+
+@media (max-width: 900px) {
+    .detail-header-lux {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 2rem;
+    }
+}
+
+.identity-lux {
+    display: flex;
+    align-items: center;
+    gap: 2rem;
+}
+
+.logo-lux {
+    width: 80px;
+    height: 80px;
+    background: var(--color-surface);
+    border: 1px solid var(--color-primary);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 2rem;
+    font-weight: 800;
+    border-radius: 4px;
+}
+
+.heading-lg {
+    font-size: 2.5rem;
+    font-weight: 800;
+}
+
+.val-actions-lux {
+    text-align: right;
+    display: flex;
+    flex-direction: column;
+    gap: 1.5rem;
+}
+
+.price-lux {
+    display: flex;
+    flex-direction: column;
+}
+
+.price-lux .price-val {
+    font-size: 2.5rem;
+    font-weight: 800;
+}
+
+.buttons-lux {
+    display: flex;
+    gap: 1rem;
+    justify-content: flex-end;
+}
+
+.btn-primary-lux {
+    background: var(--color-primary);
+    color: white;
+    padding: 0.8rem 2rem;
+    border-radius: 2px;
+    font-weight: 800;
+    font-size: 0.75rem;
+}
+
+.btn-outline-lux {
+    border: 1px solid var(--color-outline);
+    color: white;
+    padding: 0.8rem 2rem;
+    border-radius: 2px;
+    font-weight: 800;
+    font-size: 0.75rem;
+}
+
+.detail-grid-lux {
+    display: grid;
+    grid-template-columns: 2fr 1fr;
+    gap: 2rem;
+}
+
+@media (max-width: 1024px) {
+    .detail-grid-lux {
+        grid-template-columns: 1fr;
+    }
+}
+
+.chart-box-lux,
+.data-box-lux {
+    padding: 3rem;
+}
+
+.chart-head-lux {
+    display: flex;
+    justify-content: space-between;
+    margin-bottom: 3rem;
+}
+
+.toggles-lux {
+    display: flex;
+    gap: 1rem;
+}
+
+.t-btn {
+    font-size: 0.65rem;
+    font-weight: 800;
+    color: var(--color-text-secondary);
+    letter-spacing: 0.1em;
+}
+
+.t-btn.active {
+    color: var(--color-primary);
+}
+
+.visual-lux {
+    height: 400px;
+}
+
+.line-chart-sim {
+    width: 100%;
+    height: 100%;
+    background: linear-gradient(180deg, rgba(0, 152, 255, 0.1), transparent);
+    clip-path: polygon(0% 80%, 20% 70%, 40% 75%, 60% 40%, 80% 45%, 100% 10%, 100% 100%, 0% 100%);
+}
+
+.mb-lux {
+    margin-bottom: 2rem;
+}
+
+.metrics-list-lux {
+    display: flex;
+    flex-direction: column;
+    gap: 1.5rem;
+}
+
+.m-row {
+    display: flex;
+    justify-content: space-between;
+    padding-bottom: 0.75rem;
+    border-bottom: 1px solid var(--color-outline);
+}
+
+.m-row span {
+    font-size: 0.7rem;
+    font-weight: 800;
+    color: var(--color-text-secondary);
+}
+
+.m-row strong {
+    font-size: 1rem;
+}
