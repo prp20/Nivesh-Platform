@@ -86,6 +86,12 @@ class FundMasterRead(FundMasterBase):
     metrics: Optional[FundMetricsRead] = None
     model_config = ConfigDict(from_attributes=True)
 
+class FundMasterListResponse(BaseModel):
+    total: int
+    skip: int
+    limit: int
+    items: List[FundMasterRead]
+
 class FundMasterUpdate(BaseModel):
     scheme_name: Optional[str] = None
     amc_name: Optional[str] = None

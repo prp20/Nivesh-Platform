@@ -26,12 +26,42 @@ async def get_fund_master_by_code(session: AsyncSession, scheme_code: str):
     res = await session.execute(q)
     return res.scalar_one_or_none()
 
-async def get_all_fund_masters(session: AsyncSession, is_active: Optional[bool] = None, skip: int = 0, limit: int = 100):
+async def get_all_fund_masters(
+    session: AsyncSession, 
+    is_active: Optional[bool] = None, 
+    category: Optional[str] = None,
+    amc: Optional[str] = None,
+    skip: int = 0, 
+    limit: int = 100
+):
     q = select(FundMaster).options(joinedload(FundMaster.metrics)).offset(skip).limit(limit)
     if is_active is not None:
         q = q.where(FundMaster.is_active == is_active)
+    if category and category != 'All':
+        q = q.where(FundMaster.scheme_category.ilike(f"%{category}%"))
+    if amc:
+        q = q.where(FundMaster.amc_name.ilike(f"%{amc}%"))
+        
     res = await session.execute(q)
     return res.scalars().all()
+
+async def get_fund_masters_count(
+    session: AsyncSession,
+    is_active: Optional[bool] = None,
+    category: Optional[str] = None,
+    amc: Optional[str] = None
+):
+    from sqlalchemy import func
+    q = select(func.count(FundMaster.scheme_code))
+    if is_active is not None:
+        q = q.where(FundMaster.is_active == is_active)
+    if category and category != 'All':
+        q = q.where(FundMaster.scheme_category.ilike(f"%{category}%"))
+    if amc:
+        q = q.where(FundMaster.amc_name.ilike(f"%{amc}%"))
+        
+    res = await session.execute(q)
+    return res.scalar()
 
 async def update_fund_master(session: AsyncSession, scheme_code: str, fund_in: FundMasterUpdate):
     data = fund_in.model_dump(exclude_unset=True)

@@ -13,14 +13,23 @@ async def create_fund(fund: schemas.FundMasterCreate, session: AsyncSession = De
         raise HTTPException(status_code=400, detail=f"Fund with scheme_code {fund.scheme_code} already exists")
     return await crud.create_fund_master(session, fund)
 
-@router.get("/", response_model=List[schemas.FundMasterRead])
+@router.get("/", response_model=schemas.FundMasterListResponse)
 async def list_funds(
     is_active: Optional[bool] = Query(None, description="Filter by active status"),
+    category: Optional[str] = Query(None, description="Filter by scheme category"),
+    amc: Optional[str] = Query(None, description="Filter by AMC name"),
     skip: int = Query(0, ge=0),
     limit: int = Query(100, ge=1, le=500),
     session: AsyncSession = Depends(get_db)
 ):
-    return await crud.get_all_fund_masters(session, is_active=is_active, skip=skip, limit=limit)
+    total = await crud.get_fund_masters_count(session, is_active=is_active, category=category, amc=amc)
+    items = await crud.get_all_fund_masters(session, is_active=is_active, category=category, amc=amc, skip=skip, limit=limit)
+    return {
+        "total": total,
+        "skip": skip,
+        "limit": limit,
+        "items": items
+    }
 
 @router.get("/{scheme_code}", response_model=schemas.FundMasterRead)
 async def read_fund(scheme_code: str, session: AsyncSession = Depends(get_db)):
