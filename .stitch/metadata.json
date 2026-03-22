@@ -1,0 +1,47 @@
+{
+    "name": "projects/12544017600020491642",
+    "projectId": "12544017600020491642",
+    "title": "Nivesh Platform - Personal Financial Assistant",
+    "visibility": "PRIVATE",
+    "projectType": "PROJECT_DESIGN",
+    "origin": "STITCH",
+    "deviceType": "DESKTOP",
+    "screens": {
+        "dashboard": {
+            "id": "1ee861d498b747abaca9d3695f0e121f",
+            "sourceScreen": "projects/12544017600020491642/screens/1ee861d498b747abaca9d3695f0e121f",
+            "width": 780,
+            "height": 2774
+        },
+        "stock_listing": {
+            "id": "ded19642cc6a493d83cf204282f15ea8",
+            "sourceScreen": "projects/12544017600020491642/screens/ded19642cc6a493d83cf204282f15ea8",
+            "width": 780,
+            "height": 3252
+        },
+        "stock_detail": {
+            "id": "01fde5240efa440595a83f6d6e696981",
+            "sourceScreen": "projects/12544017600020491642/screens/01fde5240efa440595a83f6d6e696981",
+            "width": 780,
+            "height": 6560
+        },
+        "mf_listing": {
+            "id": "d7eac109c08a47faa09363edc3832323",
+            "sourceScreen": "projects/12544017600020491642/screens/d7eac109c08a47faa09363edc3832323",
+            "width": 780,
+            "height": 5942
+        },
+        "mf_detail": {
+            "id": "e54932d2569c40bda4c56d212ad160c3",
+            "sourceScreen": "projects/12544017600020491642/screens/e54932d2569c40bda4c56d212ad160c3",
+            "width": 780,
+            "height": 7186
+        },
+        "user_portfolio": {
+            "id": "4d558e1f59884601958f0a68b09d1f2e",
+            "sourceScreen": "projects/12544017600020491642/screens/4d558e1f59884601958f0a68b09d1f2e",
+            "width": 780,
+            "height": 5812
+        }
+    }
+}
