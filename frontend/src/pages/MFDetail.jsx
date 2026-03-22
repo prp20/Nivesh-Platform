@@ -69,7 +69,7 @@ const MFDetail = ({ schemeCode }) => {
 
     const chartData = useMemo(() => {
         if (!navHistory.length) return [];
-        const sorted = [...navHistory].reverse();
+        const sorted = navHistory.slice().reverse();
         
         let filtered = sorted;
         const now = new Date();
@@ -86,7 +86,7 @@ const MFDetail = ({ schemeCode }) => {
 
         return filtered.map(n => ({
             date: new Date(n.nav_date).toLocaleDateString('en-IN', { day: '2-digit', month: 'short' }),
-            nav: n.nav_value
+            nav: parseFloat(n.nav_value)
         }));
     }, [navHistory, timeRange]);
 
@@ -110,34 +110,36 @@ const MFDetail = ({ schemeCode }) => {
     return (
         <div className="mf-detail container reveal active">
             <header className="detail-header-lux">
-                <div className="back-nav-lux mb-10 overflow-hidden">
-                    <a href="#mf" className="flex items-center gap-2">← SYSTEM://VAULT_OVERVIEW</a>
+                <div className="back-nav-lux mb-12">
+                    <a href="#mf" className="btn-back-elite">
+                        <span className="back-icon">←</span>
+                        <span className="back-text">BACK TO VAULT OVERVIEW</span>
+                    </a>
                 </div>
                 
-                <div className="flex justify-between items-end">
-                    <div>
-                        <span className="label-accent uppercase tracking-widest text-xs">{fund.scheme_category}</span>
-                        <h1 className="heading-lg">{fund.scheme_name}</h1>
-                        <p className="text-muted text-xs uppercase tracking-widest mt-2">{fund.amc_name} • IDENTIFIER: {fund.scheme_code}</p>
+                <div className="fund-hero-stack">
+                    <span className="label-accent uppercase tracking-widest text-xs">{fund.scheme_category}</span>
+                    <h1 className="heading-xl mt-4">{fund.scheme_name}</h1>
+                    <p className="text-muted text-xs uppercase tracking-widest mt-3">
+                        {fund.amc_name} <span className="mx-2 opacity-30">•</span> IDENTIFIER: {fund.scheme_code}
+                    </p>
+
+                    <div className="price-performance-row mt-10">
+                        <span className="price-val font-heading">₹{latestNav}</span>
+                        <div className={`change-badge-elite ${changePercent >= 0 ? 'positive' : 'negative'}`}>
+                            {changePercent >= 0 ? '▲' : '▼'} {Math.abs(changePercent)}%
+                        </div>
                     </div>
 
-                    <div className="text-right">
-                        <div className="flex items-baseline justify-end gap-5">
-                            <span className="price-val font-heading">₹{latestNav}</span>
-                            <span className={`change-val ${changePercent >= 0 ? 'positive' : 'negative'}`}>
-                                {changePercent >= 0 ? '▲' : '▼'} {Math.abs(changePercent)}%
-                            </span>
-                        </div>
-                        <div className="flex gap-4 mt-8 justify-end">
-                            <button 
-                                className={`btn-premium btn-premium-outline ${refreshing ? 'loading' : ''}`}
-                                onClick={() => fetchAllData(true)}
-                                disabled={refreshing}
-                            >
-                                {refreshing ? 'Refreshing Real-Time Data...' : 'Sync Market Metrics'}
-                            </button>
-                            <button className="btn-premium btn-premium-primary">Execute Allocation</button>
-                        </div>
+                    <div className="flex gap-4 mt-12">
+                        <button 
+                            className={`btn-premium btn-premium-refresh ${refreshing ? 'loading' : ''}`}
+                            onClick={() => fetchAllData(true)}
+                            disabled={refreshing}
+                        >
+                            <span className="btn-label">{refreshing ? 'REFRESHING ASSET...' : 'SYNC MARKET METRICS'}</span>
+                        </button>
+                        <button className="btn-premium btn-premium-primary px-10">EXECUTE ALLOCATION</button>
                     </div>
                 </div>
             </header>
