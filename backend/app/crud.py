@@ -9,6 +9,7 @@ from .schemas import (
 )
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from datetime import datetime
+from sqlalchemy.orm import joinedload
 
 # ============================================================================
 # FUND MASTER CRUD
@@ -21,12 +22,12 @@ async def create_fund_master(session: AsyncSession, fund_in: FundMasterCreate):
     return res.scalar_one()
 
 async def get_fund_master_by_code(session: AsyncSession, scheme_code: str):
-    q = select(FundMaster).where(FundMaster.scheme_code == scheme_code)
+    q = select(FundMaster).options(joinedload(FundMaster.metrics)).where(FundMaster.scheme_code == scheme_code)
     res = await session.execute(q)
     return res.scalar_one_or_none()
 
-async def get_all_fund_masters(session: AsyncSession, is_active: Optional[bool] = None):
-    q = select(FundMaster)
+async def get_all_fund_masters(session: AsyncSession, is_active: Optional[bool] = None, skip: int = 0, limit: int = 100):
+    q = select(FundMaster).options(joinedload(FundMaster.metrics)).offset(skip).limit(limit)
     if is_active is not None:
         q = q.where(FundMaster.is_active == is_active)
     res = await session.execute(q)
@@ -67,8 +68,8 @@ async def get_benchmark_master(session: AsyncSession, benchmark_code: str):
     res = await session.execute(q)
     return res.scalar_one_or_none()
 
-async def get_all_benchmark_masters(session: AsyncSession, is_active: Optional[bool] = None):
-    q = select(BenchmarkMaster)
+async def get_all_benchmark_masters(session: AsyncSession, is_active: Optional[bool] = None, skip: int = 0, limit: int = 100):
+    q = select(BenchmarkMaster).offset(skip).limit(limit)
     if is_active is not None:
         q = q.where(BenchmarkMaster.is_active == is_active)
     res = await session.execute(q)

@@ -16,9 +16,11 @@ async def create_fund(fund: schemas.FundMasterCreate, session: AsyncSession = De
 @router.get("/", response_model=List[schemas.FundMasterRead])
 async def list_funds(
     is_active: Optional[bool] = Query(None, description="Filter by active status"),
+    skip: int = Query(0, ge=0),
+    limit: int = Query(100, ge=1, le=500),
     session: AsyncSession = Depends(get_db)
 ):
-    return await crud.get_all_fund_masters(session, is_active=is_active)
+    return await crud.get_all_fund_masters(session, is_active=is_active, skip=skip, limit=limit)
 
 @router.get("/{scheme_code}", response_model=schemas.FundMasterRead)
 async def read_fund(scheme_code: str, session: AsyncSession = Depends(get_db)):

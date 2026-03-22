@@ -16,9 +16,11 @@ async def create_benchmark(benchmark: schemas.BenchmarkMasterCreate, session: As
 @router.get("/", response_model=List[schemas.BenchmarkMasterRead])
 async def list_benchmarks(
     is_active: Optional[bool] = Query(None, description="Filter by active status"),
+    skip: int = Query(0, ge=0),
+    limit: int = Query(100, ge=1, le=500),
     session: AsyncSession = Depends(get_db)
 ):
-    return await crud.get_all_benchmark_masters(session, is_active=is_active)
+    return await crud.get_all_benchmark_masters(session, is_active=is_active, skip=skip, limit=limit)
 
 @router.get("/{benchmark_code}", response_model=schemas.BenchmarkMasterRead)
 async def read_benchmark(benchmark_code: str, session: AsyncSession = Depends(get_db)):

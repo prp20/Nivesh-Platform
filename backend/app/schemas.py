@@ -1,66 +1,6 @@
 from pydantic import BaseModel, ConfigDict
 from datetime import datetime, date
-from typing import Optional
-
-# ============================================================================
-# FUND MASTER SCHEMAS
-# ============================================================================
-
-class FundMasterBase(BaseModel):
-    scheme_code: str
-    scheme_name: str
-    amc_name: str
-    inception_date: date
-    plan_type: str
-    scheme_category: str
-    scheme_subcategory: Optional[str] = None
-    benchmark_index_code: Optional[str] = None
-    is_active: bool = True
-
-class FundMasterCreate(FundMasterBase):
-    pass
-
-class FundMasterRead(FundMasterBase):
-    created_at: datetime
-    updated_at: datetime
-    model_config = ConfigDict(from_attributes=True)
-
-class FundMasterUpdate(BaseModel):
-    scheme_name: Optional[str] = None
-    amc_name: Optional[str] = None
-    inception_date: Optional[date] = None
-    plan_type: Optional[str] = None
-    scheme_category: Optional[str] = None
-    scheme_subcategory: Optional[str] = None
-    benchmark_index_code: Optional[str] = None
-    is_active: Optional[bool] = None
-
-# ============================================================================
-# BENCHMARK MASTER SCHEMAS
-# ============================================================================
-
-class BenchmarkMasterBase(BaseModel):
-    benchmark_code: str
-    benchmark_name: str
-    ticker: str
-    benchmark_type: Optional[str] = None
-    asset_class: Optional[str] = None
-    is_active: bool = True
-
-class BenchmarkMasterCreate(BenchmarkMasterBase):
-    pass
-
-class BenchmarkMasterRead(BenchmarkMasterBase):
-    created_at: datetime
-    updated_at: datetime
-    model_config = ConfigDict(from_attributes=True)
-
-class BenchmarkMasterUpdate(BaseModel):
-    benchmark_name: Optional[str] = None
-    benchmark_type: Optional[str] = None
-    ticker: Optional[str] = None
-    asset_class: Optional[str] = None
-    is_active: Optional[bool] = None
+from typing import Optional, List, Dict, Any
 
 # ============================================================================
 # NAV HISTORY SCHEMAS
@@ -121,6 +61,67 @@ class FundMetricsResponse(BaseModel):
     sync_job_id: Optional[str] = None
     sync_status: Optional[str] = None
     sync_message: Optional[str] = None
+
+# ============================================================================
+# FUND MASTER SCHEMAS
+# ============================================================================
+
+class FundMasterBase(BaseModel):
+    scheme_code: str
+    scheme_name: str
+    amc_name: str
+    inception_date: date
+    plan_type: str
+    scheme_category: str
+    scheme_subcategory: Optional[str] = None
+    benchmark_index_code: Optional[str] = None
+    is_active: bool = True
+
+class FundMasterCreate(FundMasterBase):
+    pass
+
+class FundMasterRead(FundMasterBase):
+    created_at: datetime
+    updated_at: datetime
+    metrics: Optional[FundMetricsRead] = None
+    model_config = ConfigDict(from_attributes=True)
+
+class FundMasterUpdate(BaseModel):
+    scheme_name: Optional[str] = None
+    amc_name: Optional[str] = None
+    inception_date: Optional[date] = None
+    plan_type: Optional[str] = None
+    scheme_category: Optional[str] = None
+    scheme_subcategory: Optional[str] = None
+    benchmark_index_code: Optional[str] = None
+    is_active: Optional[bool] = None
+
+# ============================================================================
+# BENCHMARK MASTER SCHEMAS
+# ============================================================================
+
+class BenchmarkMasterBase(BaseModel):
+    benchmark_code: str
+    benchmark_name: str
+    ticker: str
+    benchmark_type: Optional[str] = None
+    asset_class: Optional[str] = None
+    is_active: bool = True
+
+class BenchmarkMasterCreate(BenchmarkMasterBase):
+    pass
+
+class BenchmarkMasterRead(BenchmarkMasterBase):
+    created_at: datetime
+    updated_at: datetime
+    model_config = ConfigDict(from_attributes=True)
+
+class BenchmarkMasterUpdate(BaseModel):
+    benchmark_name: Optional[str] = None
+    benchmark_type: Optional[str] = None
+    ticker: Optional[str] = None
+    asset_class: Optional[str] = None
+    is_active: Optional[bool] = None
 
 # ============================================================================
 # SYNC JOB SCHEMAS

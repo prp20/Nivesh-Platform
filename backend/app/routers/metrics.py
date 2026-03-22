@@ -60,12 +60,10 @@ async def get_metrics(
         "sync_message": sync_message
     }
 
-@router.get("/{scheme_code}/status", response_model=schemas.SyncJobRead)
+@router.get("/{scheme_code}/status", response_model=Optional[schemas.SyncJobRead])
 async def get_sync_status(scheme_code: str, session: AsyncSession = Depends(get_db)):
-    """Get the latest sync job status for a fund."""
+    """Get the latest sync job status for a fund. Returns None if no job exists."""
     job = await crud.get_latest_sync_job(session, scheme_code)
-    if not job:
-        raise HTTPException(status_code=404, detail="No sync job found for this fund")
     return job
 
 @router.post("/{scheme_code}/compute", status_code=200)

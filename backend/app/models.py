@@ -1,5 +1,6 @@
 from sqlalchemy import Column, String, Numeric, TIMESTAMP, Date, Boolean, ForeignKey, text, UniqueConstraint, Index
 from sqlalchemy.sql import func
+from sqlalchemy.orm import relationship
 import uuid
 from .database import Base
 
@@ -33,6 +34,9 @@ class FundMaster(Base):
     is_active = Column(Boolean, default=True)
     created_at = Column(TIMESTAMP, server_default=func.now())
     updated_at = Column(TIMESTAMP, server_default=func.now(), onupdate=func.now())
+
+    # Relationships
+    metrics = relationship("FundMetrics", back_populates="fund", uselist=False)
 
 
 class BenchmarkMaster(Base):
@@ -99,3 +103,6 @@ class FundMetrics(Base):
     has_sufficient_data = Column(Boolean, default=True)
     data_completeness_percentage = Column(Numeric(5, 2))
     updated_at = Column(TIMESTAMP, server_default=func.now(), onupdate=func.now())
+
+    # Relationships
+    fund = relationship("FundMaster", back_populates="metrics")
