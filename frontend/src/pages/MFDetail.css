@@ -1,9 +1,17 @@
 .mf-detail {
-    padding: 6rem 0 5rem;
+    padding: 3rem 0 5rem; /* Reduced top padding */
 }
 
 .detail-header-lux {
-    margin-bottom: 6rem;
+    margin-bottom: 4rem; /* Reduced margin */
+    text-align: center;
+    position: relative;
+}
+
+.back-nav-lux {
+    display: flex;
+    justify-content: flex-start;
+    margin-bottom: 2rem;
 }
 
 .btn-back-elite {
@@ -15,25 +23,53 @@
     font-size: 0.65rem;
     font-weight: 800;
     letter-spacing: 0.25em;
+    padding: 0.5rem 1rem;
+    border-radius: 4px;
+    background: rgba(255, 255, 255, 0.03);
+    border: 1px solid rgba(255, 255, 255, 0.05);
     transition: var(--transition-smooth);
 }
 
 .btn-back-elite:hover {
     color: var(--color-primary);
-    transform: translateX(-8px);
+    background: rgba(255, 255, 255, 0.08);
+    transform: translateX(-5px);
+}
+
+.scheme-badge {
+    position: absolute;
+    right: 0;
+    top: 0;
+    font-size: 0.65rem;
+    font-weight: 800;
+    letter-spacing: 0.1em;
+    color: var(--color-primary);
+    text-transform: uppercase;
+    background: rgba(0, 152, 255, 0.1);
+    padding: 0.4rem 1rem;
+    border-radius: 40px;
+    border: 1px solid rgba(0, 152, 255, 0.2);
+}
+
+.fund-hero-stack {
+    max-width: 1000px;
+    margin: 0 auto;
 }
 
 .heading-xl {
     font-size: 3.5rem;
     font-weight: 800;
     line-height: 1.1;
-    letter-spacing: -0.01em;
+    letter-spacing: -0.02em;
+    margin: 1rem 0;
 }
 
 .price-performance-row {
     display: flex;
     align-items: center;
-    gap: 2rem;
+    justify-content: center;
+    gap: 2.5rem;
+    margin: 2rem 0;
 }
 
 .price-val {
@@ -45,9 +81,9 @@
 .change-badge-elite {
     display: inline-flex;
     align-items: center;
-    padding: 0.6rem 1.25rem;
+    padding: 0.75rem 1.75rem;
     border-radius: 40px;
-    font-size: 1.15rem;
+    font-size: 1.25rem;
     font-weight: 800;
     background: rgba(16, 185, 129, 0.1);
     color: var(--color-accent);
@@ -65,37 +101,65 @@
     background: rgba(255, 255, 255, 0.05);
     border: 1px solid var(--color-outline);
     color: var(--color-text-primary);
-    padding-left: 3rem;
-    padding-right: 3rem;
+    padding: 1rem 3.5rem;
 }
 
 .btn-premium-refresh:hover {
     background: rgba(255, 255, 255, 0.08);
 }
 
-/* Pro Analytics Grid */
-.detail-grid-lux {
+/* Rolling Metrics Strip */
+.metrics-strip-lux {
     display: grid;
-    grid-template-columns: 2.5fr 1fr;
+    grid-template-columns: repeat(3, 1fr);
     gap: 2rem;
+    margin: 4rem 0;
+}
+
+.metric-strip-item {
+    padding: 2.5rem;
+    text-align: center;
+}
+
+.metric-strip-item .m-label {
+    font-size: 0.65rem;
+    font-weight: 800;
+    text-transform: uppercase;
+    letter-spacing: 0.3em;
+    color: var(--color-text-muted);
+    margin-bottom: 1rem;
+    display: block;
+}
+
+.metric-strip-item .m-value {
+    font-size: 3rem;
+    font-weight: 800;
+}
+
+/* Full Width Pro Analytics */
+.detail-grid-lux {
+    display: block;
+    width: 100%;
 }
 
 .chart-box-lux {
-    padding: 3rem;
-    min-height: 500px;
+    padding: 4rem;
+    min-height: 600px;
+    width: 100%;
+    margin-bottom: 4rem;
 }
 
 .chart-head-lux {
     display: flex;
     justify-content: space-between;
     align-items: center;
-    margin-bottom: 3rem;
+    margin-bottom: 4rem;
 }
 
 .t-btn {
-    padding: 0.4rem 1rem;
+    padding: 0.5rem 1.25rem;
     border-radius: 40px;
-    font-size: 0.65rem;
+    font-size: 0.7rem;
     font-weight: 800;
     color: var(--color-text-muted);
     border: 1px solid var(--color-outline);
@@ -109,25 +173,35 @@
     box-shadow: 0 0 15px var(--color-primary-glow);
 }
 
-.info-stack-lux {
-    display: flex;
-    flex-direction: column;
-    gap: 1.5rem;
+/* Metadata Table Elite */
+.metadata-table-lux {
+    width: 100%;
+    border-collapse: collapse;
+    margin: 2rem 0;
 }
 
-.info-card-lux {
-    padding: 2rem;
+.metadata-table-lux td {
+    padding: 1.5rem 2rem;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.05);
 }
 
-.info-card-lux.highlighted {
-    border-left: 4px solid var(--color-primary);
-    background: linear-gradient(90deg, rgba(0, 152, 255, 0.05), transparent);
+.metadata-table-lux .m-label {
+    font-size: 0.65rem;
+    font-weight: 800;
+    text-transform: uppercase;
+    letter-spacing: 0.2em;
+    color: var(--color-text-muted);
+    width: 250px;
 }
 
-.info-card-lux .font-heading {
-    font-size: 2.5rem;
-    line-height: 1.2;
-    margin-top: 0.5rem;
+.metadata-table-lux .m-value {
+    font-size: 0.9rem;
+    font-weight: 700;
+    color: var(--color-text-primary);
+}
+
+.metadata-table-lux tr:last-child td {
+    border-bottom: none;
 }
 
 /* Metrics Grid - Elite Refinement */
@@ -138,10 +212,10 @@
 }
 
 .metric-box {
-    padding: 2rem;
+    padding: 2.5rem;
     display: flex;
     flex-direction: column;
-    gap: 1rem;
+    gap: 1.5rem;
 }
 
 .metric-label {
@@ -159,7 +233,7 @@
 
 /* Section Styling */
 .section-spacer {
-    margin-top: 6rem;
+    margin-top: 8rem;
 }
 
 .section-heading-lux {
@@ -194,7 +268,7 @@
 }
 
 @media (max-width: 1200px) {
-    .detail-grid-lux {
+    .metrics-strip-lux {
         grid-template-columns: 1fr;
     }
     .metrics-grid-lux {

@@ -95,7 +95,7 @@ const MFDetail = ({ schemeCode }) => {
 
     const latestNav = navHistory.length > 0 ? navHistory[0].nav_value : 0;
     const prevNav = navHistory.length > 1 ? navHistory[1].nav_value : latestNav;
-    const changePercent = ((latestNav - prevNav) / prevNav * 100).toFixed(2);
+    const changePercent = prevNav !== 0 ? ((latestNav - prevNav) / prevNav * 100).toFixed(2) : "0.00";
 
     const formatMetric = (val, precision = 2) => {
         if (val === null || val === undefined) return '0.00';
@@ -110,54 +110,57 @@ const MFDetail = ({ schemeCode }) => {
     return (
         <div className="mf-detail container reveal active">
             <header className="detail-header-lux">
-                <div className="back-nav-lux mb-12">
+                <div className="back-nav-lux">
                     <a href="#mf" className="btn-back-elite">
                         <span className="back-icon">←</span>
                         <span className="back-text">BACK TO VAULT OVERVIEW</span>
                     </a>
                 </div>
-                
-                <div className="fund-hero-stack">
-                    <span className="label-accent uppercase tracking-widest text-xs">{fund.scheme_category}</span>
-                    <h1 className="heading-xl mt-4">{fund.scheme_name}</h1>
-                    <p className="text-muted text-xs uppercase tracking-widest mt-3">
-                        {fund.amc_name} <span className="mx-2 opacity-30">•</span> IDENTIFIER: {fund.scheme_code}
-                    </p>
 
-                    <div className="price-performance-row mt-10">
+                <div className="fund-hero-stack">
+                    <span className="scheme-badge">{fund.scheme_category}</span>
+                    <h1 className="heading-xl">{fund.scheme_name}</h1>
+                    <p className="text-muted text-xs uppercase tracking-widest mt-2">{fund.amc_name}</p>
+
+                    <div className="price-performance-row">
                         <span className="price-val font-heading">₹{latestNav}</span>
-                        <div className={`change-badge-elite ${changePercent >= 0 ? 'positive' : 'negative'}`}>
-                            {changePercent >= 0 ? '▲' : '▼'} {Math.abs(changePercent)}%
+                        <div className={`change-badge-elite ${parseFloat(changePercent) >= 0 ? 'positive' : 'negative'}`}>
+                            {parseFloat(changePercent) >= 0 ? '▲' : '▼'} {Math.abs(changePercent)}%
                         </div>
                     </div>
 
-                    <div className="flex gap-4 mt-12">
+                    <div className="flex justify-center gap-4 mt-10">
                         <button 
                             className={`btn-premium btn-premium-refresh ${refreshing ? 'loading' : ''}`}
                             onClick={() => fetchAllData(true)}
                             disabled={refreshing}
                         >
-                            <span className="btn-label">{refreshing ? 'REFRESHING ASSET...' : 'SYNC MARKET METRICS'}</span>
+                            {refreshing ? 'Refreshing Real-Time Data...' : 'Sync Market Metrics'}
                         </button>
-                        <button className="btn-premium btn-premium-primary px-10">EXECUTE ALLOCATION</button>
+                        <button className="btn-premium btn-premium-primary px-12">Execute Allocation</button>
                     </div>
                 </div>
             </header>
 
-            {syncJob?.status === 'RUNNING' && (
-                <div className="glass-panel sync-progress-banner reveal active">
-                    <div className="sync-loader"></div>
-                    <div>
-                        <span className="label-accent uppercase tracking-widest text-xs">Synchronization Active</span>
-                        <p className="font-heading text-lg">{syncJob.message}</p>
-                    </div>
+            <div className="metrics-strip-lux">
+                <div className="glass-panel metric-strip-item glow-card">
+                    <span className="m-label">3Y Rolling Return</span>
+                    <div className="m-value font-heading text-primary">{formatPercent(metrics?.rolling_return_3year)}</div>
                 </div>
-            )}
+                <div className="glass-panel metric-strip-item glow-card">
+                    <span className="m-label">5Y Rolling Return</span>
+                    <div className="m-value font-heading text-primary">{formatPercent(metrics?.rolling_return_5year)}</div>
+                </div>
+                <div className="glass-panel metric-strip-item glow-card">
+                    <span className="m-label">Current AUM (Cr)</span>
+                    <div className="m-value font-heading text-primary">₹{formatMetric(metrics?.aum_in_crores, 1)}</div>
+                </div>
+            </div>
 
             <div className="detail-grid-lux">
                 <div className="glass-panel chart-box-lux glow-card">
                     <div className="chart-head-lux">
-                        <h3 className="font-heading text-md uppercase tracking-widest opacity-60">Growth Index</h3>
+                        <h3 className="section-heading-lux uppercase">Growth Index Performance</h3>
                         <div className="flex gap-3">
                             {['1M', '6M', '1Y', 'ALL'].map(t => (
                                 <button 
@@ -169,7 +172,7 @@ const MFDetail = ({ schemeCode }) => {
                         </div>
                     </div>
                     
-                    <div style={{ height: '350px', width: '100%' }}>
+                    <div style={{ height: '450px', width: '100%' }}>
                         <ResponsiveContainer width="100%" height="100%">
                             <AreaChart data={chartData}>
                                 <defs>
@@ -184,7 +187,7 @@ const MFDetail = ({ schemeCode }) => {
                                     axisLine={false} 
                                     tickLine={false} 
                                     tick={{fontSize: 10, fill: 'var(--color-text-muted)'}}
-                                    interval={Math.floor(chartData.length / 6)}
+                                    interval={Math.floor(chartData.length / 8)}
                                 />
                                 <YAxis 
                                     domain={['auto', 'auto']} 
@@ -193,7 +196,7 @@ const MFDetail = ({ schemeCode }) => {
                                     tick={{fontSize: 10, fill: 'var(--color-text-muted)'}}
                                 />
                                 <Tooltip 
-                                    contentStyle={{backgroundColor: '#0f172a', border: '1px solid var(--color-glass-border)', borderRadius: '8px', fontSize: '12px', boxShadow: '0 10px 30px rgba(0,0,0,0.5)'}}
+                                    contentStyle={{backgroundColor: '#0f172a', border: '1px solid var(--color-glass-border)', borderRadius: '8px', fontSize: '12px'}}
                                     itemStyle={{color: 'var(--color-primary)'}}
                                 />
                                 <Area 
@@ -202,25 +205,9 @@ const MFDetail = ({ schemeCode }) => {
                                     stroke="var(--color-primary)" 
                                     strokeWidth={3}
                                     fill="url(#navGradient)" 
-                                    animationDuration={1500}
                                 />
                             </AreaChart>
                         </ResponsiveContainer>
-                    </div>
-                </div>
-
-                <div className="info-stack-lux">
-                    <div className="glass-panel info-card-lux glow-card highlighted">
-                        <span className="label-accent uppercase tracking-widest text-xs">3Y Rolling Return</span>
-                        <div className="font-heading">{formatPercent(metrics?.rolling_return_3year)}</div>
-                    </div>
-                    <div className="glass-panel info-card-lux glow-card highlighted">
-                        <span className="label-accent uppercase tracking-widest text-xs">5Y Rolling Return</span>
-                        <div className="font-heading">{formatPercent(metrics?.rolling_return_5year)}</div>
-                    </div>
-                    <div className="glass-panel info-card-lux glow-card">
-                        <span className="label-accent uppercase tracking-widest text-xs">AUM (Cr)</span>
-                        <div className="font-heading text-primary">₹{formatMetric(metrics?.aum_in_crores, 1)}</div>
                     </div>
                 </div>
             </div>
@@ -229,9 +216,7 @@ const MFDetail = ({ schemeCode }) => {
                 <div className="flex justify-between items-center mb-10">
                     <h3 className="section-heading-lux uppercase">Risk Intelligence Parameters</h3>
                     {metrics?.metrics_calculated_at && (
-                        <span className="text-xs text-muted opacity-50 uppercase tracking-tighter">
-                            Last Logic Execution: {new Date(metrics.metrics_calculated_at).toLocaleString()}
-                        </span>
+                        <span className="text-xs text-muted opacity-50">Last Logic Execution: {new Date(metrics.metrics_calculated_at).toLocaleString()}</span>
                     )}
                 </div>
                 
@@ -255,15 +240,36 @@ const MFDetail = ({ schemeCode }) => {
             </section>
 
             <section className="section-spacer">
-                <div className="flex justify-between items-center mb-10">
-                    <h3 className="section-heading-lux uppercase">Asset Metadata</h3>
-                    <div className="h-px bg-white/10 flex-1 mx-10"></div>
-                </div>
-                <div className="flex flex-wrap gap-5">
-                    <div className="chip-lux py-4 px-8 border-white/5 bg-white/5 opacity-80 uppercase tracking-widest text-xs">CODE: {fund.scheme_code}</div>
-                    <div className="chip-lux py-4 px-8 border-white/5 bg-white/5 opacity-80 uppercase tracking-widest text-xs">VARIANT: {fund.plan_type}</div>
-                    <div className="chip-lux py-4 px-8 border-white/5 bg-white/5 opacity-80 uppercase tracking-widest text-xs">GENESIS: {fund.inception_date}</div>
-                    <div className="chip-lux py-4 px-8 border-white/5 bg-white/5 opacity-80 uppercase tracking-widest text-xs">AMC: {fund.amc_name}</div>
+                <h3 className="section-heading-lux uppercase mb-8">Asset Metadata & Identification</h3>
+                <div className="glass-panel glow-card p-0 overflow-hidden">
+                    <table className="metadata-table-lux">
+                        <tbody>
+                            <tr>
+                                <td className="m-label">Scheme Identifier</td>
+                                <td className="m-value">{fund.scheme_code}</td>
+                            </tr>
+                            <tr>
+                                <td className="m-label">AMC Name</td>
+                                <td className="m-value">{fund.amc_name}</td>
+                            </tr>
+                            <tr>
+                                <td className="m-label">Fund House / Category</td>
+                                <td className="m-value">{fund.scheme_category}</td>
+                            </tr>
+                            <tr>
+                                <td className="m-label">Plan Type / Variant</td>
+                                <td className="m-value">{fund.plan_type}</td>
+                            </tr>
+                            <tr>
+                                <td className="m-label">Asset Under Management (AUM)</td>
+                                <td className="m-value">₹ {formatMetric(metrics?.aum_in_crores, 2)} Crores</td>
+                            </tr>
+                            <tr>
+                                <td className="m-label">Inception Date</td>
+                                <td className="m-value">{fund.inception_date || 'N/A'}</td>
+                            </tr>
+                        </tbody>
+                    </table>
                 </div>
             </section>
         </div>
