@@ -202,9 +202,23 @@
 }
 
 .btn-action-small.delete:hover {
-    background: rgba(239, 68, 68, 0.2);
-    color: var(--color-error);
-    border-color: var(--color-error);
+    box-shadow: 0 0 20px rgba(0, 152, 255, 0.1);
+}
+
+.form-input-elite:disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
+    background: rgba(0,0,0,0.2);
+}
+
+.form-input-elite.highlight {
+    border-color: rgba(0, 152, 255, 0.3);
+}
+
+.form-input-elite option {
+    background: #0f172a;
+    color: white;
+    padding: 1rem;
 }
 
 /* Pagination Control Elite */
@@ -212,9 +226,9 @@
     display: flex;
     justify-content: space-between;
     align-items: center;
-    padding: 2rem;
-    margin-top: 2rem;
-    border-top: 1px solid var(--color-outline);
+    margin-top: 5rem;
+    padding-top: 3rem;
+    border-top: 1px solid rgba(255, 255, 255, 0.05);
     background: rgba(255, 255, 255, 0.02);
     border-radius: 0 0 var(--roundness-md) var(--roundness-md);
 }

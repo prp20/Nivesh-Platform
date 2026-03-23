@@ -2,6 +2,22 @@ import React, { useState, useEffect, useCallback } from 'react';
 import fundService from '../api/services/fundService';
 import './MFListing.css';
 
+// SVG Icons
+const IconPencil = () => (
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+        <path d="M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z"></path>
+    </svg>
+);
+
+const IconTrash = () => (
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+        <polyline points="3 6 5 6 21 6"></polyline>
+        <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
+        <line x1="10" y1="11" x2="10" y2="17"></line>
+        <line x1="14" y1="11" x2="14" y2="17"></line>
+    </svg>
+);
+
 const MFListing = () => {
     // UI State
     const [viewMode, setViewMode] = useState('grid');
@@ -10,11 +26,13 @@ const MFListing = () => {
     const [formData, setFormData] = useState({
         scheme_code: '', scheme_name: '', amc_name: '',
         scheme_category: 'Equity Scheme', plan_type: 'Direct',
-        inception_date: new Date().toISOString().split('T')[0]
+        inception_date: new Date().toISOString().split('T')[0],
+        benchmark_index_code: ''
     });
 
     // Data & Pagination State
     const [funds, setFunds] = useState([]);
+    const [benchmarks, setBenchmarks] = useState([]);
     const [total, setTotal] = useState(0);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState(null);
@@ -41,8 +59,18 @@ const MFListing = () => {
         }
     }, [currentPage, pageSize, categoryFilter, amcSearch]);
 
+    const fetchBenchmarks = async () => {
+        try {
+            const data = await fundService.getBenchmarks();
+            setBenchmarks(data);
+        } catch (err) {
+            console.error("Failed to fetch benchmarks", err);
+        }
+    };
+
     useEffect(() => {
         fetchFunds();
+        fetchBenchmarks();
     }, [fetchFunds]);
 
     const handlePageSizeChange = (e) => {
@@ -63,6 +91,13 @@ const MFListing = () => {
 
     const handleSave = async (e) => {
         e.preventDefault();
+        
+        // Validation: Benchmark Index is Mandatory
+        if (!formData.benchmark_index_code) {
+            alert("BENCHMARK SELECTION REQUIRED. Security protocol forbids unreferenced assets.");
+            return;
+        }
+
         try {
             if (editingFund) {
                 await fundService.updateFund(editingFund.scheme_code, formData);
@@ -79,7 +114,15 @@ const MFListing = () => {
 
     const openEdit = (fund) => {
         setEditingFund(fund);
-        setFormData({ ...fund });
+        setFormData({ 
+            scheme_code: fund.scheme_code,
+            scheme_name: fund.scheme_name,
+            amc_name: fund.amc_name,
+            scheme_category: fund.scheme_category,
+            plan_type: fund.plan_type,
+            inception_date: fund.inception_date,
+            benchmark_index_code: fund.benchmark_index_code || ''
+        });
         setIsFormOpen(true);
     };
 
@@ -88,7 +131,8 @@ const MFListing = () => {
         setFormData({
             scheme_code: '', scheme_name: '', amc_name: '',
             scheme_category: 'Equity Scheme', plan_type: 'Direct',
-            inception_date: new Date().toISOString().split('T')[0]
+            inception_date: new Date().toISOString().split('T')[0],
+            benchmark_index_code: ''
         });
         setIsFormOpen(true);
     };
@@ -148,38 +192,81 @@ const MFListing = () => {
 
             {isFormOpen && (
                 <div className="modal-overlay glass">
-                    <div className="glass-panel p-20 max-w-2xl w-full mx-5">
-                        <h2 className="font-heading heading-md mb-10 uppercase tracking-widest">Asset Configuration</h2>
-                        <form onSubmit={handleSave} className="flex flex-col gap-6">
-                            <div className="grid grid-cols-2 gap-5">
-                                <input
-                                    className="chip-lux py-4 px-6 text-sm"
-                                    placeholder="SCHEME CODE"
-                                    value={formData.scheme_code}
-                                    disabled={!!editingFund}
-                                    onChange={e => setFormData({ ...formData, scheme_code: e.target.value })}
-                                />
-                                <input
-                                    className="chip-lux py-4 px-6 text-sm"
-                                    placeholder="SCHEME NAME"
-                                    value={formData.scheme_name}
-                                    onChange={e => setFormData({ ...formData, scheme_name: e.target.value })}
-                                />
-                                <input
-                                    className="chip-lux py-4 px-6 text-sm"
-                                    placeholder="AMC NAME"
-                                    value={formData.amc_name}
-                                    onChange={e => setFormData({ ...formData, amc_name: e.target.value })}
-                                />
-                                <input
-                                    className="chip-lux py-4 px-6 text-sm"
-                                    type="date"
-                                    value={formData.inception_date}
-                                    onChange={e => setFormData({ ...formData, inception_date: e.target.value })}
-                                />
+                    <div className="glass-panel p-20 max-w-2xl w-full mx-5 reveal active">
+                        <h2 className="font-heading heading-md mb-10 uppercase tracking-widest text-primary">Asset Configuration</h2>
+                        <form onSubmit={handleSave} className="flex flex-col gap-8">
+                            <div className="grid grid-cols-2 gap-6">
+                                <div className="input-group-lux">
+                                    <label className="text-xs uppercase tracking-widest opacity-40 mb-2 block">Scheme Code</label>
+                                    <input
+                                        className="form-input-elite"
+                                        placeholder="IDENTIFIER"
+                                        value={formData.scheme_code}
+                                        disabled={!!editingFund}
+                                        onChange={e => setFormData({ ...formData, scheme_code: e.target.value })}
+                                    />
+                                </div>
+                                <div className="input-group-lux">
+                                    <label className="text-xs uppercase tracking-widest opacity-40 mb-2 block">Scheme Name</label>
+                                    <input
+                                        className="form-input-elite"
+                                        placeholder="ASSET FULL NAME"
+                                        value={formData.scheme_name}
+                                        onChange={e => setFormData({ ...formData, scheme_name: e.target.value })}
+                                    />
+                                </div>
+                                <div className="input-group-lux">
+                                    <label className="text-xs uppercase tracking-widest opacity-40 mb-2 block">AMC Name</label>
+                                    <input
+                                        className="form-input-elite"
+                                        placeholder="MANAGEMENT ENTITY"
+                                        value={formData.amc_name}
+                                        onChange={e => setFormData({ ...formData, amc_name: e.target.value })}
+                                    />
+                                </div>
+                                <div className="input-group-lux">
+                                    <label className="text-xs uppercase tracking-widest opacity-40 mb-2 block">Inception Date</label>
+                                    <input
+                                        className="form-input-elite"
+                                        type="date"
+                                        value={formData.inception_date}
+                                        onChange={e => setFormData({ ...formData, inception_date: e.target.value })}
+                                    />
+                                </div>
+                                <div className="input-group-lux">
+                                    <label className="text-xs uppercase tracking-widest opacity-40 mb-2 block">Scheme Category</label>
+                                    <select 
+                                        className="form-input-elite"
+                                        value={formData.scheme_category}
+                                        onChange={e => setFormData({ ...formData, scheme_category: e.target.value })}
+                                    >
+                                        <option value="Equity Scheme">Equity Scheme</option>
+                                        <option value="Debt Scheme">Debt Scheme</option>
+                                        <option value="Hybrid Scheme">Hybrid Scheme</option>
+                                        <option value="Solution Oriented">Solution Oriented</option>
+                                        <option value="Other Scheme">Other Scheme</option>
+                                    </select>
+                                </div>
+                                <div className="input-group-lux">
+                                    <label className="text-xs uppercase tracking-widest opacity-40 mb-2 block text-primary font-bold">Benchmark Index *</label>
+                                    <select 
+                                        className="form-input-elite highlight"
+                                        value={formData.benchmark_index_code}
+                                        onChange={e => setFormData({ ...formData, benchmark_index_code: e.target.value })}
+                                    >
+                                        <option value="">SELECT BENCHMARK...</option>
+                                        {benchmarks.map(b => (
+                                            <option key={b.benchmark_code} value={b.benchmark_code}>
+                                                {b.benchmark_name}
+                                            </option>
+                                        ))}
+                                    </select>
+                                </div>
                             </div>
                             <div className="flex gap-5 mt-5">
-                                <button type="submit" className="btn-premium btn-premium-primary flex-1">COMMIT CHANGES</button>
+                                <button type="submit" className="btn-premium btn-premium-primary flex-1">
+                                    {editingFund ? 'COMMIT UPDATES' : 'REGISTER ASSET'}
+                                </button>
                                 <button type="button" onClick={() => setIsFormOpen(false)} className="btn-premium btn-premium-outline">CANCEL</button>
                             </div>
                         </form>
@@ -197,15 +284,24 @@ const MFListing = () => {
                         <div className="fund-grid-lux reveal active">
                             {funds.map(fund => (
                                 <div key={fund.scheme_code} className="glass-panel glow-card fund-card-lux-elite">
-                                    <div className="card-identity-row">
-                                        {/* <div className="flex flex-col items-end"> */}
-
+                                    <div className="card-identity-row flex justify-between items-start">
                                         <div className="rating-stars">★★★★★</div>
-                                        <div className="flex gap-2 mt-4">
-                                            <button onClick={() => openEdit(fund)} className="btn-action-small">✎</button>
-                                            <button onClick={() => handleDelete(fund.scheme_code)} className="btn-action-small delete">✖</button>
+                                        <div className="flex gap-3">
+                                            <button 
+                                                onClick={() => openEdit(fund)} 
+                                                className="btn-management-lux"
+                                                title="Edit Protocol"
+                                            >
+                                                <IconPencil />
+                                            </button>
+                                            <button 
+                                                onClick={() => handleDelete(fund.scheme_code)} 
+                                                className="btn-management-lux delete"
+                                                title="Decommission Asset"
+                                            >
+                                                <IconTrash />
+                                            </button>
                                         </div>
-                                        {/* </div> */}
                                     </div>
 
                                     <div className="fund-title-box mt-auto">
@@ -216,7 +312,7 @@ const MFListing = () => {
                                     <div className="fund-metrics-row">
                                         <div className="metric-item items-end">
                                             <span className="m-label text-right">Latest NAV</span>
-                                            <span className="m-value text-primary">₹{fund.metrics?.current_nav || '--'}</span>
+                                            <span className="m-value text-primary font-heading">₹{fund.metrics?.current_nav || '--'}</span>
                                         </div>
                                     </div>
 
@@ -236,7 +332,7 @@ const MFListing = () => {
                                         <th>CATEGORY</th>
                                         <th>AMC LAYER</th>
                                         <th>CURRENT NAV</th>
-                                        <th className="text-right">OPERATION</th>
+                                        <th className="text-right">OPERATIONS</th>
                                     </tr>
                                 </thead>
                                 <tbody>
@@ -249,8 +345,10 @@ const MFListing = () => {
                                             <td className="text-xs text-muted">{fund.amc_name}</td>
                                             <td className="text-md font-extrabold text-primary">₹{fund.metrics?.current_nav || '--'}</td>
                                             <td className="text-right">
-                                                <button onClick={() => openEdit(fund)} className="btn-action-small">✎</button>
-                                                <button onClick={() => handleDelete(fund.scheme_code)} className="btn-action-small delete">✖</button>
+                                                <div className="flex justify-end gap-3">
+                                                    <button onClick={() => openEdit(fund)} className="btn-management-lux" title="Edit"><IconPencil /></button>
+                                                    <button onClick={() => handleDelete(fund.scheme_code)} className="btn-management-lux delete" title="Delete"><IconTrash /></button>
+                                                </div>
                                             </td>
                                         </tr>
                                     ))}

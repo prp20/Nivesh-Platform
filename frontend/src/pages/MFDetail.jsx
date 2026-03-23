@@ -261,6 +261,10 @@ const MFDetail = ({ schemeCode }) => {
                                 <td className="m-value">{fund.plan_type}</td>
                             </tr>
                             <tr>
+                                <td className="m-label">Benchmark Index</td>
+                                <td className="m-value text-primary font-bold">{fund.benchmark_index_code || 'UNASSIGNED'}</td>
+                            </tr>
+                            <tr>
                                 <td className="m-label">Asset Under Management (AUM)</td>
                                 <td className="m-value">₹ {formatMetric(metrics?.aum_in_crores, 2)} Crores</td>
                             </tr>
