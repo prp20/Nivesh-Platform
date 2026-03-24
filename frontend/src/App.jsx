@@ -6,6 +6,7 @@ import StockDetail from './pages/StockDetail';
 import MFListing from './pages/MFListing';
 import MFDetail from './pages/MFDetail';
 import IndicesListing from './pages/IndicesListing';
+import IndexDetail from './pages/IndexDetail';
 import Login from './pages/Login';
 import { ThemeProvider } from './context/ThemeContext';
 import { AuthProvider, useAuth } from './context/AuthContext';
@@ -26,6 +27,9 @@ const AppContent = () => {
       } else if (hash.startsWith('mf-detail-')) {
         setActiveTab('mf-detail');
         setActiveParams(hash.replace('mf-detail-', ''));
+      } else if (hash.startsWith('index-detail-')) {
+        setActiveTab('index-detail');
+        setActiveParams(hash.replace('index-detail-', ''));
       } else {
         setActiveTab(hash);
       }
@@ -56,6 +60,8 @@ const AppContent = () => {
         return <MFDetail schemeCode={activeParams} />;
       case 'indices':
         return <IndicesListing />;
+      case 'index-detail':
+        return <IndexDetail benchmarkCode={activeParams} />;
       default:
         return <Dashboard />;
     }

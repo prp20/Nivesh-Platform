@@ -37,6 +37,9 @@ The frontend intelligently handles cases where financial data might be missing. 
 - **Top Navbar**: Primary desktop navigation.
 - **Bottom Navigation**: Optimized for mobile and tablet touch interaction.
 
+### 4. Market Index CSV Ingestion
+The UI provides an integrated component on the **Index Detail** page allowing users to upload Nifty CSV files. The component parses and submits historical index records to recalibrate performance trends directly within the application, offering immediate visual feedback on the interactive charts.
+
 ---
 
 ## 🛠️ Setup & Development

@@ -54,8 +54,10 @@ const fundService = {
     },
 
     // BENCHMARKS (INDICES)
-    getBenchmarks: async (skip = 0, limit = 100) => {
-        const response = await apiClient.get(`/benchmarks/?skip=${skip}&limit=${limit}`);
+    getBenchmarks: async (skip = 0, limit = 10, search = null) => {
+        let url = `/benchmarks/?skip=${skip}&limit=${limit}`;
+        if (search) url += `&q=${encodeURIComponent(search)}`;
+        const response = await apiClient.get(url);
         return response.data;
     },
 
@@ -64,8 +66,34 @@ const fundService = {
         return response.data;
     },
 
+    createBenchmark: async (data) => {
+        const response = await apiClient.post(`/benchmarks/`, data);
+        return response.data;
+    },
+
+    updateBenchmark: async (benchmarkCode, data) => {
+        const response = await apiClient.put(`/benchmarks/${benchmarkCode}`, data);
+        return response.data;
+    },
+
+    deleteBenchmark: async (benchmarkCode) => {
+        const response = await apiClient.delete(`/benchmarks/${benchmarkCode}`);
+        return response.data;
+    },
+
     getBenchmarkNavHistory: async (benchmarkCode, limit = 100) => {
         const response = await apiClient.get(`/benchmark-navs/${benchmarkCode}?limit=${limit}`);
+        return response.data;
+    },
+
+    uploadBenchmarkCsv: async (benchmarkCode, file) => {
+        const formData = new FormData();
+        formData.append('file', file);
+        const response = await apiClient.post(`/benchmark-navs/${benchmarkCode}/upload`, formData, {
+            headers: {
+                'Content-Type': 'multipart/form-data'
+            }
+        });
         return response.data;
     },
 

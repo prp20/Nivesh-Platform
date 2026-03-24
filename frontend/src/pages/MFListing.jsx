@@ -22,6 +22,8 @@ const MFListing = () => {
     // UI State
     const [viewMode, setViewMode] = useState('grid');
     const [isFormOpen, setIsFormOpen] = useState(false);
+    const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
+    const [deletingCode, setDeletingCode] = useState(null);
     const [editingFund, setEditingFund] = useState(null);
     const [formData, setFormData] = useState({
         scheme_code: '', scheme_name: '', amc_name: '',
@@ -78,14 +80,20 @@ const MFListing = () => {
         setCurrentPage(1);
     };
 
-    const handleDelete = async (code) => {
-        if (window.confirm(`Permanently decommission scheme ${code} from the vault?`)) {
-            try {
-                await fundService.deleteFund(code);
-                fetchFunds();
-            } catch (err) {
-                alert("Operation failed. Unauthorized access?");
-            }
+    const handleDelete = (code) => {
+        setDeletingCode(code);
+        setIsDeleteModalOpen(true);
+    };
+
+    const confirmDelete = async () => {
+        if (!deletingCode) return;
+        try {
+            await fundService.deleteFund(deletingCode);
+            setIsDeleteModalOpen(false);
+            setDeletingCode(null);
+            fetchFunds();
+        } catch (err) {
+            alert("Operation failed. Unauthorized access?");
         }
     };
 
@@ -192,7 +200,7 @@ const MFListing = () => {
 
             {isFormOpen && (
                 <div className="modal-overlay glass">
-                    <div className="glass-panel p-20 max-w-2xl w-full mx-5 reveal active">
+                    <div className="glass-panel p-32 max-w-2xl w-full mx-5 reveal active">
                         <h2 className="font-heading heading-md mb-10 uppercase tracking-widest text-primary">Asset Configuration</h2>
                         <form onSubmit={handleSave} className="flex flex-col gap-8">
                             <div className="grid grid-cols-2 gap-6">
@@ -274,6 +282,22 @@ const MFListing = () => {
                 </div>
             )}
 
+            {isDeleteModalOpen && (
+                <div className="modal-overlay glass">
+                    <div className="glass-panel p-32 max-w-md w-full mx-5 reveal active text-center">
+                        <div className="delete-warning-icon mb-6">⚠️</div>
+                        <h2 className="font-heading heading-md mb-4 uppercase tracking-widest text-error">Security Authorization</h2>
+                        <p className="text-sm opacity-60 mb-10 leading-relaxed">
+                            Are you certain you wish to permanently decommission asset <span className="text-white font-bold">{deletingCode}</span> from the Mutual Fund Vault? This action is irreversible.
+                        </p>
+                        <div className="flex gap-5">
+                            <button onClick={confirmDelete} className="btn-premium btn-delete-final flex-1">CONFIRM DELETE</button>
+                            <button onClick={() => setIsDeleteModalOpen(false)} className="btn-premium btn-premium-outline flex-1">CANCEL</button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
             {error && <div className="glass-panel p-5 text-center text-error border-error/30 mb-10">{error}</div>}
 
             {loading ? (
@@ -305,7 +329,12 @@ const MFListing = () => {
                                     </div>
 
                                     <div className="fund-title-box mt-auto">
-                                        <h3 className="font-heading">{fund.scheme_name}</h3>
+                                        <div className="flex items-center gap-2 mb-1">
+                                            <h3 className="font-heading">{fund.scheme_name}</h3>
+                                            {!fund.benchmark_index_code && (
+                                                <span className="badge-warning-lux">NO BENCHMARK</span>
+                                            )}
+                                        </div>
                                         <p className="text-xs uppercase tracking-widest text-muted">{fund.scheme_category} • {fund.plan_type}</p>
                                     </div>
 
@@ -339,7 +368,12 @@ const MFListing = () => {
                                     {funds.map(fund => (
                                         <tr key={fund.scheme_code} className="hover:bg-white/5 transition-colors">
                                             <td className="font-heading text-sm font-semibold">
-                                                <a href={`#mf-detail-${fund.scheme_code}`} className="text-white hover:text-primary transition-colors">{fund.scheme_name}</a>
+                                                <div className="flex flex-col">
+                                                    <a href={`#mf-detail-${fund.scheme_code}`} className="text-white hover:text-primary transition-colors">{fund.scheme_name}</a>
+                                                    {!fund.benchmark_index_code && (
+                                                        <span className="text-[10px] text-error font-bold uppercase tracking-tight">Benchmark Unassigned</span>
+                                                    )}
+                                                </div>
                                             </td>
                                             <td className="text-xs uppercase text-muted font-bold tracking-wider">{fund.scheme_category}</td>
                                             <td className="text-xs text-muted">{fund.amc_name}</td>
