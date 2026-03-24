@@ -129,6 +129,10 @@ class BenchmarkMasterUpdate(BaseModel):
     asset_class: Optional[str] = None
     is_active: Optional[bool] = None
 
+class BenchmarkPaginated(BaseModel):
+    items: List[BenchmarkMasterRead]
+    total: int
+
 # ============================================================================
 # SYNC JOB SCHEMAS
 # ============================================================================

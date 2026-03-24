@@ -1,4 +1,4 @@
-from sqlalchemy import select, insert, update, delete
+from sqlalchemy import select, insert, update, delete, func
 from sqlalchemy.ext.asyncio import AsyncSession
 from typing import Optional, List
 from .models import FundMaster, BenchmarkMaster, FundNavHistory, BenchmarkNavHistory, FundMetrics
@@ -18,8 +18,10 @@ from sqlalchemy.orm import joinedload
 async def create_fund_master(session: AsyncSession, fund_in: FundMasterCreate):
     stmt = insert(FundMaster).values(**fund_in.model_dump()).returning(FundMaster)
     res = await session.execute(stmt)
+    fund = res.scalar_one()
     await session.commit()
-    return res.scalar_one()
+    # Re-fetch to ensure all relationships are handled correctly for serialization
+    return await get_fund_master_by_code(session, fund.scheme_code)
 
 async def get_fund_master_by_code(session: AsyncSession, scheme_code: str):
     q = select(FundMaster).options(joinedload(FundMaster.metrics)).where(FundMaster.scheme_code == scheme_code)
@@ -71,17 +73,21 @@ async def update_fund_master(session: AsyncSession, scheme_code: str, fund_in: F
         update(FundMaster)
         .where(FundMaster.scheme_code == scheme_code)
         .values(**data)
-        .returning(FundMaster)
     )
-    res = await session.execute(stmt)
+    await session.execute(stmt)
     await session.commit()
-    return res.scalar_one_or_none()
+    return await get_fund_master_by_code(session, scheme_code)
 
 async def delete_fund_master(session: AsyncSession, scheme_code: str):
-    stmt = delete(FundMaster).where(FundMaster.scheme_code == scheme_code).returning(FundMaster)
-    res = await session.execute(stmt)
+    # Fetch first to have the object for the response before deleting
+    fund = await get_fund_master_by_code(session, scheme_code)
+    if not fund:
+        return None
+        
+    stmt = delete(FundMaster).where(FundMaster.scheme_code == scheme_code)
+    await session.execute(stmt)
     await session.commit()
-    return res.scalar_one_or_none()
+    return fund
 
 # ============================================================================
 # BENCHMARK MASTER CRUD
@@ -98,12 +104,24 @@ async def get_benchmark_master(session: AsyncSession, benchmark_code: str):
     res = await session.execute(q)
     return res.scalar_one_or_none()
 
-async def get_all_benchmark_masters(session: AsyncSession, is_active: Optional[bool] = None, skip: int = 0, limit: int = 100):
-    q = select(BenchmarkMaster).offset(skip).limit(limit)
+async def get_all_benchmark_masters(session: AsyncSession, is_active: Optional[bool] = None, skip: int = 0, limit: int = 100, search: Optional[str] = None):
+    q = select(BenchmarkMaster)
     if is_active is not None:
         q = q.where(BenchmarkMaster.is_active == is_active)
-    res = await session.execute(q)
-    return res.scalars().all()
+    if search:
+        q = q.where(
+            (BenchmarkMaster.benchmark_name.ilike(f"%{search}%")) |
+            (BenchmarkMaster.benchmark_code.ilike(f"%{search}%"))
+        )
+    
+    # Total count
+    count_q = select(func.count()).select_from(q.subquery())
+    total_res = await session.execute(count_q)
+    total = total_res.scalar()
+    
+    # Items
+    res = await session.execute(q.offset(skip).limit(limit))
+    return res.scalars().all(), total
 
 async def update_benchmark_master(session: AsyncSession, benchmark_code: str, benchmark_in: BenchmarkMasterUpdate):
     data = benchmark_in.model_dump(exclude_unset=True)
@@ -113,17 +131,20 @@ async def update_benchmark_master(session: AsyncSession, benchmark_code: str, be
         update(BenchmarkMaster)
         .where(BenchmarkMaster.benchmark_code == benchmark_code)
         .values(**data)
-        .returning(BenchmarkMaster)
     )
-    res = await session.execute(stmt)
+    await session.execute(stmt)
     await session.commit()
-    return res.scalar_one_or_none()
+    return await get_benchmark_master(session, benchmark_code)
 
 async def delete_benchmark_master(session: AsyncSession, benchmark_code: str):
-    stmt = delete(BenchmarkMaster).where(BenchmarkMaster.benchmark_code == benchmark_code).returning(BenchmarkMaster)
-    res = await session.execute(stmt)
+    benchmark = await get_benchmark_master(session, benchmark_code)
+    if not benchmark:
+        return None
+        
+    stmt = delete(BenchmarkMaster).where(BenchmarkMaster.benchmark_code == benchmark_code)
+    await session.execute(stmt)
     await session.commit()
-    return res.scalar_one_or_none()
+    return benchmark
 
 # ============================================================================
 # TIME-SERIES CRUD (NAV & BENCHMARK)

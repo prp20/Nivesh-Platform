@@ -13,14 +13,16 @@ async def create_benchmark(benchmark: schemas.BenchmarkMasterCreate, session: As
         raise HTTPException(status_code=400, detail=f"Benchmark with code {benchmark.benchmark_code} already exists")
     return await crud.create_benchmark_master(session, benchmark)
 
-@router.get("/", response_model=List[schemas.BenchmarkMasterRead])
+@router.get("/", response_model=schemas.BenchmarkPaginated)
 async def list_benchmarks(
+    q: Optional[str] = Query(None, description="Search by name or code"),
     is_active: Optional[bool] = Query(None, description="Filter by active status"),
     skip: int = Query(0, ge=0),
-    limit: int = Query(100, ge=1, le=500),
+    limit: int = Query(10, ge=1, le=100),
     session: AsyncSession = Depends(get_db)
 ):
-    return await crud.get_all_benchmark_masters(session, is_active=is_active, skip=skip, limit=limit)
+    items, total = await crud.get_all_benchmark_masters(session, is_active=is_active, skip=skip, limit=limit, search=q)
+    return {"items": items, "total": total}
 
 @router.get("/{benchmark_code}", response_model=schemas.BenchmarkMasterRead)
 async def read_benchmark(benchmark_code: str, session: AsyncSession = Depends(get_db)):
