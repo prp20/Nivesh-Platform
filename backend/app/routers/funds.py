@@ -31,6 +31,89 @@ async def list_funds(
         "items": items
     }
 
+@router.get("/compare", response_model=None)
+async def compare_funds(
+    fund_a: str = Query(..., description="Scheme code for Fund A"),
+    fund_b: str = Query(..., description="Scheme code for Fund B"),
+    session: AsyncSession = Depends(get_db)
+):
+    import asyncio
+    
+    # 1. Fetch masters (which include metrics)
+    master_a, master_b = await asyncio.gather(
+        crud.get_fund_master_by_code(session, fund_a),
+        crud.get_fund_master_by_code(session, fund_b)
+    )
+    
+    if not master_a:
+        raise HTTPException(status_code=404, detail=f"Fund A {fund_a} not found")
+    if not master_b:
+        raise HTTPException(status_code=404, detail=f"Fund B {fund_b} not found")
+        
+    bench_a_code = master_a.benchmark_index_code
+    bench_b_code = master_b.benchmark_index_code
+    
+    # 2. Fetch Histories
+    # We can run these in parallel
+    tasks = [
+        crud.get_fund_nav_history(session, fund_a, 500),
+        crud.get_fund_nav_history(session, fund_b, 500),
+    ]
+    
+    async def empty_list(): return []
+    
+    if bench_a_code:
+        tasks.append(crud.get_benchmark_nav_history(session, bench_a_code, 500))
+    else:
+        tasks.append(empty_list())
+        
+    if bench_b_code:
+        if bench_b_code == bench_a_code:
+            pass # We'll just copy the result of Bench A
+        else:
+            tasks.append(crud.get_benchmark_nav_history(session, bench_b_code, 500))
+    else:
+        tasks.append(empty_list())
+
+    res_list = list(await asyncio.gather(*tasks))
+    
+    hist_a = res_list[0] if len(res_list) > 0 else []
+    hist_b = res_list[1] if len(res_list) > 1 else []
+    bench_hist_a = res_list[2] if len(res_list) > 2 else []
+    
+    if len(res_list) > 3:
+        bench_hist_b = res_list[3]
+    else:
+        bench_hist_b = bench_hist_a if bench_a_code == bench_b_code else []
+        
+    def serialize_history(history_list, is_benchmark=False):
+        return [
+            {
+                "nav_date": h.nav_date.isoformat(),
+                "nav_value": h.index_value if is_benchmark else h.nav_value
+            } for h in history_list
+        ]
+        
+    metrics_a = schemas.FundMetricsRead.model_validate(master_a.metrics).model_dump(mode="json") if getattr(master_a, "metrics", None) else {}
+    metrics_b = schemas.FundMetricsRead.model_validate(master_b.metrics).model_dump(mode="json") if getattr(master_b, "metrics", None) else {}
+        
+    payload = {
+        "fund_a": {
+            "detail": schemas.FundMasterRead.model_validate(master_a).model_dump(mode="json"),
+            "history": serialize_history(hist_a, False),
+            "benchHistory": serialize_history(bench_hist_a, True),
+            "metrics": metrics_a
+        },
+        "fund_b": {
+            "detail": schemas.FundMasterRead.model_validate(master_b).model_dump(mode="json"),
+            "history": serialize_history(hist_b, False),
+            "benchHistory": serialize_history(bench_hist_b, True),
+            "metrics": metrics_b
+        }
+    }
+    
+    return payload
+
 @router.get("/{scheme_code}", response_model=schemas.FundMasterRead)
 async def read_fund(scheme_code: str, session: AsyncSession = Depends(get_db)):
     fund = await crud.get_fund_master_by_code(session, scheme_code)

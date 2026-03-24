@@ -117,9 +117,26 @@ class BenchmarkMasterBase(BaseModel):
 class BenchmarkMasterCreate(BenchmarkMasterBase):
     pass
 
+class BenchmarkMetricsBase(BaseModel):
+    benchmark_code: str
+    current_nav: float
+    nav_date: date
+    rolling_return_3year: Optional[float] = None
+    rolling_return_5year: Optional[float] = None
+    sortino_ratio: Optional[float] = None
+    sharpe_ratio: Optional[float] = None
+    standard_deviation: Optional[float] = None
+    maximum_drawdown: Optional[float] = None
+
+class BenchmarkMetricsRead(BenchmarkMetricsBase):
+    metrics_calculated_at: datetime
+    updated_at: datetime
+    model_config = ConfigDict(from_attributes=True)
+
 class BenchmarkMasterRead(BenchmarkMasterBase):
     created_at: datetime
     updated_at: datetime
+    metrics: Optional[BenchmarkMetricsRead] = None
     model_config = ConfigDict(from_attributes=True)
 
 class BenchmarkMasterUpdate(BaseModel):

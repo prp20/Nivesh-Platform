@@ -46,6 +46,28 @@ const MFListing = () => {
     const [categoryFilter, setCategoryFilter] = useState('All');
     const [amcSearch, setAmcSearch] = useState('');
 
+    // Compare State
+    const [compareList, setCompareList] = useState([]);
+
+    const toggleCompare = (fund) => {
+        if (compareList.find(f => f.scheme_code === fund.scheme_code)) {
+            setCompareList(compareList.filter(f => f.scheme_code !== fund.scheme_code));
+            return;
+        }
+
+        if (compareList.length >= 2) {
+            alert("Comparison dock full. Maximum 2 assets allowed.");
+            return;
+        }
+
+        if (compareList.length === 1 && compareList[0].scheme_category !== fund.scheme_category) {
+            alert(`Category mismatch! You can only compare funds of type: ${compareList[0].scheme_category}`);
+            return;
+        }
+
+        setCompareList([...compareList, fund]);
+    };
+
     const fetchFunds = useCallback(async () => {
         setLoading(true);
         try {
@@ -99,7 +121,7 @@ const MFListing = () => {
 
     const handleSave = async (e) => {
         e.preventDefault();
-        
+
         // Validation: Benchmark Index is Mandatory
         if (!formData.benchmark_index_code) {
             alert("BENCHMARK SELECTION REQUIRED. Security protocol forbids unreferenced assets.");
@@ -122,7 +144,7 @@ const MFListing = () => {
 
     const openEdit = (fund) => {
         setEditingFund(fund);
-        setFormData({ 
+        setFormData({
             scheme_code: fund.scheme_code,
             scheme_name: fund.scheme_name,
             amc_name: fund.amc_name,
@@ -156,9 +178,11 @@ const MFListing = () => {
                 <h1 className="font-heading heading-xl">Mutual Fund Vault</h1>
 
                 <div className="glass-panel p-6 flex justify-between items-center mb-10 control-bar-elite">
-                    <button onClick={openAdd} className="btn-premium btn-premium-primary py-2 px-6 text-xs whitespace-nowrap">
-                        + New Mutual Fund
-                    </button>
+                    <div className="flex gap-4">
+                        <button onClick={openAdd} className="btn-premium btn-premium-primary py-2 px-6 text-xs whitespace-nowrap">
+                            + New Mutual Fund
+                        </button>
+                    </div>
 
                     <div className="filter-chips-lux flex gap-4">
                         {['All', 'Equity', 'Debt', 'Hybrid'].map(f => (
@@ -243,7 +267,7 @@ const MFListing = () => {
                                 </div>
                                 <div className="input-group-lux">
                                     <label className="text-xs uppercase tracking-widest opacity-40 mb-2 block">Scheme Category</label>
-                                    <select 
+                                    <select
                                         className="form-input-elite"
                                         value={formData.scheme_category}
                                         onChange={e => setFormData({ ...formData, scheme_category: e.target.value })}
@@ -257,7 +281,7 @@ const MFListing = () => {
                                 </div>
                                 <div className="input-group-lux">
                                     <label className="text-xs uppercase tracking-widest opacity-40 mb-2 block text-primary font-bold">Benchmark Index *</label>
-                                    <select 
+                                    <select
                                         className="form-input-elite highlight"
                                         value={formData.benchmark_index_code}
                                         onChange={e => setFormData({ ...formData, benchmark_index_code: e.target.value })}
@@ -311,15 +335,15 @@ const MFListing = () => {
                                     <div className="card-identity-row flex justify-between items-start">
                                         <div className="rating-stars">★★★★★</div>
                                         <div className="flex gap-3">
-                                            <button 
-                                                onClick={() => openEdit(fund)} 
+                                            <button
+                                                onClick={() => openEdit(fund)}
                                                 className="btn-management-lux"
                                                 title="Edit Protocol"
                                             >
                                                 <IconPencil />
                                             </button>
-                                            <button 
-                                                onClick={() => handleDelete(fund.scheme_code)} 
+                                            <button
+                                                onClick={() => handleDelete(fund.scheme_code)}
                                                 className="btn-management-lux delete"
                                                 title="Decommission Asset"
                                             >
@@ -345,9 +369,18 @@ const MFListing = () => {
                                         </div>
                                     </div>
 
-                                    <div className="card-action-row mt-5">
-                                        <a href={`#mf-detail-${fund.scheme_code}`} className="btn-premium btn-premium-outline">ANALYZE</a>
-                                        <button className="btn-premium btn-premium-primary">ALLOCATE</button>
+                                    <div className="card-action-row mt-5 flex flex-col gap-2">
+
+                                        <div className="flex gap-2 w-full">
+                                            <buton><a href={`#mf-detail-${fund.scheme_code}`} className="btn-premium btn-premium-outline flex-1 text-center py-2">ANALYZE</a></buton>
+                                            <button
+                                                onClick={() => toggleCompare(fund)}
+                                                className={`btn-premium ${compareList.find(c => c.scheme_code === fund.scheme_code) ? 'btn-premium-refresh' : 'btn-premium-outline'} flex-1 py-2 text-xs`}
+                                                title={compareList.find(c => c.scheme_code === fund.scheme_code) ? 'Remove from Compare' : 'Add to Compare'}
+                                            >
+                                                {compareList.find(c => c.scheme_code === fund.scheme_code) ? '✓ DOCKED' : '+ COMPARE'}
+                                            </button>
+                                        </div>
                                     </div>
                                 </div>
                             ))}
@@ -379,7 +412,13 @@ const MFListing = () => {
                                             <td className="text-xs text-muted">{fund.amc_name}</td>
                                             <td className="text-md font-extrabold text-primary">₹{fund.metrics?.current_nav || '--'}</td>
                                             <td className="text-right">
-                                                <div className="flex justify-end gap-3">
+                                                <div className="flex justify-end gap-3 items-center">
+                                                    <button
+                                                        onClick={() => toggleCompare(fund)}
+                                                        className={`btn-management-lux px-2 text-[10px] font-bold tracking-widest ${compareList.find(c => c.scheme_code === fund.scheme_code) ? 'text-success' : 'text-primary'}`}
+                                                    >
+                                                        {compareList.find(c => c.scheme_code === fund.scheme_code) ? '✓ DOCKED' : '+ COMPARE'}
+                                                    </button>
                                                     <button onClick={() => openEdit(fund)} className="btn-management-lux" title="Edit"><IconPencil /></button>
                                                     <button onClick={() => handleDelete(fund.scheme_code)} className="btn-management-lux delete" title="Delete"><IconTrash /></button>
                                                 </div>
@@ -388,6 +427,39 @@ const MFListing = () => {
                                     ))}
                                 </tbody>
                             </table>
+                        </div>
+                    )}
+
+                    {compareList.length > 0 && (
+                        <div className="fixed bottom-0 left-0 right-0 z-50 p-4 border-t border-white/10" style={{ background: 'rgba(15, 23, 42, 0.95)', backdropFilter: 'blur(10px)' }}>
+                            <div className="container mx-auto flex justify-between items-center">
+                                <div className="flex items-center gap-6">
+                                    <h4 className="font-heading uppercase tracking-widest text-sm text-primary">Comparison Dock</h4>
+                                    <div className="flex gap-4">
+                                        {compareList.map((c, i) => (
+                                            <div key={i} className="flex items-center gap-3 bg-white/5 py-1 px-3 rounded text-xs border border-white/10">
+                                                <span className="font-bold truncate max-w-[150px]" title={c.scheme_name}>{c.scheme_name}</span>
+                                                <button onClick={() => toggleCompare(c)} className="text-error hover:text-white transition-colors">✕</button>
+                                            </div>
+                                        ))}
+                                        {compareList.length < 2 && (
+                                            <div className="flex items-center gap-3 bg-white/5 py-1 px-3 rounded text-xs border border-white/5 opacity-50 border-dashed">
+                                                <span className="font-bold">Add 1 more asset to compare</span>
+                                            </div>
+                                        )}
+                                    </div>
+                                </div>
+                                <div className="flex gap-4">
+                                    <button onClick={() => setCompareList([])} className="btn-premium btn-premium-outline text-xs py-2">CLEAR ALL</button>
+                                    <a
+                                        href={compareList.length === 2 ? `#compare?a=${compareList[0].scheme_code}&b=${compareList[1].scheme_code}` : '#'}
+                                        className={`btn-premium text-xs py-2 px-6 ${compareList.length === 2 ? 'btn-premium-primary' : 'btn-premium-outline opacity-50 cursor-not-allowed'}`}
+                                        onClick={(e) => { if (compareList.length < 2) e.preventDefault(); }}
+                                    >
+                                        COMPARE NOW
+                                    </a>
+                                </div>
+                            </div>
                         </div>
                     )}
 

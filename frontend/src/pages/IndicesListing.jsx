@@ -282,8 +282,20 @@ const IndicesListing = () => {
                                     </div>
 
                                     <div className="fund-metrics-row">
+                                        <div className="metric-item">
+                                            <span className="m-label">ROLLING 3Y</span>
+                                            <span className={`m-value font-heading ${idx.metrics?.rolling_return_3year >= 0 ? 'text-success' : 'text-error'}`}>
+                                                {idx.metrics?.rolling_return_3year != null ? `${(idx.metrics.rolling_return_3year * 100).toFixed(2)}%` : '--'}
+                                            </span>
+                                        </div>
+                                        <div className="metric-item">
+                                            <span className="m-label">RISK (STD)</span>
+                                            <span className="m-value font-heading text-white">
+                                                {idx.metrics?.standard_deviation != null ? `${(idx.metrics.standard_deviation * 100).toFixed(2)}%` : '--'}
+                                            </span>
+                                        </div>
                                         <div className="metric-item items-end">
-                                            <span className="m-label text-right">Ticker Symbol</span>
+                                            <span className="m-label text-right">TICKER</span>
                                             <span className="m-value text-primary font-heading">{idx.ticker}</span>
                                         </div>
                                     </div>
@@ -304,8 +316,9 @@ const IndicesListing = () => {
                                 <thead>
                                     <tr>
                                         <th>INDEX IDENTITY</th>
-                                        <th>TICKER</th>
-                                        <th>TYPE</th>
+                                        <th>TICKER / TYPE</th>
+                                        <th>3Y CAGR</th>
+                                        <th>RISK (STD)</th>
                                         <th>STATUS</th>
                                         <th className="text-right">OPERATIONS</th>
                                     </tr>
@@ -323,8 +336,18 @@ const IndicesListing = () => {
                                                     <span className="text-[10px] opacity-40 uppercase tracking-widest">{idx.benchmark_code}</span>
                                                 </div>
                                             </td>
-                                            <td className="text-xs uppercase text-muted font-bold tracking-wider">{idx.ticker}</td>
-                                            <td className="text-xs text-muted font-bold tracking-widest uppercase">{idx.benchmark_type}</td>
+                                            <td>
+                                                <div className="flex flex-col">
+                                                    <span className="text-xs uppercase text-muted font-bold tracking-wider">{idx.ticker}</span>
+                                                    <span className="text-[10px] text-muted font-bold tracking-widest uppercase">{idx.benchmark_type}</span>
+                                                </div>
+                                            </td>
+                                            <td className={`text-xs font-bold ${idx.metrics?.rolling_return_3year >= 0 ? 'text-success' : 'text-error'}`}>
+                                                {idx.metrics?.rolling_return_3year != null ? `${(idx.metrics.rolling_return_3year * 100).toFixed(2)}%` : '--'}
+                                            </td>
+                                            <td className="text-xs font-bold text-white">
+                                                {idx.metrics?.standard_deviation != null ? `${(idx.metrics.standard_deviation * 100).toFixed(2)}%` : '--'}
+                                            </td>
                                             <td>
                                                 <span className={idx.is_active ? "text-success text-[10px] font-bold uppercase tracking-widest" : "text-error text-[10px] font-bold uppercase tracking-widest"}>
                                                     {idx.is_active ? 'ACTIVE' : 'INACTIVE'}

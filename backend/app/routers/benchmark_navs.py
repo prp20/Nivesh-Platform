@@ -31,34 +31,66 @@ async def upload_benchmark_csv(
         
         # Standardize columns (strip quotes and spaces if any)
         df.columns = [c.strip().replace('"', '') for c in df.columns]
+        # All logic now uses the df loaded at line 30
+        from .. import analytics
+        from datetime import datetime
         
-        required = ["Date", "Close"]
-        if not all(c in df.columns for c in required):
-            raise HTTPException(
-                status_code=400, 
-                detail=f"CSV must contain 'Date' and 'Close' columns. Found: {list(df.columns)}"
-            )
+        # Determine CSV structure and safety check 'Index Name' if present
+        if "Index Name" in df.columns:
+            if not df.empty:
+                raw_name = str(df.iloc[0]["Index Name"])
+                # Normalize: strip, uppercase, then replace spaces / dashes / colons → underscore
+                normalized_name = (
+                    raw_name.strip().upper()
+                    .replace(" ", "_")
+                    .replace("-", "_")
+                    .replace(":", "_")
+                )
+                # Alias map: CSV 'Index Name' variants → DB benchmark_code
+                CSV_ALIAS_MAP = {
+                    "NIFTY500_MULTICAP_50_25_25": "NIFTY500_MULTICAP_50_25_25",
+                }
+                normalized_name = CSV_ALIAS_MAP.get(normalized_name, normalized_name)
 
-        nav_data = {}
-        for _, row in df.iterrows():
-            try:
-                # pandas handles "20 Feb 2009" and other common formats automatically
-                dt = pd.to_datetime(row["Date"])
-                date_str = dt.strftime("%Y-%m-%d")
-                val = float(str(row["Close"]).replace(',', '')) # Handle comma in numbers
-                nav_data[date_str] = val
-            except Exception as row_err:
-                print(f"Skipping row due to error: {row_err}")
-                continue
+                if normalized_name != benchmark_code and not normalized_name.startswith(benchmark_code):
+                    raise HTTPException(status_code=400, detail=f"CSV Index Name '{raw_name}' (normalized: {normalized_name}) does not map to target benchmark '{benchmark_code}'")
 
-        if not nav_data:
-            raise HTTPException(status_code=400, detail="No valid data found in CSV")
-
-        count = await crud.bulk_insert_benchmark_navs(session, benchmark_code, nav_data)
-        return {
-            "message": f"Successfully processed {count} records for {benchmark_code}",
-            "count": count
+        # Process standard format: "Date","Close" vs specific format: "Index Name","Date","Open","High","Low","Close"
+        if "Close" in df.columns and "Date" in df.columns:
+            df = df[['Date', 'Close']].rename(columns={'Date': 'Date', 'Close': 'Value'})
+        elif "Value" in df.columns and "Date" in df.columns:
+            pass # already standard
+        else:
+            raise HTTPException(status_code=400, detail="CSV must contain 'Date' and either 'Close' or 'Value' columns")
+            
+        nav_dict = {
+            pd.to_datetime(row['Date'], origin='unix').strftime('%Y-%m-%d') if isinstance(row['Date'], (int, float)) else pd.to_datetime(row['Date']).strftime('%Y-%m-%d'): float(row['Value'])
+            for _, row in df.iterrows() if pd.notna(row['Value'])
         }
+        
+        records_inserted = await crud.bulk_insert_benchmark_navs(session, benchmark_code, nav_dict)
+        
+        # Triger Analytics Post Processing
+        nav_history = await crud.get_benchmark_nav_history(session, benchmark_code, limit=2000)
+        if nav_history:
+            nav_list = [{"nav_date": n.nav_date, "nav_value": float(n.index_value)} for n in nav_history]
+            calc_results = analytics.compute_all_metrics(nav_list, None)
+            
+            metrics_payload = {
+                "benchmark_code": benchmark_code,
+                "current_nav": calc_results["current_nav"],
+                "nav_date": calc_results["nav_date"],
+                "rolling_return_3year": calc_results.get("rolling_return_3year"),
+                "rolling_return_5year": calc_results.get("rolling_return_5year"),
+                "sharpe_ratio": calc_results.get("sharpe"),
+                "sortino_ratio": calc_results.get("sortino"),
+                "standard_deviation": calc_results.get("std_dev"),
+                "maximum_drawdown": calc_results.get("max_drawdown"),
+                "metrics_calculated_at": datetime.now()
+            }
+            await crud.upsert_benchmark_metrics(session, metrics_payload)
+
+        return {"message": "Data uploaded successfully and metrics computed", "records_inserted": records_inserted}
     except HTTPException:
         raise
     except Exception as e:

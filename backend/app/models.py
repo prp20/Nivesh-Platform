@@ -52,6 +52,9 @@ class BenchmarkMaster(Base):
     created_at = Column(TIMESTAMP, server_default=func.now())
     updated_at = Column(TIMESTAMP, server_default=func.now(), onupdate=func.now())
 
+    # Relationships
+    metrics = relationship("BenchmarkMetrics", back_populates="benchmark", uselist=False)
+
 
 class FundNavHistory(Base):
     """Historical NAV data for all mutual fund schemes (TimescaleDB Hypertable)"""
@@ -77,6 +80,26 @@ class BenchmarkNavHistory(Base):
     nav_date = Column(Date, primary_key=True)
     index_value = Column(Numeric(15, 4), nullable=False)
     created_at = Column(TIMESTAMP, server_default=func.now())
+
+
+class BenchmarkMetrics(Base):
+    """Daily computed performance and risk metrics for indices"""
+    __tablename__ = "benchmark_metrics"
+    
+    benchmark_code = Column(String(50), ForeignKey("benchmark_master.benchmark_code", ondelete="CASCADE"), primary_key=True)
+    current_nav = Column(Numeric(15, 4), nullable=False)
+    nav_date = Column(Date, nullable=False)
+    rolling_return_3year = Column(Numeric(10, 4))
+    rolling_return_5year = Column(Numeric(10, 4))
+    sortino_ratio = Column(Numeric(10, 4))
+    sharpe_ratio = Column(Numeric(10, 4))
+    standard_deviation = Column(Numeric(10, 4))
+    maximum_drawdown = Column(Numeric(10, 4))
+    metrics_calculated_at = Column(TIMESTAMP, server_default=func.now())
+    updated_at = Column(TIMESTAMP, server_default=func.now(), onupdate=func.now())
+
+    # Relationships
+    benchmark = relationship("BenchmarkMaster", back_populates="metrics")
 
 
 class FundMetrics(Base):

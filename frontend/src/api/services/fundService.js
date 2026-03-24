@@ -11,6 +11,11 @@ const fundService = {
         return response.data; // Now returns {total, skip, limit, items}
     },
 
+    compareFunds: async (fundA, fundB) => {
+        const response = await apiClient.get(`/funds/compare?fund_a=${fundA}&fund_b=${fundB}`);
+        return response.data;
+    },
+
     getFundDetail: async (schemeCode) => {
         const response = await apiClient.get(`/funds/${schemeCode}`);
         return response.data;

@@ -26,7 +26,7 @@ async def create_fund_master(session: AsyncSession, fund_in: FundMasterCreate):
 async def get_fund_master_by_code(session: AsyncSession, scheme_code: str):
     q = select(FundMaster).options(joinedload(FundMaster.metrics)).where(FundMaster.scheme_code == scheme_code)
     res = await session.execute(q)
-    return res.scalar_one_or_none()
+    return res.unique().scalar_one_or_none()
 
 async def get_all_fund_masters(
     session: AsyncSession, 
@@ -36,7 +36,7 @@ async def get_all_fund_masters(
     skip: int = 0, 
     limit: int = 100
 ):
-    q = select(FundMaster).options(joinedload(FundMaster.metrics)).offset(skip).limit(limit)
+    q = select(FundMaster)
     if is_active is not None:
         q = q.where(FundMaster.is_active == is_active)
     if category and category != 'All':
@@ -44,8 +44,9 @@ async def get_all_fund_masters(
     if amc:
         q = q.where(FundMaster.amc_name.ilike(f"%{amc}%"))
         
+    q = q.options(joinedload(FundMaster.metrics)).offset(skip).limit(limit)
     res = await session.execute(q)
-    return res.scalars().all()
+    return res.unique().scalars().all()
 
 async def get_fund_masters_count(
     session: AsyncSession,
@@ -96,13 +97,15 @@ async def delete_fund_master(session: AsyncSession, scheme_code: str):
 async def create_benchmark_master(session: AsyncSession, benchmark_in: BenchmarkMasterCreate):
     stmt = insert(BenchmarkMaster).values(**benchmark_in.model_dump()).returning(BenchmarkMaster)
     res = await session.execute(stmt)
+    benchmark = res.scalar_one()
     await session.commit()
-    return res.scalar_one()
+    # Re-fetch to ensure relationships are securely eagerly loaded for schema response
+    return await get_benchmark_master(session, benchmark.benchmark_code)
 
 async def get_benchmark_master(session: AsyncSession, benchmark_code: str):
-    q = select(BenchmarkMaster).where(BenchmarkMaster.benchmark_code == benchmark_code)
+    q = select(BenchmarkMaster).options(joinedload(BenchmarkMaster.metrics)).where(BenchmarkMaster.benchmark_code == benchmark_code)
     res = await session.execute(q)
-    return res.scalar_one_or_none()
+    return res.unique().scalar_one_or_none()
 
 async def get_all_benchmark_masters(session: AsyncSession, is_active: Optional[bool] = None, skip: int = 0, limit: int = 100, search: Optional[str] = None):
     q = select(BenchmarkMaster)
@@ -114,14 +117,15 @@ async def get_all_benchmark_masters(session: AsyncSession, is_active: Optional[b
             (BenchmarkMaster.benchmark_code.ilike(f"%{search}%"))
         )
     
-    # Total count
+    # Total count (subqueries shouldn't have eager loads)
     count_q = select(func.count()).select_from(q.subquery())
     total_res = await session.execute(count_q)
     total = total_res.scalar()
     
     # Items
-    res = await session.execute(q.offset(skip).limit(limit))
-    return res.scalars().all(), total
+    q_items = q.options(joinedload(BenchmarkMaster.metrics)).offset(skip).limit(limit)
+    res = await session.execute(q_items)
+    return res.unique().scalars().all(), total
 
 async def update_benchmark_master(session: AsyncSession, benchmark_code: str, benchmark_in: BenchmarkMasterUpdate):
     data = benchmark_in.model_dump(exclude_unset=True)
@@ -199,6 +203,16 @@ async def get_benchmark_nav_history(session: AsyncSession, benchmark_code: str, 
 # ============================================================================
 # FUND METRICS CRUD
 # ============================================================================
+
+async def upsert_benchmark_metrics(session: AsyncSession, metrics_data: dict):
+    from .models import BenchmarkMetrics
+    stmt = pg_insert(BenchmarkMetrics).values(metrics_data)
+    stmt = stmt.on_conflict_do_update(
+        index_elements=['benchmark_code'],
+        set_=metrics_data
+    )
+    await session.execute(stmt)
+    await session.commit()
 
 async def upsert_fund_metrics(session: AsyncSession, metrics_data: dict):
     stmt = pg_insert(FundMetrics).values(metrics_data)
