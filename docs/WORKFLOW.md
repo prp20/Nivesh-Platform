@@ -22,6 +22,9 @@ All styling is centralized in `index.css` (tokens) and component-level CSS files
 After the first launch, follow these steps to populate your local database:
 1.  **Seed Benchmarks**: `python scripts/seed_benchmarks.py` (Adds NIFTY 50, MIDCAP 150, etc.).
 2.  **Migrate Master Data**: `python scripts/migrate_data.py` (Imports your legacy fund records).
+3.  **Import Equity Data**: `python scripts/import_new_equity.py` (Imports any missing equity funds).
+4.  **Populate NAV History**: `python scripts/populate_nav_history.py` (Populates historical NAV for all funds via mftool).
+5.  **Import Nifty Indices**: `python scripts/import_nifty_indices.py` (Loads indices from CSV).
 
 ### Maintaining Data
 The platform is designed to self-maintain via **Initial Sync** and **JIT Fetching**. Manual syncs are only needed if AMFI data is suspected to be outdated or corrupted.

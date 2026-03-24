@@ -27,9 +27,22 @@ async def sync_fund_data(session: AsyncSession, scheme_code: str, job_id: Option
             return
 
         await update_progress("Downloading historical NAV data...")
-        # 1. Fetch from mftool
-        nav_data = mf.get_scheme_historical_nav(scheme_code, as_Dataframe=True)
-        if nav_data is None or nav_data.empty:
+        # 1. Fetch from mftool with retry
+        nav_data = None
+        for attempt in range(3):
+            try:
+                # mftool returns DataFrame or None
+                fetched = mf.get_scheme_historical_nav(scheme_code, as_Dataframe=True)
+                if fetched is not None and not fetched.empty:
+                    nav_data = fetched
+                    break
+            except Exception as e:
+                if attempt == 2: raise e
+                wait_time = (attempt + 1) * 3
+                await update_progress(f"NAV Fetch Attempt {attempt+1} failed. Retrying in {wait_time}s...")
+                await asyncio.sleep(wait_time)
+
+        if nav_data is None:
             logger.warning(f"No NAV data found for {scheme_code}")
             if job_id: await crud.update_sync_job(session, job_id, status="FAILED", message="No NAV data found")
             return
@@ -45,13 +58,18 @@ async def sync_fund_data(session: AsyncSession, scheme_code: str, job_id: Option
         await crud.bulk_insert_fund_navs(session, scheme_code, nav_dict)
         
         await update_progress("Fetching AUM and scheme details...")
-        # 4. Fetch AUM (Attempt)
+        # 4. Fetch AUM (Attempt) with retry
         aum = None
-        try:
-            details = mf.get_scheme_details(scheme_code)
-            # mftool details sometimes have AUM
-        except Exception as e:
-            logger.warning(f"Failed to fetch scheme details for {scheme_code}: {e}")
+        for attempt in range(2):
+            try:
+                details = mf.get_scheme_details(scheme_code)
+                # mftool details sometimes have AUM
+                break
+            except Exception as e:
+                if attempt == 1: 
+                    logger.warning(f"Failed to fetch scheme details for {scheme_code}: {e}")
+                else:
+                    await asyncio.sleep(2)
 
         # 5. Get Benchmark History if available
         benchmark_history_list = None

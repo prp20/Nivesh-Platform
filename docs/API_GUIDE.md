@@ -2,6 +2,22 @@
 
 This guide explains how to manage the mutual fund data pipeline.
 
+## 📥 Adding Market Index Data
+
+The system provides robust CSV injection for integrating index historical data (e.g., Nifty indices).
+If historical data is downloaded as a CSV (expecting "Date" and "Close" columns), it can be uploaded via:
+```bash
+POST /api/v1/benchmark-navs/{benchmark_code}/upload
+```
+*(This is seamlessly integrated into the Frontend's Index Detail page.)*
+
+Alternatively, bulk JSON array payloads can be sent to:
+```bash
+POST /api/v1/benchmark-navs/{benchmark_code}/bulk
+```
+
+---
+
 ## 📥 Adding Latest NAVs
 
 ### Method 1: Automatic JIT Sync (Recommended)

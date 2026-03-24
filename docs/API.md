@@ -12,6 +12,8 @@ Nivesh Elite provides a robust set of RESTful endpoints for financial data manag
 ## 📊 Mutual Funds
 - **Listing**: `GET /api/v1/funds/` (Supports `skip` and `limit`)
 - **Detail**: `GET /api/v1/funds/{scheme_code}`
+- **NAV History**: `GET /api/v1/navs/{scheme_code}`
+- **Bulk NAV Upload**: `POST /api/v1/navs/{scheme_code}/bulk`
 - **Metrics**: `GET /api/v1/metrics/{scheme_code}` (Triggers **JIT Sync** if data is missing)
 - **Compute**: `POST /api/v1/metrics/{scheme_code}/compute` (Manual re-calculation)
 
@@ -20,6 +22,8 @@ Nivesh Elite provides a robust set of RESTful endpoints for financial data manag
 ## 📈 Benchmarks (Indices)
 - **Listing**: `GET /api/v1/benchmarks/`
 - **History**: `GET /api/v1/benchmark-navs/{benchmark_code}`
+- **CSV Data Ingestion**: `POST /api/v1/benchmark-navs/{benchmark_code}/upload` (Upload a CSV file for a Nifty Index)
+- **Bulk Data Ingestion**: `POST /api/v1/benchmark-navs/{benchmark_code}/bulk`
 
 ---
 

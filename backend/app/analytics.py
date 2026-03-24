@@ -6,13 +6,13 @@ from datetime import date
 def calculate_returns(nav_series: pd.Series) -> pd.Series:
     return nav_series.pct_change().dropna()
 
-def calculate_sharpe_ratio(returns: pd.Series, risk_free_rate: float = 0.05) -> float:
+def calculate_sharpe_ratio(returns: pd.Series, risk_free_rate: float = 0.065) -> float:
     """Calculate annualized Sharpe Ratio."""
     if returns.empty or returns.std() == 0: return 0.0
     excess_returns = returns - (risk_free_rate / 252)
     return np.sqrt(252) * excess_returns.mean() / returns.std()
 
-def calculate_sortino_ratio(returns: pd.Series, risk_free_rate: float = 0.05) -> float:
+def calculate_sortino_ratio(returns: pd.Series, risk_free_rate: float = 0.065) -> float:
     """Calculate annualized Sortino Ratio."""
     if returns.empty: return 0.0
     excess_returns = returns - (risk_free_rate / 252)
@@ -95,7 +95,7 @@ def compute_all_metrics(nav_history: List[Dict], benchmark_history: Optional[Lis
             beta = covariance / variance if variance != 0 else 1.0
             
             # Alpha (Annualized)
-            risk_free_rate = 0.05
+            risk_free_rate = 0.065
             fund_ann_ret = (1 + fund_ret.mean())**252 - 1
             bench_ann_ret = (1 + bench_ret.mean())**252 - 1
             alpha = fund_ann_ret - (risk_free_rate + beta * (bench_ann_ret - risk_free_rate))
