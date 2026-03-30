@@ -11,9 +11,9 @@ import fundService from '../../api/services/fundService';
 
 export const fetchFunds = createAsyncThunk(
     'funds/fetchFunds',
-    async ({ skip, limit, category, amc }, { rejectWithValue }) => {
+    async ({ skip, limit, category, subcategory, amc, plan_type, order_by }, { rejectWithValue }) => {
         try {
-            const data = await fundService.getFunds(skip, limit, category, amc);
+            const data = await fundService.getFunds(skip, limit, category, amc, subcategory, plan_type, order_by);
             return data; // { items, total, skip, limit }
         } catch (err) {
             return rejectWithValue(err.response?.data || 'Failed to fetch funds');
@@ -32,13 +32,19 @@ const fundsSlice = createSlice({
         currentPage: 1,
         pageSize: 10,
         categoryFilter: 'All',
+        subcategoryFilter: '',
         amcSearch: '',
+        planTypeFilter: '',
+        sortBy: 'scheme_name',
     },
     reducers: {
         setCurrentPage: (state, action) => { state.currentPage = action.payload; },
         setPageSize: (state, action) => { state.pageSize = action.payload; state.currentPage = 1; },
         setCategoryFilter: (state, action) => { state.categoryFilter = action.payload; state.currentPage = 1; },
+        setSubcategoryFilter: (state, action) => { state.subcategoryFilter = action.payload; state.currentPage = 1; },
         setAmcSearch: (state, action) => { state.amcSearch = action.payload; state.currentPage = 1; },
+        setPlanTypeFilter: (state, action) => { state.planTypeFilter = action.payload; state.currentPage = 1; },
+        setSortBy: (state, action) => { state.sortBy = action.payload; state.currentPage = 1; },
         clearError: (state) => { state.error = null; },
     },
     extraReducers: (builder) => {
@@ -59,5 +65,14 @@ const fundsSlice = createSlice({
     },
 });
 
-export const { setCurrentPage, setPageSize, setCategoryFilter, setAmcSearch, clearError } = fundsSlice.actions;
+export const { 
+    setCurrentPage, 
+    setPageSize, 
+    setCategoryFilter, 
+    setSubcategoryFilter,
+    setAmcSearch, 
+    setPlanTypeFilter,
+    setSortBy,
+    clearError 
+} = fundsSlice.actions;
 export default fundsSlice.reducer;

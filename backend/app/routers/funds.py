@@ -22,14 +22,22 @@ async def create_fund(
 async def list_funds(
     is_active: Optional[bool] = Query(None, description="Filter by active status"),
     category: Optional[str] = Query(None, description="Filter by scheme category"),
+    subcategory: Optional[str] = Query(None, description="Filter by scheme subcategory"),
     amc: Optional[str] = Query(None, description="Filter by AMC name"),
+    plan_type: Optional[str] = Query(None, description="Filter by plan type (Direct/Regular)"),
+    order_by: Optional[str] = Query("scheme_name", description="Sort field (scheme_name, -scheme_name)"),
     skip: int = Query(0, ge=0),
     limit: int = Query(100, ge=1, le=500),
     session: AsyncSession = Depends(get_db)
 ):
     """List all mutual funds with pagination and filtering."""
-    total = await crud.get_fund_masters_count(session, is_active=is_active, category=category, amc=amc)
-    items = await crud.get_all_fund_masters(session, is_active=is_active, category=category, amc=amc, skip=skip, limit=limit)
+    total = await crud.get_fund_masters_count(
+        session, is_active=is_active, category=category, subcategory=subcategory, amc=amc, plan_type=plan_type
+    )
+    items = await crud.get_all_fund_masters(
+        session, is_active=is_active, category=category, subcategory=subcategory, amc=amc, plan_type=plan_type,
+        order_by=order_by, skip=skip, limit=limit
+    )
     return {
         "total": total,
         "skip": skip,

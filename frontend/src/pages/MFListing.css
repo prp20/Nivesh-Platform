@@ -1,6 +1,75 @@
 @import './badge_styles.css';
+
+/* Layout Utilities - Professional Replacements for Tailwind-isms */
+.flex-row { display: flex; align-items: center; }
+.flex-col { display: flex; flex-direction: column; }
+.justify-between { justify-content: space-between; }
+.justify-end { justify-content: flex-end; }
+.items-center { align-items: center; }
+.items-start { align-items: flex-start; }
+.items-end { align-items: flex-end; }
+.gap-2 { gap: 0.5rem; }
+.gap-3 { gap: 0.75rem; }
+.gap-4 { gap: 1rem; }
+.gap-5 { gap: 1.25rem; }
+.gap-6 { gap: 1.5rem; }
+.flex-1 { flex: 1; }
+.w-full { width: 100%; }
+.grid-2-col { display: grid; grid-template-columns: 1fr 1fr; }
+.p-6 { padding: 1.5rem; }
+.p-8 { padding: 2rem; }
+.mt-2 { margin-top: 0.5rem; }
+.mt-4 { margin-top: 1rem; }
+.mt-5 { margin-top: 1.25rem; }
+.mt-auto { margin-top: auto; }
+.mb-2 { margin-bottom: 0.5rem; }
+.mb-4 { margin-bottom: 1rem; }
+.mb-6 { margin-bottom: 1.5rem; }
+.mb-10 { margin-bottom: 2.5rem; }
+.text-right { text-align: right; }
+.text-center { text-align: center; }
+.text-xs { font-size: 0.7rem; }
+.text-sm { font-size: 0.85rem; }
+.font-bold { font-weight: 700; }
+.uppercase { text-transform: uppercase; }
+.tracking-widest { letter-spacing: 0.15em; }
+.opacity-40 { opacity: 0.4; }
+.opacity-60 { opacity: 0.6; }
+
+/* Fixed Dock & Glass Surfaces */
+.fixed-dock-lux {
+    position: fixed;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    z-index: 9999;
+    background: rgba(15, 23, 42, 0.95);
+    backdrop-filter: blur(20px);
+    box-shadow: 0 -20px 40px rgba(0,0,0,0.4);
+}
+
+.bg-glass-surface { background: rgba(255, 255, 255, 0.05); }
+.border-outline-glass { border: 1px solid rgba(255, 255, 255, 0.1); }
+.border-t-outline { border-top: 1px solid rgba(255, 255, 255, 0.1); }
+.border-dashed-outline { border: 1px solid rgba(255, 255, 255, 0.1); border-style: dashed; }
+.hover-brightness:hover { filter: brightness(1.5); cursor: pointer; }
+.rounded-md { border-radius: var(--roundness-md); }
+.transition-smooth { transition: var(--transition-smooth); }
+
+/* Modal Content Container */
+.modal-content-lux {
+    max-width: 600px;
+    width: 90%;
+    margin: 1.25rem;
+    padding: 2rem;
+}
+
+.modal-content-sm {
+    max-width: 450px;
+}
+
 .listing-header-lux {
-    padding: 6rem 0 1rem;
+    padding: 2.5rem 0 0.5rem; /* Reduced gap between banner and nav */
     align-content: center;
     text-align: center;
 }
@@ -9,14 +78,25 @@
     display: flex;
     justify-content: space-between;
     align-items: center;
-    padding: 1.25rem 2rem;
+    padding: 1rem 2rem;
     background: var(--color-surface);
     backdrop-filter: var(--glass-blur);
     border: 1px solid var(--color-glass-border);
-    border-bottom: none;
-    border-radius: var(--roundness-md) var(--roundness-md) 0 0;
-    gap: 2rem;
-    flex-wrap: nowrap;
+    border-radius: var(--roundness-md);
+    gap: 1.5rem;
+    margin-bottom: 2rem;
+}
+
+.refine-panel-lux {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+    gap: 1rem;
+    padding: 1.25rem 2rem;
+    background: rgba(255, 255, 255, 0.02);
+    border: 1px solid rgba(255, 255, 255, 0.05);
+    border-radius: var(--roundness-md);
+    margin-bottom: 3rem;
+    align-items: end;
 }
 
 /* Category Chips */
@@ -341,6 +421,28 @@
     border-color: var(--color-primary);
     background: rgba(0, 152, 255, 0.05);
     box-shadow: 0 0 15px var(--color-primary-glow);
+}
+
+.select-elite {
+    background: rgba(255, 255, 255, 0.05);
+    border: 1px solid var(--color-outline);
+    border-radius: 4px;
+    padding: 0.6rem 1rem;
+    color: var(--color-text-primary);
+    font-size: 0.75rem;
+    font-weight: 600;
+    width: 100%;
+    cursor: pointer;
+    transition: var(--transition-smooth);
+}
+
+.select-elite:hover {
+    border-color: var(--color-primary);
+}
+
+.select-elite option {
+    background: #0f172a;
+    color: white;
 }
 
 .btn-management-lux {

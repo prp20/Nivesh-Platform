@@ -34,7 +34,10 @@ async def get_all_fund_masters(
     session: AsyncSession, 
     is_active: Optional[bool] = None, 
     category: Optional[str] = None,
+    subcategory: Optional[str] = None,
     amc: Optional[str] = None,
+    plan_type: Optional[str] = None,
+    order_by: Optional[str] = "scheme_name", # Default sorting
     skip: int = 0, 
     limit: int = 100
 ) -> List[FundMaster]:
@@ -43,8 +46,18 @@ async def get_all_fund_masters(
         q = q.where(FundMaster.is_active == is_active)
     if category and category != 'All':
         q = q.where(FundMaster.scheme_category.ilike(f"%{category}%"))
+    if subcategory:
+        q = q.where(FundMaster.scheme_subcategory.ilike(f"%{subcategory}%"))
     if amc:
         q = q.where(FundMaster.amc_name.ilike(f"%{amc}%"))
+    if plan_type:
+        q = q.where(FundMaster.plan_type == plan_type)
+        
+    # Sorting
+    if order_by == "scheme_name":
+        q = q.order_by(FundMaster.scheme_name.asc())
+    elif order_by == "-scheme_name":
+        q = q.order_by(FundMaster.scheme_name.desc())
         
     q = q.options(joinedload(FundMaster.metrics)).offset(skip).limit(limit)
     res = await session.execute(q)
@@ -54,15 +67,21 @@ async def get_fund_masters_count(
     session: AsyncSession,
     is_active: Optional[bool] = None,
     category: Optional[str] = None,
-    amc: Optional[str] = None
+    subcategory: Optional[str] = None,
+    amc: Optional[str] = None,
+    plan_type: Optional[str] = None
 ) -> int:
     q = select(func.count(FundMaster.scheme_code))
     if is_active is not None:
         q = q.where(FundMaster.is_active == is_active)
     if category and category != 'All':
         q = q.where(FundMaster.scheme_category.ilike(f"%{category}%"))
+    if subcategory:
+        q = q.where(FundMaster.scheme_subcategory.ilike(f"%{subcategory}%"))
     if amc:
         q = q.where(FundMaster.amc_name.ilike(f"%{amc}%"))
+    if plan_type:
+        q = q.where(FundMaster.plan_type == plan_type)
         
     res = await session.execute(q)
     return res.scalar() or 0
