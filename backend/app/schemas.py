@@ -36,6 +36,9 @@ class FundMetricsBase(BaseModel):
     current_nav: float
     nav_date: date
     aum_in_crores: Optional[float] = None
+    expense_ratio: Optional[float] = None
+    fund_rating: Optional[float] = None
+    volatility: Optional[float] = None
     rolling_return_3year: Optional[float] = None
     rolling_return_5year: Optional[float] = None
     absolute_return_1y: Optional[float] = None
@@ -57,6 +60,7 @@ class FundMetricsBase(BaseModel):
     calculation_period_end_date: Optional[date] = None
     has_sufficient_data: bool = True
     data_completeness_percentage: Optional[float] = None
+    final_verdict: Optional[str] = None
 
 class FundMetricsRead(FundMetricsBase):
     metrics_calculated_at: datetime
@@ -66,6 +70,9 @@ class FundMetricsRead(FundMetricsBase):
 class FundMetricsReadWithoutNav(BaseModel):
     scheme_code: str
     aum_in_crores: Optional[float] = None
+    expense_ratio: Optional[float] = None
+    fund_rating: Optional[float] = None
+    volatility: Optional[float] = None
     rolling_return_3year: Optional[float] = None
     rolling_return_5year: Optional[float] = None
     absolute_return_1y: Optional[float] = None
@@ -87,6 +94,7 @@ class FundMetricsReadWithoutNav(BaseModel):
     calculation_period_end_date: Optional[date] = None
     has_sufficient_data: bool = True
     data_completeness_percentage: Optional[float] = None
+    final_verdict: Optional[str] = None
     metrics_calculated_at: datetime
     updated_at: datetime
     model_config = ConfigDict(from_attributes=True)
@@ -111,6 +119,7 @@ class FundMasterBase(BaseModel):
     scheme_subcategory: Optional[str] = None
     benchmark_index_code: Optional[str] = None
     isin: Optional[str] = None
+    manager_experience: Optional[str] = None
     is_active: bool = True
 
 class FundMasterCreate(FundMasterBase):
@@ -137,6 +146,7 @@ class FundMasterUpdate(BaseModel):
     scheme_subcategory: Optional[str] = None
     benchmark_index_code: Optional[str] = None
     isin: Optional[str] = None
+    manager_experience: Optional[str] = None
     is_active: Optional[bool] = None
 
 # ============================================================================
@@ -197,24 +207,6 @@ class SyncJobBase(BaseModel):
     message: Optional[str] = None
 
 class SyncJobRead(SyncJobBase):
-    id: str
-    created_at: datetime
-    updated_at: datetime
-    model_config = ConfigDict(from_attributes=True)
-
-# ============================================================================
-# EXPENSE RATIO SCHEMAS
-# ============================================================================
-
-class FundExpenseRatioBase(BaseModel):
-    scheme_code: str
-    expense_ratio: float
-    as_of_date: date
-
-class FundExpenseRatioCreate(FundExpenseRatioBase):
-    pass
-
-class FundExpenseRatioRead(FundExpenseRatioBase):
     id: str
     created_at: datetime
     updated_at: datetime

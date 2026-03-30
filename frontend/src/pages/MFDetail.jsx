@@ -1,314 +1,432 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { Component, useEffect, useMemo, useState } from 'react';
 import { useSelector, useDispatch } from 'react-redux';
-import { triggerSync, fetchSyncStatus } from '../store/slices/syncSlice';
-import fundService from '../api/services/fundService';
+import { fetchFundDetail, clearDetail, syncFundMetrics } from '../store/slices/fundDetailSlice';
+import { fetchSyncStatus } from '../store/slices/syncSlice';
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 import './MFDetail.css';
 
 const MFDetail = ({ schemeCode }) => {
     const dispatch = useDispatch();
+    const { fund, navHistory, metrics, expenseRatios, similarFunds, loading, error, syncing } = useSelector(state => state.fundDetail);
     const syncJob = useSelector(state => state.sync.jobs[schemeCode]);
-    const refreshing = syncJob?.status === 'RUNNING';
+    const isRefreshing = syncJob?.status === 'RUNNING' || syncing;
 
-    const [fund, setFund] = useState(null);
-    const [navHistory, setNavHistory] = useState([]);
-    const [metrics, setMetrics] = useState(null);
-    const [expenseRatios, setExpenseRatios] = useState([]);
-    const [loading, setLoading] = useState(true);
     const [timeRange, setTimeRange] = useState('ALL');
-
-    const fetchAllData = async (force = false) => {
-        if (!schemeCode) return;
-        if (!force) setLoading(true);
-        
-        try {
-            const [fundData, historyData] = await Promise.all([
-                fundService.getFundDetail(schemeCode),
-                fundService.getFundNavHistory(schemeCode, 500),
-            ]);
-            
-            setFund(fundData);
-            setNavHistory(historyData);
-
-            const res = await fundService.getFundMetrics(schemeCode).catch(() => null);
-            if (res) {
-                setMetrics(res.metrics);
-            }
-
-            const expRes = await fundService.getFundExpenseRatio(schemeCode).catch(() => []);
-            if (expRes) {
-                setExpenseRatios(expRes);
-            }
-
-            if (force) {
-                dispatch(triggerSync(schemeCode));
-            }
-
-        } catch (err) {
-            console.error("Failed to fetch fund details", err);
-        } finally {
-            setLoading(false);
-        }
-    };
+    const [expandedSections, setExpandedSections] = useState({
+        profile: true,
+        performance: false,
+        metrics: false,
+        management: false,
+        peers: false,
+        verdict: false
+    });
 
     useEffect(() => {
-        fetchAllData();
-        dispatch(fetchSyncStatus(schemeCode));
+        if (schemeCode) {
+            dispatch(fetchFundDetail(schemeCode));
+            dispatch(fetchSyncStatus(schemeCode));
+        }
+        return () => dispatch(clearDetail());
     }, [schemeCode, dispatch]);
 
+    // Background sync polling
     useEffect(() => {
         let interval;
-        if (refreshing) {
+        if (isRefreshing) {
             interval = setInterval(() => {
                 dispatch(fetchSyncStatus(schemeCode)).then((action) => {
                     if (action.payload?.status === 'COMPLETED') {
-                        fundService.getFundMetrics(schemeCode).then(res => {
-                            if (res) setMetrics(res.metrics);
-                        });
-                        fundService.getFundNavHistory(schemeCode, 500).then(data => setNavHistory(data));
+                        dispatch(fetchFundDetail(schemeCode));
+                        clearInterval(interval);
                     }
                 });
             }, 3000);
         }
         return () => clearInterval(interval);
-    }, [refreshing, schemeCode, dispatch]);
+    }, [isRefreshing, schemeCode, dispatch]);
 
     const chartData = useMemo(() => {
         if (!navHistory.length) return [];
         const sorted = navHistory.slice().reverse();
-        
+
         let filtered = sorted;
         const now = new Date();
         if (timeRange === '1M') {
-            const monthAgo = new Date().setMonth(now.getMonth() - 1);
-            filtered = sorted.filter(n => new Date(n.nav_date) >= monthAgo);
+            const dateLimit = new Date();
+            dateLimit.setMonth(now.getMonth() - 1);
+            filtered = sorted.filter(n => new Date(n.nav_date) >= dateLimit);
         } else if (timeRange === '6M') {
-            const sixMonthsAgo = new Date().setMonth(now.getMonth() - 6);
-            filtered = sorted.filter(n => new Date(n.nav_date) >= sixMonthsAgo);
+            const dateLimit = new Date();
+            dateLimit.setMonth(now.getMonth() - 6);
+            filtered = sorted.filter(n => new Date(n.nav_date) >= dateLimit);
         } else if (timeRange === '1Y') {
-            const yearAgo = new Date().setFullYear(now.getFullYear() - 1);
-            filtered = sorted.filter(n => new Date(n.nav_date) >= yearAgo);
+            const dateLimit = new Date();
+            dateLimit.setFullYear(now.getFullYear() - 1);
+            filtered = sorted.filter(n => new Date(n.nav_date) >= dateLimit);
+        } else if (timeRange === '3Y') {
+            const dateLimit = new Date();
+            dateLimit.setFullYear(now.getFullYear() - 3);
+            filtered = sorted.filter(n => new Date(n.nav_date) >= dateLimit);
         }
 
         return filtered.map(n => ({
-            date: new Date(n.nav_date).toLocaleDateString('en-IN', { day: '2-digit', month: 'short' }),
+            date: new Date(n.nav_date).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: '2-digit' }),
             nav: parseFloat(n.nav_value)
         }));
     }, [navHistory, timeRange]);
 
-    if (loading) return <div className="loading-container p-20 text-center font-heading uppercase tracking-widest">Compiling Performance History...</div>;
-    if (!fund) return <div className="error-container p-20 text-center font-heading">Asset Identification Failed.</div>;
+    if (loading && !fund) return (
+        <div className="mf-detail-loading">
+            <div className="loader-elite"></div>
+            <p className="loading-text">SYNCHRONIZING ASSET INTELLIGENCE...</p>
+        </div>
+    );
+
+    if (error) return <div className="error-container-lux p-20 text-center">{error}</div>;
+    if (!fund) return null;
+
+    const toggleSection = (section) => {
+        setExpandedSections(prev => ({ ...prev, [section]: !prev[section] }));
+    };
 
     const latestNav = navHistory.length > 0 ? navHistory[0].nav_value : 0;
     const prevNav = navHistory.length > 1 ? navHistory[1].nav_value : latestNav;
     const changePercent = prevNav !== 0 ? ((latestNav - prevNav) / prevNav * 100).toFixed(2) : "0.00";
 
-    const formatMetric = (val, precision = 2) => {
-        if (val === null || val === undefined) return '0.00';
-        return val.toFixed(precision);
+    const formatMetric = (val, precision = 2, suffix = '') => {
+        if (val === null || val === undefined) return '--';
+        return `${val.toFixed(precision)}${suffix}`;
     };
 
     const formatPercent = (val) => {
-        if (val === null || val === undefined) return '0.00%';
+        if (val === null || val === undefined) return '--';
         return `${(val * 100).toFixed(2)}%`;
     };
 
     return (
         <div className="mf-detail container reveal active">
-            <header className="detail-header-lux">
-                <div className="back-nav-lux">
-                    <a href="#mf" className="btn-back-elite">
-                        <span className="back-icon">←</span>
-                        <span className="back-text">BACK TO VAULT OVERVIEW</span>
-                    </a>
-                </div>
+            {/* BACK BUTTON AS TOP BANNER */}
+            <div className="top-banner-lux">
+                <a href="#mf" className="btn-back-minimal">
+                    <span className="back-icon">←</span>
+                    <span className="back-text">BACK TO VAULT OVERVIEW</span>
+                </a>
+            </div>
 
-                <div className="fund-hero-stack">
-                    <span className="scheme-badge">{fund.scheme_category}</span>
-                    <h1 className="heading-xl">{fund.scheme_name}</h1>
-                    <p className="text-muted text-xs uppercase tracking-widest mt-2">{fund.amc_name}</p>
+            {/* 1. CENTERED HERO */}
+            <header className="detail-header-centered">
+                <div className="fund-hero-stack-centered">
+                    <span className="scheme-type-badge">{fund.scheme_category}</span>
+                    <h1 className="heading-xl-centered">{fund.scheme_name}</h1>
 
-                    <div className="price-performance-row">
-                        <span className="price-val font-heading">₹{latestNav}</span>
-                        <div className={`change-badge-elite ${parseFloat(changePercent) >= 0 ? 'positive' : 'negative'}`}>
-                            {parseFloat(changePercent) >= 0 ? '▲' : '▼'} {Math.abs(changePercent)}%
-                        </div>
+                    <div className="hero-action-row-centered">
+                        <button
+                            className={`btn-sync-minimal ${isRefreshing ? 'loading' : ''}`}
+                            onClick={() => dispatch(syncFundMetrics(schemeCode))}
+                            disabled={isRefreshing}
+                        >
+                            {isRefreshing ? 'RECALCULATING INTELLIGENCE...' : 'REFRESH LIVE METRICS'}
+                        </button>
                     </div>
 
-                    <div className="flex justify-center gap-4 mt-10">
-                        <button 
-                            className={`btn-premium btn-premium-refresh ${refreshing ? 'loading' : ''}`}
-                            onClick={() => fetchAllData(true)}
-                            disabled={refreshing}
-                        >
-                            {refreshing ? 'Refreshing Real-Time Data...' : 'Sync Market Metrics'}
-                        </button>
-                        <button className="btn-premium btn-premium-primary px-12">Execute Allocation</button>
+                    <div className="hero-stats-panel-lux">
+                        <div className="h-stat">
+                            <span className="h-stat-label">Current NAV</span>
+                            <span className="h-stat-value">₹{latestNav}</span>
+                            <span className={`h-stat-change ${parseFloat(changePercent) >= 0 ? 'pos' : 'neg'}`}>
+                                {parseFloat(changePercent) >= 0 ? '▲' : '▼'} {Math.abs(changePercent)}%
+                            </span>
+                        </div>
+                        <div className="h-stat">
+                            <span className="h-stat-label">3Y CAGR</span>
+                            <span className="h-stat-value primary">{formatPercent(metrics?.rolling_return_3year)}</span>
+                        </div>
+                        <div className="h-stat">
+                            <span className="h-stat-label">AUM</span>
+                            <span className="h-stat-value primary">₹{formatMetric(metrics?.aum_in_crores, 1)} Cr</span>
+                        </div>
                     </div>
                 </div>
             </header>
 
-            <div className="metrics-strip-lux">
-                <div className="glass-panel metric-strip-item glow-card">
-                    <span className="m-label">3Y Rolling Return</span>
-                    <div className="m-value font-heading text-primary">{formatPercent(metrics?.rolling_return_3year)}</div>
-                </div>
-                <div className="glass-panel metric-strip-item glow-card">
-                    <span className="m-label">5Y Rolling Return</span>
-                    <div className="m-value font-heading text-primary">{formatPercent(metrics?.rolling_return_5year)}</div>
-                </div>
-                <div className="glass-panel metric-strip-item glow-card">
-                    <span className="m-label">Current AUM (Cr)</span>
-                    <div className="m-value font-heading text-primary">₹{formatMetric(metrics?.aum_in_crores, 1)}</div>
-                </div>
-            </div>
-
-            <div className="detail-grid-lux">
-                <div className="glass-panel chart-box-lux glow-card">
-                    <div className="chart-head-lux">
-                        <h3 className="section-heading-lux uppercase">Growth Index Performance</h3>
-                        <div className="flex gap-3">
-                            {['1M', '6M', '1Y', 'ALL'].map(t => (
-                                <button 
-                                    key={t} 
-                                    className={`t-btn ${timeRange === t ? 'active' : ''}`}
-                                    onClick={() => setTimeRange(t)}
-                                >{t}</button>
-                            ))}
+            {/* 2. ASSET PROFILE (COLLAPSIBLE, OPEN BY DEFAULT) */}
+            <section className="collapsible-section-lux">
+                <header className="section-header-lux" onClick={() => toggleSection('profile')}>
+                    <h3 className="section-label-lux">ASSET PROFILE & IDENTIFICATION</h3>
+                    <span className={`toggle-icon-lux ${expandedSections.profile ? 'open' : ''}`}>▼</span>
+                </header>
+                {expandedSections.profile && (
+                    <div className="section-content-lux reveal active">
+                        <div className="glass-panel-elite p-0 overflow-hidden mt-4">
+                            <table className="profile-table-lux">
+                                <tbody>
+                                    <tr>
+                                        <td className="p-label">Asset Management Co.</td>
+                                        <td className="p-value">{fund.amc_name}</td>
+                                        <td className="p-label">Plan Type</td>
+                                        <td className="p-value">{fund.plan_type}</td>
+                                    </tr>
+                                    <tr>
+                                        <td className="p-label">Primary Category</td>
+                                        <td className="p-value">{fund.scheme_category}</td>
+                                        <td className="p-label">Sub-Category</td>
+                                        <td className="p-value">{fund.scheme_subcategory || 'N/A'}</td>
+                                    </tr>
+                                    <tr>
+                                        <td className="p-label">ISIN Identifier</td>
+                                        <td className="p-value font-mono text-primary">{fund.isin || 'UNASSIGNED'}</td>
+                                        <td className="p-label">Inception Date</td>
+                                        <td className="p-value">{fund.inception_date || 'N/A'}</td>
+                                    </tr>
+                                    <tr>
+                                        <td className="p-label">Scheme Code</td>
+                                        <td className="p-value font-mono">{fund.scheme_code}</td>
+                                        <td className="p-label">Benchmark Index</td>
+                                        <td className="p-value">{fund.benchmark_index_code || 'N/A'}</td>
+                                    </tr>
+                                </tbody>
+                            </table>
                         </div>
                     </div>
-                    
-                    <div style={{ height: '450px', width: '100%' }}>
-                        <ResponsiveContainer width="100%" height="100%">
-                            <AreaChart data={chartData}>
-                                <defs>
-                                    <linearGradient id="navGradient" x1="0" y1="0" x2="0" y2="1">
-                                        <stop offset="5%" stopColor="var(--color-primary)" stopOpacity={0.3}/>
-                                        <stop offset="95%" stopColor="var(--color-primary)" stopOpacity={0}/>
-                                    </linearGradient>
-                                </defs>
-                                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="rgba(255,255,255,0.05)" />
-                                <XAxis 
-                                    dataKey="date" 
-                                    axisLine={false} 
-                                    tickLine={false} 
-                                    tick={{fontSize: 10, fill: 'var(--color-text-muted)'}}
-                                    interval={Math.floor(chartData.length / 8)}
-                                />
-                                <YAxis 
-                                    domain={['auto', 'auto']} 
-                                    axisLine={false} 
-                                    tickLine={false}
-                                    tick={{fontSize: 10, fill: 'var(--color-text-muted)'}}
-                                />
-                                <Tooltip 
-                                    contentStyle={{backgroundColor: '#0f172a', border: '1px solid var(--color-glass-border)', borderRadius: '8px', fontSize: '12px'}}
-                                    itemStyle={{color: 'var(--color-primary)'}}
-                                />
-                                <Area 
-                                    type="monotone" 
-                                    dataKey="nav" 
-                                    stroke="var(--color-primary)" 
-                                    strokeWidth={3}
-                                    fill="url(#navGradient)" 
-                                />
-                            </AreaChart>
-                        </ResponsiveContainer>
-                    </div>
-                </div>
-            </div>
-
-            <section className="section-spacer">
-                <div className="flex justify-between items-center mb-10">
-                    <h3 className="section-heading-lux uppercase">Risk Intelligence Parameters</h3>
-                    {metrics?.metrics_calculated_at && (
-                        <span className="text-xs text-muted opacity-50">Last Logic Execution: {new Date(metrics.metrics_calculated_at).toLocaleString()}</span>
-                    )}
-                </div>
-                
-                <div className="metrics-grid-lux">
-                    {[
-                        { l: "Sharpe Ratio", v: formatMetric(metrics?.sharpe_ratio) },
-                        { l: "Sortino Ratio", v: formatMetric(metrics?.sortino_ratio) },
-                        { l: "Alpha", v: formatMetric(metrics?.alpha) },
-                        { l: "Beta", v: formatMetric(metrics?.beta) },
-                        { l: "Standard Dev.", v: formatMetric(metrics?.standard_deviation) },
-                        { l: "Max Drawdown", v: metrics?.maximum_drawdown != null ? formatPercent(metrics.maximum_drawdown * -1) : '--' },
-                        { l: "Tracking Error", v: formatMetric(metrics?.tracking_error) },
-                        { l: "Info Ratio", v: formatMetric(metrics?.information_ratio) },
-                        { l: "Abs 1Y Return", v: formatPercent(metrics?.absolute_return_1y) },
-                        { l: "Abs 3Y Return", v: formatPercent(metrics?.absolute_return_3y) },
-                        { l: "Abs 5Y Return", v: formatPercent(metrics?.absolute_return_5y) },
-                        { l: "Abs 10Y Return", v: formatPercent(metrics?.absolute_return_10y) },
-                        { l: "Short 6M Return", v: formatPercent(metrics?.short_term_return_6m) },
-                        { l: "Upside Capture", v: formatMetric(metrics?.upside_capture) },
-                        { l: "Downside Capture", v: formatMetric(metrics?.downside_capture) }
-                    ].map((m, i) => (
-                        <div key={i} className="glass-panel metric-box glow-card reveal active" style={{ animationDelay: `${i * 0.05}s` }}>
-                            <span className="metric-label">{m.l}</span>
-                            <span className="metric-value font-heading">{m.v}</span>
-                        </div>
-                    ))}
-                </div>
+                )}
             </section>
 
-            {expenseRatios && expenseRatios.length > 0 && (
-                <section className="section-spacer">
-                    <h3 className="section-heading-lux uppercase mb-8">Internal Expense Breakdown (TER)</h3>
-                    <div className="glass-panel glow-card p-6 border border-white/10 flex gap-10 overflow-x-auto custom-scrollbar">
-                        {expenseRatios.map((exp, i) => (
-                            <div key={i} className="flex flex-col items-center justify-center min-w-max p-4 rounded-xl" style={{background: 'rgba(255,255,255,0.02)'}}>
-                                <span className="text-[10px] text-muted uppercase tracking-widest mb-2 font-bold">{exp.as_of_date}</span>
-                                <span className="font-heading text-xl text-primary">{Number(exp.expense_ratio * 100).toFixed(2)}%</span>
+            {/* 3. NAV PERFORMANCE (COLLAPSIBLE) */}
+            <section className="collapsible-section-lux">
+                <header className="section-header-lux" onClick={() => toggleSection('performance')}>
+                    <h3 className="section-label-lux">PERFORMANCE ANALYTICS</h3>
+                    <span className={`toggle-icon-lux ${expandedSections.performance ? 'open' : ''}`}>▼</span>
+                </header>
+                {expandedSections.performance && (
+                    <div className="section-content-lux reveal active">
+                        <div className="flex justify-between items-center mb-6 mt-6">
+                            <div className="time-range-picker">
+                                {['1M', '6M', '1Y', '3Y', 'ALL'].map(t => (
+                                    <button
+                                        key={t}
+                                        className={`t-btn-lux ${timeRange === t ? 'active' : ''}`}
+                                        onClick={() => setTimeRange(t)}
+                                    >{t}</button>
+                                ))}
                             </div>
-                        ))}
+                        </div>
+                        <div className="glass-panel-elite p-8">
+                            <div style={{ height: '400px', width: '100%' }}>
+                                <ResponsiveContainer width="100%" height="100%">
+                                    <AreaChart data={chartData}>
+                                        <defs>
+                                            <linearGradient id="navGradient" x1="0" y1="0" x2="0" y2="1">
+                                                <stop offset="5%" stopColor="var(--color-primary)" stopOpacity={0.3} />
+                                                <stop offset="95%" stopColor="var(--color-primary)" stopOpacity={0} />
+                                            </linearGradient>
+                                        </defs>
+                                        <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="rgba(255,255,255,0.03)" />
+                                        <XAxis
+                                            dataKey="date"
+                                            axisLine={false}
+                                            tickLine={false}
+                                            tick={{ fontSize: 9, fill: 'var(--color-text-muted)', fontWeight: 600 }}
+                                            minTickGap={30}
+                                        />
+                                        <YAxis
+                                            domain={['auto', 'auto']}
+                                            axisLine={false}
+                                            tickLine={false}
+                                            tick={{ fontSize: 10, fill: 'var(--color-text-muted)' }}
+                                        />
+                                        <Tooltip
+                                            contentStyle={{ backgroundColor: 'rgba(15, 23, 42, 0.95)', border: '1px solid var(--color-glass-border)', borderRadius: '12px' }}
+                                            itemStyle={{ color: 'var(--color-primary)' }}
+                                        />
+                                        <Area type="monotone" dataKey="nav" stroke="var(--color-primary)" strokeWidth={3} fill="url(#navGradient)" animationDuration={1000} />
+                                    </AreaChart>
+                                </ResponsiveContainer>
+                            </div>
+                        </div>
                     </div>
+                )}
+            </section>
+
+            {/* 4. QUANTITATIVE METRICS (COLLAPSIBLE) */}
+            <section className="collapsible-section-lux">
+                <header className="section-header-lux" onClick={() => toggleSection('metrics')}>
+                    <h3 className="section-label-lux">QUANTITATIVE RISK METRICS</h3>
+                    <span className={`toggle-icon-lux ${expandedSections.metrics ? 'open' : ''}`}>▼</span>
+                </header>
+                {expandedSections.metrics && (
+                    <div className="section-content-lux reveal active">
+                        <div className="glass-panel-elite overflow-hidden mt-6">
+                            <table className="metrics-tabular-lux">
+                                <thead>
+                                    <tr>
+                                        <th>METRIC ATTRIBUTE</th>
+                                        <th>VALUE</th>
+                                        <th>METRIC ATTRIBUTE</th>
+                                        <th>VALUE</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <tr>
+                                        <td className="m-name">Expense Ratio (TER)</td>
+                                        <td className="m-val text-primary font-bold">{formatPercent(metrics?.expense_ratio)}</td>
+                                        <td className="m-name">Fund Rating</td>
+                                        <td className="m-val text-accent font-bold">{formatMetric(metrics?.fund_rating, 1, ' ★')}</td>
+                                    </tr>
+                                    <tr>
+                                        <td className="m-name">Volatility</td>
+                                        <td className="m-val">{formatMetric(metrics?.volatility, 2, '%')}</td>
+                                        <td className="m-name">Standard Deviation</td>
+                                        <td className="m-val">{formatMetric(metrics?.standard_deviation, 2, '%')}</td>
+                                    </tr>
+                                    <tr>
+                                        <td className="m-name">Sharpe Ratio</td>
+                                        <td className="m-val">{formatMetric(metrics?.sharpe_ratio)}</td>
+                                        <td className="m-name">Sortino Ratio</td>
+                                        <td className="m-val">{formatMetric(metrics?.sortino_ratio)}</td>
+                                    </tr>
+                                    <tr>
+                                        <td className="m-name">Beta (Relative to Index)</td>
+                                        <td className="m-val">{formatMetric(metrics?.beta)}</td>
+                                        <td className="m-name">Alpha</td>
+                                        <td className="m-val text-accent">{formatMetric(metrics?.alpha, 2, '%')}</td>
+                                    </tr>
+                                    <tr>
+                                        <td className="m-name">Max Drawdown</td>
+                                        <td className="m-val text-error">{metrics?.maximum_drawdown != null ? formatPercent(metrics.maximum_drawdown * -1) : '--'}</td>
+                                        <td className="m-name">Information Ratio</td>
+                                        <td className="m-val">{formatMetric(metrics?.information_ratio)}</td>
+                                    </tr>
+                                    <tr>
+                                        <td className="m-name">Tracking Error</td>
+                                        <td className="m-val">{formatMetric(metrics?.tracking_error, 2, '%')}</td>
+                                        <td className="m-name">Upside Capture</td>
+                                        <td className="m-val text-accent">{formatMetric(metrics?.upside_capture, 2, '%')}</td>
+                                    </tr>
+                                    <tr>
+                                        <td className="m-name">Downside Capture</td>
+                                        <td className="m-val text-error">{formatMetric(metrics?.downside_capture, 2, '%')}</td>
+                                        <td className="m-name"></td>
+                                        <td className="m-val"></td>
+                                    </tr>
+                                    <tr>
+                                        <td className="m-name">6 Month Absolute</td>
+                                        <td className="m-val">{formatPercent(metrics?.short_term_return_6m)}</td>
+                                        <td className="m-name">1 Year Absolute</td>
+                                        <td className="m-val">{formatPercent(metrics?.absolute_return_1y)}</td>
+                                    </tr>
+                                    <tr>
+                                        <td className="m-name">3 Year Absolute</td>
+                                        <td className="m-val">{formatPercent(metrics?.absolute_return_3y)}</td>
+                                        <td className="m-name">5 Year Absolute</td>
+                                        <td className="m-val">{formatPercent(metrics?.absolute_return_5y)}</td>
+                                    </tr>
+                                    <tr>
+                                        <td className="m-name">10 Year Absolute</td>
+                                        <td className="m-val">{formatPercent(metrics?.absolute_return_10y)}</td>
+                                        <td className="m-name">3 Year Rolling (CAGR)</td>
+                                        <td className="m-val font-bold text-primary">{formatPercent(metrics?.rolling_return_3year)}</td>
+                                    </tr>
+                                    <tr>
+                                        <td className="m-name">5 Year Rolling (CAGR)</td>
+                                        <td className="m-val font-bold text-primary">{formatPercent(metrics?.rolling_return_5year)}</td>
+                                        <td className="m-name"></td>
+                                        <td className="m-val"></td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                )}
+            </section>
+
+            {/* 6. PEER COMPARISON (COLLAPSIBLE) */}
+            {similarFunds.length > 0 && (
+                <section className="collapsible-section-lux">
+                    <header className="section-header-lux" onClick={() => toggleSection('peers')}>
+                        <h3 className="section-label-lux">PEER BENCHMARKING</h3>
+                        <span className={`toggle-icon-lux ${expandedSections.peers ? 'open' : ''}`}>▼</span>
+                    </header>
+                    {expandedSections.peers && (
+                        <div className="section-content-lux reveal active">
+                            <div className="glass-panel-elite overflow-hidden mt-6">
+                                <table className="peer-comparison-table">
+                                    <thead>
+                                        <tr>
+                                            <th>PEER NAME</th>
+                                            <th>CATEGORY</th>
+                                            <th>3Y ROLLING</th>
+                                            <th>5Y ROLLING</th>
+                                            <th>SHARPE</th>
+                                            <th>ACTION</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        {similarFunds.map(peer => (
+                                            <tr key={peer.scheme_code}>
+                                                <td className="peer-name">
+                                                    <div>{peer.scheme_name}</div>
+                                                    <div className="text-[9px] text-muted uppercase mt-1">{peer.amc_name}</div>
+                                                </td>
+                                                <td className="peer-category"><span className="peer-badge">{peer.scheme_subcategory || peer.scheme_category}</span></td>
+                                                <td className="peer-stat">{peer.metrics?.rolling_return_3year ? (peer.metrics.rolling_return_3year * 100).toFixed(2) + '%' : '--'}</td>
+                                                <td className="peer-stat">{peer.metrics?.rolling_return_5year ? (peer.metrics.rolling_return_5year * 100).toFixed(2) + '%' : '--'}</td>
+                                                <td className="peer-stat">{peer.metrics?.sharpe_ratio?.toFixed(2) || '--'}</td>
+                                                <td><a href={`#mf-detail-${peer.scheme_code}`} className="btn-view-peer">VIEW</a></td>
+                                            </tr>
+                                        ))}
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    )}
                 </section>
             )}
 
-            <section className="section-spacer">
-                <h3 className="section-heading-lux uppercase mb-8">Asset Metadata & Identification</h3>
-                <div className="glass-panel glow-card p-0 overflow-hidden">
-                    <table className="metadata-table-lux">
-                        <tbody>
-                            <tr>
-                                <td className="m-label">Scheme Identifier</td>
-                                <td className="m-value">{fund.scheme_code}</td>
-                            </tr>
-                            <tr>
-                                <td className="m-label">ISIN</td>
-                                <td className="m-value font-mono tracking-widest text-[11px] text-primary">{fund.isin || 'UNASSIGNED'}</td>
-                            </tr>
-                            <tr>
-                                <td className="m-label">AMC Name</td>
-                                <td className="m-value">{fund.amc_name}</td>
-                            </tr>
-                            <tr>
-                                <td className="m-label">Fund House / Category</td>
-                                <td className="m-value">{fund.scheme_category}</td>
-                            </tr>
-                            <tr>
-                                <td className="m-label">Plan Type / Variant</td>
-                                <td className="m-value">{fund.plan_type}</td>
-                            </tr>
-                            <tr>
-                                <td className="m-label">Benchmark Index</td>
-                                <td className="m-value text-primary font-bold">{fund.benchmark_index_code || 'UNASSIGNED'}</td>
-                            </tr>
-                            <tr>
-                                <td className="m-label">Asset Under Management (AUM)</td>
-                                <td className="m-value">₹ {formatMetric(metrics?.aum_in_crores, 2)} Crores</td>
-                            </tr>
-                            <tr>
-                                <td className="m-label">Inception Date</td>
-                                <td className="m-value">{fund.inception_date || 'N/A'}</td>
-                            </tr>
-                        </tbody>
-                    </table>
-                </div>
+            {/* 7. FINAL VERDICT (COLLAPSIBLE) */}
+            <section className="collapsible-section-lux">
+                <header className="section-header-lux" onClick={() => toggleSection('verdict')}>
+                    <h3 className="section-label-lux">NIVESH INTELLIGENCE VERDICT</h3>
+                    <span className={`toggle-icon-lux ${expandedSections.verdict ? 'open' : ''}`}>▼</span>
+                </header>
+                {expandedSections.verdict && (
+                    <div className="section-content-lux reveal active">
+                        <div className="glass-panel-elite verdict-box p-8 grow-hover mt-6">
+                            <div className="verdict-icon">✦</div>
+                            <p className="verdict-text">{metrics?.final_verdict || "Insufficient dynamic data for a final verdict."}</p>
+                            <div className="verdict-footer mt-4 text-[9px] text-muted uppercase tracking-[0.2em]">Generated by Nivesh Engine • {new Date().toLocaleDateString()}</div>
+                        </div>
+                    </div>
+                )}
             </section>
         </div>
     );
 };
 
-export default MFDetail;
+class MFDetailErrorBoundary extends Component {
+    constructor(props) {
+        super(props);
+        this.state = { hasError: false };
+    }
+    static getDerivedStateFromError(error) { return { hasError: true }; }
+    componentDidCatch(error, errorInfo) { console.error("MFDetail Error:", error, errorInfo); }
+    render() {
+        if (this.state.hasError) {
+            return (
+                <div className="error-container-lux p-20 text-center">
+                    <h2 className="text-error font-heading mb-4">ASSET RENDER FAILURE</h2>
+                    <p className="text-muted text-xs uppercase tracking-widest">The intelligence engine encountered an anomaly while mapping this asset.</p>
+                    <button className="btn-premium btn-premium-primary mt-8" onClick={() => window.location.reload()}>RETRY SYNCHRONIZATION</button>
+                </div>
+            );
+        }
+        return this.props.children;
+    }
+}
+
+const MFDetailWithBoundary = (props) => (
+    <MFDetailErrorBoundary>
+        <MFDetail {...props} />
+    </MFDetailErrorBoundary>
+);
+
+export default MFDetailWithBoundary;

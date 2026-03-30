@@ -32,13 +32,40 @@ Data is fetched via `mftool` (AMFI) and processed using `pandas` for vectorized 
 
 ---
 
-## 🔄 Data Synchronization
-We employ a multi-tier synchronization strategy:
-1. **Initial Seed**: Using `migrate_data.py` to move legacy records.
-2. **On-Demand (JIT)**: Triggered when a user visits a previously unsynced asset.
-3. **Bulk Sync**: A background process to refresh all active assets in the database.
+## 🔄 Data Synchronization & Scripts
+
+We employ a robust data lifecycle management strategy using specialized scripts in `backend/scripts/`:
+
+### Core ETL Pipelines
+- **`etl_populate_data.py`**: The primary engine for synchronizing fund metadata and computing metrics on-demand.
+- **`populate_nav_history.py`**: Fetches and persists historical NAV data for mutual funds.
+- **`recompute_funds_metrics.py`**: Refreshes all mathematical ratios (Sharpe, etc.) based on updated NAV histories.
+
+### Seeding & Initialization (`backend/scripts/seed/`)
+- **`seed_benchmarks.py`**: Initializes the benchmark index master data.
+- **`import_nifty_indices.py`**: Bulk imports historical NAVs for various Nifty indices.
+- **`ingest_isins_amfi.py`**: Maps ISINs from AMFI sources to the database records.
 
 ---
+
+## 🚀 Engine Architecture
+The backend is structured into specialized layers to ensure separation of concerns and high performance.
+
+```text
+backend/
+├── app/
+│   ├── routers/    # API endpoint definitions
+│   ├── analytics.py # Core financial calculation engine
+│   ├── crud.py      # SQLAlchemy database operations
+│   ├── sync.py      # Background data fetching logic
+│   ├── models.py    # SQLAlchemy model definitions
+│   ├── schemas.py   # Pydantic models for validation
+│   └── main.py      # FastAPI entry point
+├── scripts/
+│   ├── seed/        # One-time initialization scripts
+│   └── ...          # Core ETL pipelines
+```
+
 
 ## 🔐 Security & Auth
 We use **JWT (JSON Web Tokens)** for secure, stateless authentication.

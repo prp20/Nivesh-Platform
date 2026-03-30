@@ -6,11 +6,61 @@ from datetime import datetime
 from mftool import Mftool
 from sqlalchemy.ext.asyncio import AsyncSession
 from . import crud, analytics, schemas
+import requests
+import json
 
 logger = logging.getLogger(__name__)
 
-async def sync_fund_data(session: AsyncSession, scheme_code: str, job_id: Optional[str] = None):
-    """Fetch latest NAV and recompute metrics for a single fund."""
+BASE_CAPTNEMO = "https://mf.captnemo.in"
+HEADERS = {
+    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36"
+}
+
+def get_aum_by_isin(isin: str) -> dict | None:
+    """
+    Fetch AUM, expense ratio, fund manager, and returns for a fund by ISIN.
+    Uses Kuvera data via Captnemo's static API.
+
+    NOTE: Only works for ISINs listed on the Kuvera platform.
+          Use get_nav_by_isin() as a fallback for non-Kuvera ISINs.
+
+    Returns dict with AUM data, or None if ISIN not found.
+    """
+    try:
+        resp = requests.get(f"{BASE_CAPTNEMO}/kuvera/{isin}", headers=HEADERS, timeout=10)
+
+        if resp.status_code == 404:
+            logger.warning(f"ISIN {isin} not found on Kuvera.")
+            return None
+
+        resp.raise_for_status()
+        data = resp.json()
+
+        # Response is a LIST — index [0]
+        fund = data[0] if isinstance(data, list) and data else {}
+
+        return {
+            "isin":           isin,
+            "name":           fund.get("name"),
+            "aum_cr":         (float(fund.get("aum")) / 10.0) if fund.get("aum") else 0.0, # Convert Millions to Crores
+            "category":       fund.get("category"),
+            "fund_type":      fund.get("fund_type"),
+            "fund_category":  fund.get("fund_category"),
+            "expense_ratio":  fund.get("expense_ratio"),
+            "fund_manager":   fund.get("fund_manager"),
+            "fund_rating":    fund.get("fund_rating"),
+            "last_nav":       fund.get("last_nav"),        # {date, nav}
+            "returns":        fund.get("returns"),         # {inception, year_1, year_3, year_5}
+            "maturity_type":  fund.get("maturity_type"),
+            "start_date":     fund.get("start_date"),
+            "volatility":     fund.get("volatility"),
+        }
+    except Exception as e:
+        logger.error(f"Error in get_aum_by_isin for {isin}: {e}")
+        return None
+
+async def sync_fund_data(session: AsyncSession, scheme_code: str, job_id: Optional[str] = None) -> Optional[float]:
+    """Fetch latest NAV and recompute metrics for a single fund. Returns AUM if found."""
     mf = Mftool()
     
     async def update_progress(msg: str):
@@ -60,48 +110,38 @@ async def sync_fund_data(session: AsyncSession, scheme_code: str, job_id: Option
         # 3. Bulk insert NAVs
         await crud.bulk_insert_fund_navs(session, scheme_code, nav_dict)
         
-        # 4. Fetch AUM and ISIN from details
-        aum = None
+        # 4. Fetch AUM and metadata using ISIN/Details
+        aum = 0.0
         isin = fund_master.isin
-        try:
-            details = mf.get_scheme_details(scheme_code)
-            if details and isinstance(details, dict):
-                # Try to extract AUM
-                raw_aum = details.get("fund_house_aum") or details.get("aum")
-                if raw_aum:
-                    try:
-                        aum = float(str(raw_aum).replace(",", "").split()[-1])
-                    except (ValueError, IndexError):
-                        pass
-                
-                # Try to extract ISIN if not already present
-                if not isin:
-                    # Some versions of mftool/API might return ISIN in details
+        
+        # 4.1 Try mftool details first for ISIN if missing
+        if not isin:
+            try:
+                details = mf.get_scheme_details(scheme_code)
+                if details and isinstance(details, dict):
                     isin = details.get("isin") or details.get("isin_code")
                     if isin:
                         await crud.update_fund_master(session, scheme_code, schemas.FundMasterUpdate(isin=isin))
-        except Exception as e:
-            logger.warning(f"Failed to fetch scheme details for {scheme_code}: {e}")
-
-        # 4.1 Fetch Expense Ratio (TER) if ISIN is available
-        if isin:
-            await update_progress(f"Fetching Expense Ratio for ISIN {isin}...")
-            try:
-                import requests
-                ter_url = f"https://mf.captnemo.in/kuvera/{isin}"
-                resp = requests.get(ter_url, timeout=10)
-                if resp.status_code == 200:
-                    ter_data = resp.json()
-                    if isinstance(ter_data, list) and len(ter_data) > 0:
-                        ter_val = ter_data[0].get("expense_ratio")
-                        if ter_val is not None:
-                            await crud.upsert_fund_expense_ratio(session, {
-                                "scheme_code": scheme_code,
-                                "expense_ratio": float(ter_val) / 100.0, # Convert percentage to decimal
-                                "as_of_date": datetime.now().date()
-                            })
             except Exception as e:
-                logger.warning(f"Failed to fetch expense ratio for {scheme_code}: {e}")
+                logger.warning(f"Failed to fetch ISIN from mftool for {scheme_code}: {e}")
+
+        # 4.2 Fetch AUM and TER from Captnemo/Kuvera if ISIN is available
+        if isin:
+            await update_progress(f"Fetching AUM and Expense Ratio for ISIN {isin}...")
+            fund_data = get_aum_by_isin(isin)
+            if fund_data:
+                aum = fund_data.get("aum_cr") or 0.0
+                ter_val = fund_data.get("expense_ratio")
+                expense_ratio = float(ter_val) / 100.0 if ter_val is not None else None
+                fund_rating = float(fund_data.get("fund_rating")) if fund_data.get("fund_rating") else None
+                volatility = float(fund_data.get("volatility")) if fund_data.get("volatility") else None
+            else:
+                logger.warning(f"No Kuvera data for ISIN {isin}, AUM set to 0.0")
+        else:
+            expense_ratio = None
+            fund_rating = None
+            volatility = None
+            logger.warning(f"No ISIN available for {scheme_code}, AUM set to 0.0")
 
         # 5. Get Benchmark History if available
         benchmark_history_list = None
@@ -130,6 +170,9 @@ async def sync_fund_data(session: AsyncSession, scheme_code: str, job_id: Option
             "current_nav": calc_results["current_nav"],
             "nav_date": calc_results["nav_date"],
             "aum_in_crores": aum,
+            "expense_ratio": expense_ratio,
+            "fund_rating": fund_rating,
+            "volatility": volatility,
             "rolling_return_3year": calc_results.get("rolling_return_3year"),
             "rolling_return_5year": calc_results.get("rolling_return_5year"),
             "absolute_return_1y": calc_results.get("absolute_return_1y"),
@@ -147,13 +190,15 @@ async def sync_fund_data(session: AsyncSession, scheme_code: str, job_id: Option
             "maximum_drawdown": calc_results.get("max_drawdown"),
             "tracking_error": calc_results.get("tracking_error"),
             "information_ratio": calc_results.get("information_ratio"),
+            "final_verdict": calc_results.get("final_verdict"),
             "metrics_calculated_at": datetime.now()
         }
         await crud.upsert_fund_metrics(session, metrics_payload)
         
         if job_id:
             await crud.update_sync_job(session, job_id, status="COMPLETED", message="Analysis complete")
-        logger.info(f"Successfully synced {scheme_code}")
+        logger.info(f"Successfully synced {scheme_code} (AUM: {aum})")
+        return aum
         
     except Exception as e:
         logger.error(f"Error syncing {scheme_code}: {e}")

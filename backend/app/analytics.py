@@ -2,6 +2,7 @@ import pandas as pd
 import numpy as np
 from typing import List, Dict, Optional
 from datetime import date
+from sqlalchemy.ext.asyncio import AsyncSession
 
 def calculate_returns(nav_series: pd.Series) -> pd.Series:
     return nav_series.pct_change().dropna()
@@ -182,9 +183,25 @@ def compute_all_metrics(nav_history: List[Dict], benchmark_history: Optional[Lis
                 "downside_capture": capture["downside_capture"]
             })
             
+    # Final Verdict Logic
+    sharpe_raw = metrics.get("sharpe_ratio")
+    alpha_raw = metrics.get("alpha")
+    
+    sharpe = float(sharpe_raw) if sharpe_raw is not None else 0.0
+    alpha = float(alpha_raw) if alpha_raw is not None else 0.0
+    
+    if sharpe > 1.2 and alpha > 0.05:
+        metrics["final_verdict"] = "Elite Performance - This asset demonstrates exceptional risk-adjusted returns and significant alpha generation. Recommended for aggressive growth portfolios."
+    elif sharpe > 0.8 and alpha > 0:
+        metrics["final_verdict"] = "Stable Performer - The fund maintain steady risk-adjusted returns with positive alpha. Suitable as a reliable core holding for long-term investors."
+    elif alpha < 0:
+        metrics["final_verdict"] = "Underperforming Benchmark - Caution advised. The asset is currently failing to outpace its benchmark on a risk-adjusted basis. Monitor peer performance closely."
+    else:
+        metrics["final_verdict"] = "Standard Asset - Performance is largely in line with market expectations. Recommended for diversified exposure rather than localized outperformance."
+
     return metrics
 
-async def get_comparison_data(session: "AsyncSession", scheme_codes: List[str]) -> Dict:
+async def get_comparison_data(session: AsyncSession, scheme_codes: List[str]) -> Dict:
     """
     Multi-fund comparison engine focusing on metrics.
     Fetches pre-calculated metrics for specified funds.

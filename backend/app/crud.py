@@ -7,7 +7,7 @@ from typing import Optional, List, Tuple
 from datetime import datetime
 import uuid
 
-from .models import FundMaster, BenchmarkMaster, FundNavHistory, BenchmarkNavHistory, FundMetrics, BenchmarkMetrics, SyncJob, FundExpenseRatio
+from .models import FundMaster, BenchmarkMaster, FundNavHistory, BenchmarkNavHistory, FundMetrics, BenchmarkMetrics, SyncJob
 from .schemas import (
     FundMasterCreate, FundMasterUpdate,
     BenchmarkMasterCreate, BenchmarkMasterUpdate,
@@ -29,6 +29,29 @@ async def get_fund_master_by_code(session: AsyncSession, scheme_code: str):
     q = select(FundMaster).options(joinedload(FundMaster.metrics)).where(FundMaster.scheme_code == scheme_code)
     res = await session.execute(q)
     return res.unique().scalar_one_or_none()
+
+async def get_similar_funds(session: AsyncSession, scheme_code: str, limit: int = 4):
+    """
+    Find funds in the same category and subcategory as the given scheme_code.
+    """
+    fund = await get_fund_master_by_code(session, scheme_code)
+    if not fund:
+        return []
+    
+    q = (
+        select(FundMaster)
+        .options(joinedload(FundMaster.metrics))
+        .where(
+            FundMaster.scheme_category == fund.scheme_category,
+            FundMaster.scheme_subcategory == fund.scheme_subcategory,
+            FundMaster.scheme_code != scheme_code,
+            FundMaster.is_active == True
+        )
+        .limit(limit)
+    )
+    
+    res = await session.execute(q)
+    return res.unique().scalars().all()
 
 async def get_all_fund_masters(
     session: AsyncSession, 
@@ -271,31 +294,6 @@ async def get_fund_metrics(session: AsyncSession, scheme_code: str):
     q = select(FundMetrics).where(FundMetrics.scheme_code == scheme_code)
     res = await session.execute(q)
     return res.scalar_one_or_none()
-
-# ============================================================================
-# EXPENSE RATIO CRUD
-# ============================================================================
-
-async def upsert_fund_expense_ratio(session: AsyncSession, expense_data: dict):
-    # Exclude PK from update set if it exists
-    update_data = {k: v for k, v in expense_data.items() if k not in ['id', 'scheme_code', 'as_of_date']}
-    
-    stmt = pg_insert(FundExpenseRatio).values(expense_data)
-    if update_data:
-        stmt = stmt.on_conflict_do_update(
-            index_elements=['scheme_code', 'as_of_date'],
-            set_=update_data
-        )
-    else:
-        stmt = stmt.on_conflict_do_nothing()
-        
-    await session.execute(stmt)
-    await session.commit()
-
-async def get_fund_expense_ratios(session: AsyncSession, scheme_code: str, limit: int = 100):
-    q = select(FundExpenseRatio).where(FundExpenseRatio.scheme_code == scheme_code).order_by(FundExpenseRatio.as_of_date.desc()).limit(limit)
-    res = await session.execute(q)
-    return res.scalars().all()
 
 # ============================================================================
 # SYNC JOB CRUD

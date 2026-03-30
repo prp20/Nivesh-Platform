@@ -25,6 +25,11 @@ const fundService = {
         return response.data;
     },
 
+    getSimilarFunds: async (schemeCode) => {
+        const response = await apiClient.get(`/funds/${schemeCode}/similar`);
+        return response.data;
+    },
+
     createFund: async (data) => {
         const response = await apiClient.post(`/funds/`, data);
         return response.data;
@@ -49,11 +54,6 @@ const fundService = {
     // METRICS
     getFundMetrics: async (schemeCode) => {
         const response = await apiClient.get(`/metrics/${schemeCode}`);
-        return response.data;
-    },
-
-    getFundExpenseRatio: async (schemeCode) => {
-        const response = await apiClient.get(`/funds/${schemeCode}/expense-ratio`);
         return response.data;
     },
 

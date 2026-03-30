@@ -494,3 +494,8 @@
     background: #dc2626 !important;
     box-shadow: 0 0 20px rgba(239, 68, 68, 0.4) !important;
 }
+
+/* Ensure list is scrollable explicitly above the fixed comparison dock */
+.mf-listing {
+    padding-bottom: 120px;
+}

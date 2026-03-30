@@ -32,13 +32,13 @@ class FundMaster(Base):
     scheme_subcategory = Column(String(100))
     benchmark_index_code = Column(String(50))
     isin = Column(String(50), unique=True, index=True)
+    manager_experience = Column(String(500))
     is_active = Column(Boolean, default=True)
     created_at = Column(TIMESTAMP, server_default=func.now())
     updated_at = Column(TIMESTAMP, server_default=func.now(), onupdate=func.now())
 
     # Relationships
     metrics = relationship("FundMetrics", back_populates="fund", uselist=False)
-    expense_ratios = relationship("FundExpenseRatio", back_populates="fund", cascade="all, delete-orphan")
 
 
 class BenchmarkMaster(Base):
@@ -112,6 +112,9 @@ class FundMetrics(Base):
     current_nav = Column(Numeric(15, 4), nullable=False)
     nav_date = Column(Date, nullable=False)
     aum_in_crores = Column(Numeric(18, 2))
+    expense_ratio = Column(Numeric(5, 4))
+    fund_rating = Column(Numeric(5, 2))
+    volatility = Column(Numeric(10, 4))
     rolling_return_3year = Column(Numeric(10, 4))
     rolling_return_5year = Column(Numeric(10, 4))
     absolute_return_1y = Column(Numeric(10, 4))
@@ -134,26 +137,10 @@ class FundMetrics(Base):
     calculation_period_end_date = Column(Date)
     has_sufficient_data = Column(Boolean, default=True)
     data_completeness_percentage = Column(Numeric(5, 2))
+    final_verdict = Column(String(1000))
     updated_at = Column(TIMESTAMP, server_default=func.now(), onupdate=func.now())
 
     # Relationships
     fund = relationship("FundMaster", back_populates="metrics")
 
 
-class FundExpenseRatio(Base):
-    """Historical expense ratio (TER) data for funds"""
-    __tablename__ = "fund_expense_ratio"
-    
-    id = Column(String(50), primary_key=True, default=lambda: str(uuid.uuid4()))
-    scheme_code = Column(String(50), ForeignKey("fund_master.scheme_code", ondelete="CASCADE"), nullable=False)
-    expense_ratio = Column(Numeric(5, 4), nullable=False)  # Example: 0.0125 for 1.25%
-    as_of_date = Column(Date, nullable=False, server_default=func.current_date())
-    created_at = Column(TIMESTAMP, server_default=func.now())
-    updated_at = Column(TIMESTAMP, server_default=func.now(), onupdate=func.now())
-
-    # Relationships
-    fund = relationship("FundMaster", back_populates="expense_ratios")
-
-    __table_args__ = (
-        UniqueConstraint('scheme_code', 'as_of_date', name='uq_fund_expense_ratio_date'),
-    )

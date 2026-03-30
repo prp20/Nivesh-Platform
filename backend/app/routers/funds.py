@@ -68,13 +68,14 @@ async def compare_funds(
         if not master:
             raise HTTPException(status_code=404, detail=f"Fund with code {scheme_codes[i]} not found")
 
-    # 3. Validate same category
-    main_category = masters[0].scheme_category
-    for master in masters[1:]:
-        if master.scheme_category != main_category:
+    # 3. Validate same category and subcategory
+    main_cat = masters[0].scheme_category
+    main_sub = masters[0].scheme_subcategory
+    for m in masters[1:]:
+        if m.scheme_category != main_cat or m.scheme_subcategory != main_sub:
             raise HTTPException(
                 status_code=400, 
-                detail=f"Only funds of the same category can be compared. Found '{main_category}' and '{master.scheme_category}'"
+                detail=f"Category mismatch! Comparison requires identical classification. Found '{main_sub or main_cat}' vs '{m.scheme_subcategory or m.scheme_category}'"
             )
 
     # 4. Use optimized analytics helper
@@ -89,6 +90,11 @@ async def read_fund(scheme_code: str, session: AsyncSession = Depends(get_db)):
     if not fund:
         raise HTTPException(status_code=404, detail=f"Fund with scheme_code {scheme_code} not found")
     return fund
+
+@router.get("/{scheme_code}/similar", response_model=List[schemas.FundMasterRead])
+async def get_similar_funds(scheme_code: str, session: AsyncSession = Depends(get_db)):
+    """Get funds with the same category and subcategory."""
+    return await crud.get_similar_funds(session, scheme_code)
 
 @router.put("/{scheme_code}", response_model=schemas.FundMasterRead)
 async def update_fund(
