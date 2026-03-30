@@ -5,15 +5,18 @@ The Nivesh backend is an asynchronous powerhouse designed to handle complex fina
 ## 🚀 Engine Architecture
 The backend is structured into specialized layers to ensure separation of concerns and high performance.
 
-```text
 backend/
 ├── app/
-│   ├── routers/    # API endpoint definitions (Auth, Sync, Metrics)
-│   ├── crud/       # SQLAlchemy database operations
-│   ├── analytics/  # Core financial calculation engine
-│   ├── sync/       # Background data fetching logic
-│   ├── models.py   # SQLAlchemy model definitions
-│   └── main.py     # FastAPI entry point
+│   ├── routers/    # API endpoint definitions
+│   ├── analytics.py # Core financial calculation engine
+│   ├── crud.py      # SQLAlchemy database operations
+│   ├── sync.py      # Background data fetching logic
+│   ├── models.py    # SQLAlchemy model definitions
+│   ├── schemas.py   # Pydantic models for validation
+│   ├── security.py  # JWT and password hashing
+│   ├── database.py  # Engine and session configuration
+│   └── main.py      # FastAPI entry point
+│   └── config.py    # Environment settings
 ```
 
 ---

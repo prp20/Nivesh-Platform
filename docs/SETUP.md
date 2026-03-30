@@ -29,6 +29,17 @@ uvicorn app.main:app --port 8000
 
 ---
 
+### 4. Frontend Environment
+```bash
+cd frontend
+npm install
+npm run dev
+```
+- **Local Dev Server**: [http://localhost:5173](http://localhost:5173)
+- **Vite Configuration**: Proxies API requests to `localhost:8000`.
+
+---
+
 ## 🏗️ Initial Data Load
 
 To populate your local environment with benchmark indices:

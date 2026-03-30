@@ -10,6 +10,7 @@ When adding a new financial indicator:
 2.  Update the `FundMetrics` SQLAlchemy model if needed.
 3.  Add the corresponding field to the `FundMetricsRead` schema.
 4.  Expose the new data point in the **MF Detail** page on the frontend.
+5.  Update the corresponding Redux slice (e.g., `syncSlice.js`) if the data point involves asynchronous background processing.
 
 ### 2. Style Refinement (CALIFINO)
 All styling is centralized in `index.css` (tokens) and component-level CSS files. Ensure all colors use the established HSL palette constants for brand consistency.
