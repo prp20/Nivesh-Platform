@@ -1,9 +1,9 @@
 from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks
 from typing import Optional, Dict, Any
 from sqlalchemy.ext.asyncio import AsyncSession
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from ..database import get_db, session_factory
-from .. import crud, schemas, sync
+from .. import crud, schemas, sync, security
 
 router = APIRouter(prefix="/metrics", tags=["metrics"])
 
@@ -24,11 +24,17 @@ async def get_metrics(
     latest_job = await crud.get_latest_sync_job(session, scheme_code)
     
     should_refresh = False
+    now = datetime.now(timezone.utc)
+    
     if not metrics:
         should_refresh = True
     else:
-        # Cache for 24 hours
-        time_since_calc = datetime.now() - metrics.metrics_calculated_at.replace(tzinfo=None)
+        # Cache for 24 hours - handle potentially naive timestamps from DB
+        calc_at = metrics.metrics_calculated_at
+        if calc_at.tzinfo is None:
+            calc_at = calc_at.replace(tzinfo=timezone.utc)
+            
+        time_since_calc = now - calc_at
         if time_since_calc > timedelta(hours=24):
             should_refresh = True
 
@@ -38,7 +44,12 @@ async def get_metrics(
     sync_message = latest_job.message if latest_job else None
 
     if latest_job and latest_job.status == "RUNNING":
-        if datetime.now() - latest_job.updated_at.replace(tzinfo=None) > timedelta(minutes=10):
+        # Handle naive updated_at
+        updated_at = latest_job.updated_at
+        if updated_at.tzinfo is None:
+            updated_at = updated_at.replace(tzinfo=timezone.utc)
+            
+        if now - updated_at > timedelta(minutes=10):
             # Safe to assume orphaned if no update in 10 mins
             should_refresh = True
         else:
@@ -70,14 +81,20 @@ async def get_sync_status(scheme_code: str, session: AsyncSession = Depends(get_
 async def compute_metrics_endpoint(
     scheme_code: str, 
     background_tasks: BackgroundTasks,
-    session: AsyncSession = Depends(get_db)
+    session: AsyncSession = Depends(get_db),
+    current_user: str = Depends(security.get_current_user)
 ):
     """Manually trigger a background metrics recomputation."""
     latest_job = await crud.get_latest_sync_job(session, scheme_code)
+    now = datetime.now(timezone.utc)
     
     # Strict Locking: Already running check
     if latest_job and latest_job.status == "RUNNING":
-        if datetime.now() - latest_job.updated_at.replace(tzinfo=None) <= timedelta(minutes=10):
+        updated_at = latest_job.updated_at
+        if updated_at.tzinfo is None:
+            updated_at = updated_at.replace(tzinfo=timezone.utc)
+            
+        if now - updated_at <= timedelta(minutes=10):
             return {
                 "message": "Sync already in progress", 
                 "job_id": latest_job.id,

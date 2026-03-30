@@ -51,6 +51,64 @@ def calculate_cagr(nav_series: pd.Series, years: int) -> Optional[float]:
         
     return float((end_nav / start_nav) ** (1 / years) - 1)
 
+def calculate_absolute_return(nav_series: pd.Series, years: Optional[int] = None, months: Optional[int] = None) -> Optional[float]:
+    """Calculate simple absolute return for a given number of years or months."""
+    if nav_series.empty: return None
+    
+    end_date = nav_series.index[-1]
+    if years:
+        start_date = end_date - pd.DateOffset(years=years)
+        min_days = years * 365 * 0.9
+    elif months:
+        start_date = end_date - pd.DateOffset(months=months)
+        min_days = months * 30 * 0.9
+    else:
+        return None
+    
+    # Find closest start date
+    mask = nav_series.index >= start_date
+    if not mask.any(): return None
+    
+    actual_start_date = nav_series.index[mask][0]
+    start_nav = nav_series.loc[actual_start_date]
+    end_nav = nav_series.iloc[-1]
+    
+    # Only calculate if we have enough data (at least 90% of the requested period)
+    days_diff = (end_date - actual_start_date).days
+    if days_diff < min_days:
+        return None
+        
+    return float((end_nav / start_nav) - 1)
+
+def calculate_capture_ratios(fund_returns: pd.Series, bench_returns: pd.Series) -> Dict[str, Optional[float]]:
+    """Calculate upside and downside capture ratios."""
+    if fund_returns.empty or bench_returns.empty:
+        return {"upside_capture": None, "downside_capture": None}
+    
+    # Align returns
+    combined = pd.concat([fund_returns, bench_returns], axis=1, join='inner')
+    combined.columns = ['fund', 'bench']
+    
+    # Monthly returns for capture ratio (standard practice)
+    # Correcting the apply logic for monthly returns
+    monthly = combined.groupby(pd.Grouper(freq='ME')).apply(lambda x: (1 + x).prod() - 1, include_groups=False)
+    
+    up_bench = monthly[monthly['bench'] > 0]
+    down_bench = monthly[monthly['bench'] < 0]
+    
+    upside_capture = None
+    if not up_bench.empty and up_bench['bench'].mean() != 0:
+        upside_capture = float(up_bench['fund'].mean() / up_bench['bench'].mean())
+        
+    downside_capture = None
+    if not down_bench.empty and down_bench['bench'].mean() != 0:
+        downside_capture = float(down_bench['fund'].mean() / down_bench['bench'].mean())
+        
+    return {
+        "upside_capture": upside_capture,
+        "downside_capture": downside_capture
+    }
+
 def compute_all_metrics(nav_history: List[Dict], benchmark_history: Optional[List[Dict]] = None) -> Dict:
     """Compute comprehensive metrics for a fund, including relative metrics if benchmark is provided."""
     if not nav_history: return {}
@@ -72,6 +130,11 @@ def compute_all_metrics(nav_history: List[Dict], benchmark_history: Optional[Lis
         "max_drawdown": calculate_max_drawdown(nav_series),
         "rolling_return_3year": calculate_cagr(nav_series, 3),
         "rolling_return_5year": calculate_cagr(nav_series, 5),
+        "absolute_return_1y": calculate_absolute_return(nav_series, years=1),
+        "absolute_return_3y": calculate_absolute_return(nav_series, years=3),
+        "absolute_return_5y": calculate_absolute_return(nav_series, years=5),
+        "absolute_return_10y": calculate_absolute_return(nav_series, years=10),
+        "short_term_return_6m": calculate_absolute_return(nav_series, months=6),
     }
     
     # Relative Metrics
@@ -107,11 +170,41 @@ def compute_all_metrics(nav_history: List[Dict], benchmark_history: Optional[Lis
             excess_ret = fund_ann_ret - bench_ann_ret
             info_ratio = excess_ret / tracking_error if tracking_error != 0 else 0
             
+            # Capture Ratios
+            capture = calculate_capture_ratios(fund_ret, bench_ret)
+            
             metrics.update({
                 "alpha": float(alpha),
                 "beta": float(beta),
                 "tracking_error": float(tracking_error),
-                "information_ratio": float(info_ratio)
+                "information_ratio": float(info_ratio),
+                "upside_capture": capture["upside_capture"],
+                "downside_capture": capture["downside_capture"]
             })
             
     return metrics
+
+async def get_comparison_data(session: "AsyncSession", scheme_codes: List[str]) -> Dict:
+    """
+    Multi-fund comparison engine focusing on metrics.
+    Fetches pre-calculated metrics for specified funds.
+    """
+    from . import crud, schemas
+    
+    funds_payload = []
+    
+    for code in scheme_codes:
+        # Get metrics from DB
+        metrics_db = await crud.get_fund_metrics(session, code)
+        
+        # If no metrics in DB, we could trigger a sync, but for comparison 
+        # we'll return what we have to keep it fast.
+        funds_payload.append({
+            "scheme_code": code,
+            "metrics": schemas.FundMetricsRead.model_validate(metrics_db).model_dump(mode="json") if metrics_db else {}
+        })
+        
+    return {
+        "funds": funds_payload,
+        "metrics_comparison": {} # Placeholder for aggregate comparison metrics
+    }

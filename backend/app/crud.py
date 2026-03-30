@@ -1,15 +1,18 @@
-from sqlalchemy import select, insert, update, delete, func
+from sqlalchemy import select, insert, update, delete, func, text
 from sqlalchemy.ext.asyncio import AsyncSession
-from typing import Optional, List
-from .models import FundMaster, BenchmarkMaster, FundNavHistory, BenchmarkNavHistory, FundMetrics
+from sqlalchemy.dialects.postgresql import insert as pg_insert
+from sqlalchemy.orm import joinedload
+from sqlalchemy.exc import IntegrityError
+from typing import Optional, List, Tuple
+from datetime import datetime
+import uuid
+
+from .models import FundMaster, BenchmarkMaster, FundNavHistory, BenchmarkNavHistory, FundMetrics, BenchmarkMetrics, SyncJob, FundExpenseRatio
 from .schemas import (
     FundMasterCreate, FundMasterUpdate,
     BenchmarkMasterCreate, BenchmarkMasterUpdate,
     FundNavHistoryCreate, BenchmarkNavHistoryCreate
 )
-from sqlalchemy.dialects.postgresql import insert as pg_insert
-from datetime import datetime
-from sqlalchemy.orm import joinedload
 
 # ============================================================================
 # FUND MASTER CRUD
@@ -20,7 +23,6 @@ async def create_fund_master(session: AsyncSession, fund_in: FundMasterCreate):
     res = await session.execute(stmt)
     fund = res.scalar_one()
     await session.commit()
-    # Re-fetch to ensure all relationships are handled correctly for serialization
     return await get_fund_master_by_code(session, fund.scheme_code)
 
 async def get_fund_master_by_code(session: AsyncSession, scheme_code: str):
@@ -35,7 +37,7 @@ async def get_all_fund_masters(
     amc: Optional[str] = None,
     skip: int = 0, 
     limit: int = 100
-):
+) -> List[FundMaster]:
     q = select(FundMaster)
     if is_active is not None:
         q = q.where(FundMaster.is_active == is_active)
@@ -53,8 +55,7 @@ async def get_fund_masters_count(
     is_active: Optional[bool] = None,
     category: Optional[str] = None,
     amc: Optional[str] = None
-):
-    from sqlalchemy import func
+) -> int:
     q = select(func.count(FundMaster.scheme_code))
     if is_active is not None:
         q = q.where(FundMaster.is_active == is_active)
@@ -64,7 +65,7 @@ async def get_fund_masters_count(
         q = q.where(FundMaster.amc_name.ilike(f"%{amc}%"))
         
     res = await session.execute(q)
-    return res.scalar()
+    return res.scalar() or 0
 
 async def update_fund_master(session: AsyncSession, scheme_code: str, fund_in: FundMasterUpdate):
     data = fund_in.model_dump(exclude_unset=True)
@@ -80,7 +81,6 @@ async def update_fund_master(session: AsyncSession, scheme_code: str, fund_in: F
     return await get_fund_master_by_code(session, scheme_code)
 
 async def delete_fund_master(session: AsyncSession, scheme_code: str):
-    # Fetch first to have the object for the response before deleting
     fund = await get_fund_master_by_code(session, scheme_code)
     if not fund:
         return None
@@ -99,7 +99,6 @@ async def create_benchmark_master(session: AsyncSession, benchmark_in: Benchmark
     res = await session.execute(stmt)
     benchmark = res.scalar_one()
     await session.commit()
-    # Re-fetch to ensure relationships are securely eagerly loaded for schema response
     return await get_benchmark_master(session, benchmark.benchmark_code)
 
 async def get_benchmark_master(session: AsyncSession, benchmark_code: str):
@@ -107,7 +106,13 @@ async def get_benchmark_master(session: AsyncSession, benchmark_code: str):
     res = await session.execute(q)
     return res.unique().scalar_one_or_none()
 
-async def get_all_benchmark_masters(session: AsyncSession, is_active: Optional[bool] = None, skip: int = 0, limit: int = 100, search: Optional[str] = None):
+async def get_all_benchmark_masters(
+    session: AsyncSession, 
+    is_active: Optional[bool] = None, 
+    skip: int = 0, 
+    limit: int = 100, 
+    search: Optional[str] = None
+) -> Tuple[List[BenchmarkMaster], int]:
     q = select(BenchmarkMaster)
     if is_active is not None:
         q = q.where(BenchmarkMaster.is_active == is_active)
@@ -117,10 +122,10 @@ async def get_all_benchmark_masters(session: AsyncSession, is_active: Optional[b
             (BenchmarkMaster.benchmark_code.ilike(f"%{search}%"))
         )
     
-    # Total count (subqueries shouldn't have eager loads)
+    # Total count using a subquery to preserve filters
     count_q = select(func.count()).select_from(q.subquery())
     total_res = await session.execute(count_q)
-    total = total_res.scalar()
+    total = total_res.scalar() or 0
     
     # Items
     q_items = q.options(joinedload(BenchmarkMaster.metrics)).offset(skip).limit(limit)
@@ -158,11 +163,19 @@ async def bulk_insert_fund_navs(session: AsyncSession, scheme_code: str, nav_dat
     if not nav_data: return 0
     rows = []
     for d, v in nav_data.items():
-        rows.append({
-            "scheme_code": scheme_code,
-            "nav_date": datetime.strptime(d, "%Y-%m-%d").date(),
-            "nav_value": float(v)
-        })
+        try:
+            # Handle potential string dates from JSON
+            date_obj = datetime.strptime(d, "%Y-%m-%d").date() if isinstance(d, str) else d
+            rows.append({
+                "scheme_code": scheme_code,
+                "nav_date": date_obj,
+                "nav_value": float(v)
+            })
+        except (ValueError, TypeError):
+            continue
+
+    if not rows: return 0
+
     stmt = pg_insert(FundNavHistory).values(rows)
     stmt = stmt.on_conflict_do_update(
         index_elements=['scheme_code', 'nav_date'],
@@ -176,11 +189,18 @@ async def bulk_insert_benchmark_navs(session: AsyncSession, benchmark_code: str,
     if not nav_data: return 0
     rows = []
     for d, v in nav_data.items():
-        rows.append({
-            "benchmark_code": benchmark_code,
-            "nav_date": datetime.strptime(d, "%Y-%m-%d").date(),
-            "index_value": float(v)
-        })
+        try:
+            date_obj = datetime.strptime(d, "%Y-%m-%d").date() if isinstance(d, str) else d
+            rows.append({
+                "benchmark_code": benchmark_code,
+                "nav_date": date_obj,
+                "index_value": float(v)
+            })
+        except (ValueError, TypeError):
+            continue
+
+    if not rows: return 0
+
     stmt = pg_insert(BenchmarkNavHistory).values(rows)
     stmt = stmt.on_conflict_do_update(
         index_elements=['benchmark_code', 'nav_date'],
@@ -201,24 +221,29 @@ async def get_benchmark_nav_history(session: AsyncSession, benchmark_code: str, 
     return res.scalars().all()
 
 # ============================================================================
-# FUND METRICS CRUD
+# METRICS CRUD
 # ============================================================================
 
 async def upsert_benchmark_metrics(session: AsyncSession, metrics_data: dict):
-    from .models import BenchmarkMetrics
+    # Exclude PK from update set to avoid DB error
+    update_data = {k: v for k, v in metrics_data.items() if k != 'benchmark_code'}
+    
     stmt = pg_insert(BenchmarkMetrics).values(metrics_data)
     stmt = stmt.on_conflict_do_update(
         index_elements=['benchmark_code'],
-        set_=metrics_data
+        set_=update_data
     )
     await session.execute(stmt)
     await session.commit()
 
 async def upsert_fund_metrics(session: AsyncSession, metrics_data: dict):
+    # Exclude PK from update set to avoid DB error
+    update_data = {k: v for k, v in metrics_data.items() if k != 'scheme_code'}
+    
     stmt = pg_insert(FundMetrics).values(metrics_data)
     stmt = stmt.on_conflict_do_update(
         index_elements=['scheme_code'],
-        set_=metrics_data
+        set_=update_data
     )
     await session.execute(stmt)
     await session.commit()
@@ -229,15 +254,35 @@ async def get_fund_metrics(session: AsyncSession, scheme_code: str):
     return res.scalar_one_or_none()
 
 # ============================================================================
+# EXPENSE RATIO CRUD
+# ============================================================================
+
+async def upsert_fund_expense_ratio(session: AsyncSession, expense_data: dict):
+    # Exclude PK from update set if it exists
+    update_data = {k: v for k, v in expense_data.items() if k not in ['id', 'scheme_code', 'as_of_date']}
+    
+    stmt = pg_insert(FundExpenseRatio).values(expense_data)
+    if update_data:
+        stmt = stmt.on_conflict_do_update(
+            index_elements=['scheme_code', 'as_of_date'],
+            set_=update_data
+        )
+    else:
+        stmt = stmt.on_conflict_do_nothing()
+        
+    await session.execute(stmt)
+    await session.commit()
+
+async def get_fund_expense_ratios(session: AsyncSession, scheme_code: str, limit: int = 100):
+    q = select(FundExpenseRatio).where(FundExpenseRatio.scheme_code == scheme_code).order_by(FundExpenseRatio.as_of_date.desc()).limit(limit)
+    res = await session.execute(q)
+    return res.scalars().all()
+
+# ============================================================================
 # SYNC JOB CRUD
 # ============================================================================
 
-from .models import SyncJob
-import uuid
-
-from sqlalchemy.exc import IntegrityError
-
-async def create_sync_job(session: AsyncSession, scheme_code: str):
+async def create_sync_job(session: AsyncSession, scheme_code: str) -> Tuple[SyncJob, bool]:
     job = SyncJob(scheme_code=scheme_code, status="RUNNING", message="Initializing sync...")
     try:
         session.add(job)
@@ -246,7 +291,6 @@ async def create_sync_job(session: AsyncSession, scheme_code: str):
         return job, True
     except IntegrityError:
         await session.rollback()
-        # Fallback: get the existing running job
         existing_job = await get_latest_sync_job(session, scheme_code)
         return existing_job, False
 

@@ -1,15 +1,23 @@
 from typing import List
 import io
+import logging
 import pandas as pd
+from datetime import datetime, timezone
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File
 from sqlalchemy.ext.asyncio import AsyncSession
 from ..database import get_db
-from .. import crud, schemas
+from .. import crud, schemas, analytics, security
 
+logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/benchmark-navs", tags=["benchmark-navs"])
 
 @router.post("/{benchmark_code}/bulk", status_code=201)
-async def upload_bulk_benchmark_nav(benchmark_code: str, payload: schemas.BulkNavUpload, session: AsyncSession = Depends(get_db)):
+async def upload_bulk_benchmark_nav(
+    benchmark_code: str, 
+    payload: schemas.BulkNavUpload, 
+    session: AsyncSession = Depends(get_db),
+    current_user: str = Depends(security.get_current_user)
+):
     count = await crud.bulk_insert_benchmark_navs(session, benchmark_code, payload.data)
     return {"message": f"Successfully processed {count} benchmark records"}
 
@@ -17,23 +25,29 @@ async def upload_bulk_benchmark_nav(benchmark_code: str, payload: schemas.BulkNa
 async def upload_benchmark_csv(
     benchmark_code: str, 
     file: UploadFile = File(...), 
-    session: AsyncSession = Depends(get_db)
+    session: AsyncSession = Depends(get_db),
+    current_user: str = Depends(security.get_current_user)
 ):
-    # Check if benchmark exists
+    # 1. Validation
+    if file.content_type not in ("text/csv", "application/vnd.ms-excel", "text/plain"):
+        raise HTTPException(status_code=415, detail="Only CSV files are accepted")
+    
+    MAX_SIZE = 10 * 1024 * 1024  # 10 MB
+    content = await file.read(MAX_SIZE + 1)
+    if len(content) > MAX_SIZE:
+        raise HTTPException(status_code=413, detail="File size exceeds 10MB limit")
+    
+    # 2. Check if benchmark exists
     benchmark = await crud.get_benchmark_master(session, benchmark_code)
     if not benchmark:
         raise HTTPException(status_code=404, detail=f"Benchmark {benchmark_code} not found")
 
     try:
-        content = await file.read()
         # Nifty CSVs are often comma separated with quotes
         df = pd.read_csv(io.BytesIO(content))
         
         # Standardize columns (strip quotes and spaces if any)
         df.columns = [c.strip().replace('"', '') for c in df.columns]
-        # All logic now uses the df loaded at line 30
-        from .. import analytics
-        from datetime import datetime
         
         # Determine CSV structure and safety check 'Index Name' if present
         if "Index Name" in df.columns:
@@ -53,7 +67,7 @@ async def upload_benchmark_csv(
                 normalized_name = CSV_ALIAS_MAP.get(normalized_name, normalized_name)
 
                 if normalized_name != benchmark_code and not normalized_name.startswith(benchmark_code):
-                    raise HTTPException(status_code=400, detail=f"CSV Index Name '{raw_name}' (normalized: {normalized_name}) does not map to target benchmark '{benchmark_code}'")
+                    raise HTTPException(status_code=400, detail=f"CSV Index Name '{raw_name}' does not map to target benchmark '{benchmark_code}'")
 
         # Process standard format: "Date","Close" vs specific format: "Index Name","Date","Open","High","Low","Close"
         if "Close" in df.columns and "Date" in df.columns:
@@ -70,7 +84,7 @@ async def upload_benchmark_csv(
         
         records_inserted = await crud.bulk_insert_benchmark_navs(session, benchmark_code, nav_dict)
         
-        # Triger Analytics Post Processing
+        # Trigger Analytics Post Processing
         nav_history = await crud.get_benchmark_nav_history(session, benchmark_code, limit=2000)
         if nav_history:
             nav_list = [{"nav_date": n.nav_date, "nav_value": float(n.index_value)} for n in nav_history]
@@ -86,7 +100,7 @@ async def upload_benchmark_csv(
                 "sortino_ratio": calc_results.get("sortino"),
                 "standard_deviation": calc_results.get("std_dev"),
                 "maximum_drawdown": calc_results.get("max_drawdown"),
-                "metrics_calculated_at": datetime.now()
+                "metrics_calculated_at": datetime.now(timezone.utc)
             }
             await crud.upsert_benchmark_metrics(session, metrics_payload)
 
@@ -94,7 +108,7 @@ async def upload_benchmark_csv(
     except HTTPException:
         raise
     except Exception as e:
-        print(f"Upload error: {e}")
+        logger.exception(f"Upload error for {benchmark_code}")
         raise HTTPException(status_code=500, detail=f"Failed to process CSV: {str(e)}")
 
 @router.get("/{benchmark_code}", response_model=List[schemas.BenchmarkNavHistoryRead])
