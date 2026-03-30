@@ -1,6 +1,8 @@
 import { createSlice, createAsyncThunk } from '@reduxjs/toolkit';
 import fundService from '../../api/services/fundService';
 
+// ─── Fund-level sync ────────────────────────────────────────────────────────
+
 export const triggerSync = createAsyncThunk(
   'sync/triggerSync',
   async (schemeCode, { rejectWithValue }) => {
@@ -20,7 +22,6 @@ export const fetchSyncStatus = createAsyncThunk(
       const response = await fundService.getSyncStatus(schemeCode);
       return { schemeCode, ...response };
     } catch (err) {
-      // If 404, might mean no job exists yet, which is fine
       if (err.response?.status === 404) {
         return { schemeCode, status: 'IDLE' };
       }
@@ -41,15 +42,50 @@ export const triggerGlobalSync = createAsyncThunk(
   }
 );
 
+// ─── Index-level sync ───────────────────────────────────────────────────────
+
+export const triggerIndexSync = createAsyncThunk(
+  'sync/triggerIndexSync',
+  async (benchmarkCode, { rejectWithValue }) => {
+    try {
+      const response = await fundService.syncFund(benchmarkCode); // reuse the generic sync endpoint
+      return { benchmarkCode, ...response };
+    } catch (err) {
+      return rejectWithValue(err.response?.data || 'Failed to trigger index sync');
+    }
+  }
+);
+
+export const fetchIndexSyncStatus = createAsyncThunk(
+  'sync/fetchIndexSyncStatus',
+  async (benchmarkCode, { rejectWithValue }) => {
+    try {
+      const response = await fundService.getSyncStatus(benchmarkCode);
+      return { benchmarkCode, ...response };
+    } catch (err) {
+      if (err.response?.status === 404) {
+        return { benchmarkCode, status: 'IDLE' };
+      }
+      return rejectWithValue(err.response?.data || 'Failed to fetch index sync status');
+    }
+  }
+);
+
+// ─── Slice ──────────────────────────────────────────────────────────────────
+
 const syncSlice = createSlice({
   name: 'sync',
   initialState: {
-    jobs: {}, // schemeCode -> { status, message, job_id, error }
+    jobs: {},       // schemeCode   -> { status, message, job_id, error }
+    indexJobs: {},  // benchmarkCode -> { status, message, job_id, error }
     globalSync: { status: 'IDLE', message: null }
   },
   reducers: {
     clearJob: (state, action) => {
       delete state.jobs[action.payload];
+    },
+    clearIndexJob: (state, action) => {
+      delete state.indexJobs[action.payload];
     },
     clearGlobalSync: (state) => {
       state.globalSync = { status: 'IDLE', message: null };
@@ -57,40 +93,59 @@ const syncSlice = createSlice({
   },
   extraReducers: (builder) => {
     builder
-      // Trigger Sync
+      // ── Fund sync ──
       .addCase(triggerSync.pending, (state, action) => {
         const schemeCode = action.meta.arg;
-        state.jobs[schemeCode] = { 
-          ...state.jobs[schemeCode], 
-          status: 'RUNNING', 
-          message: 'Initializing sync...' 
+        state.jobs[schemeCode] = {
+          ...state.jobs[schemeCode],
+          status: 'RUNNING',
+          message: 'Initializing sync...'
         };
       })
       .addCase(triggerSync.fulfilled, (state, action) => {
         const { schemeCode, job_id, sync_status, sync_message } = action.payload;
-        state.jobs[schemeCode] = { 
-          status: sync_status || 'RUNNING', 
-          message: sync_message || 'Sync started...', 
-          job_id 
+        state.jobs[schemeCode] = {
+          status: sync_status || 'RUNNING',
+          message: sync_message || 'Sync started...',
+          job_id
         };
       })
       .addCase(triggerSync.rejected, (state, action) => {
         const schemeCode = action.meta.arg;
-        state.jobs[schemeCode] = { 
-          status: 'FAILED', 
-          error: action.payload 
-        };
+        state.jobs[schemeCode] = { status: 'FAILED', error: action.payload };
       })
-      // Fetch Status
       .addCase(fetchSyncStatus.fulfilled, (state, action) => {
         const { schemeCode, status, message, id } = action.payload;
-        state.jobs[schemeCode] = { 
-          status, 
-          message, 
-          job_id: id 
+        state.jobs[schemeCode] = { status, message, job_id: id };
+      })
+
+      // ── Index sync ──
+      .addCase(triggerIndexSync.pending, (state, action) => {
+        const benchmarkCode = action.meta.arg;
+        state.indexJobs[benchmarkCode] = {
+          ...state.indexJobs[benchmarkCode],
+          status: 'RUNNING',
+          message: 'Initializing index sync...'
         };
       })
-      // Global Sync
+      .addCase(triggerIndexSync.fulfilled, (state, action) => {
+        const { benchmarkCode, job_id, sync_status, sync_message } = action.payload;
+        state.indexJobs[benchmarkCode] = {
+          status: sync_status || 'RUNNING',
+          message: sync_message || 'Index sync started...',
+          job_id
+        };
+      })
+      .addCase(triggerIndexSync.rejected, (state, action) => {
+        const benchmarkCode = action.meta.arg;
+        state.indexJobs[benchmarkCode] = { status: 'FAILED', error: action.payload };
+      })
+      .addCase(fetchIndexSyncStatus.fulfilled, (state, action) => {
+        const { benchmarkCode, status, message, id } = action.payload;
+        state.indexJobs[benchmarkCode] = { status, message, job_id: id };
+      })
+
+      // ── Global sync ──
       .addCase(triggerGlobalSync.pending, (state) => {
         state.globalSync = { status: 'RUNNING', message: 'Initiating bulk synchronization...' };
       })
@@ -103,5 +158,5 @@ const syncSlice = createSlice({
   }
 });
 
-export const { clearJob, clearGlobalSync } = syncSlice.actions;
+export const { clearJob, clearIndexJob, clearGlobalSync } = syncSlice.actions;
 export default syncSlice.reducer;

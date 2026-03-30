@@ -1,4 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
+import { useSelector, useDispatch } from 'react-redux';
+import { fetchIndices, setCurrentPage, setPageSize, setSearchQuery } from '../store/slices/indicesSlice';
 import fundService from '../api/services/fundService';
 import './MFListing.css'; // Utilizing primary design system
 
@@ -19,7 +21,7 @@ const IconTrash = () => (
 );
 
 const IndicesListing = () => {
-    // UI State
+    // UI State (component-local only)
     const [viewMode, setViewMode] = useState('grid');
     const [isFormOpen, setIsFormOpen] = useState(false);
     const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
@@ -30,42 +32,25 @@ const IndicesListing = () => {
         benchmark_type: 'Equity', asset_class: 'Equity', is_active: true
     });
 
-    // Data & Pagination State
-    const [indices, setIndices] = useState([]);
-    const [total, setTotal] = useState(0);
-    const [loading, setLoading] = useState(true);
-    const [error, setError] = useState(null);
-    const [currentPage, setCurrentPage] = useState(1);
-    const [pageSize, setPageSize] = useState(10);
-    const [searchQuery, setSearchQuery] = useState('');
+    // Redux — indices data & pagination
+    const dispatch = useDispatch();
+    const { items: indices, total, loading, error, currentPage, pageSize, searchQuery } = useSelector(state => state.indices);
 
-    const fetchIndices = useCallback(async () => {
-        setLoading(true);
-        try {
-            const skip = (currentPage - 1) * pageSize;
-            const data = await fundService.getBenchmarks(skip, pageSize, searchQuery);
-            setIndices(data.items);
-            setTotal(data.total);
-            setLoading(false);
-        } catch (err) {
-            console.error("Failed to fetch indices", err);
-            setError("Market monitoring feeds currently unavailable.");
-            setLoading(false);
-        }
-    }, [currentPage, pageSize, searchQuery]);
+    const loadIndices = useCallback(() => {
+        const skip = (currentPage - 1) * pageSize;
+        dispatch(fetchIndices({ skip, limit: pageSize, search: searchQuery }));
+    }, [currentPage, pageSize, searchQuery, dispatch]);
 
     useEffect(() => {
-        fetchIndices();
-    }, [fetchIndices]);
+        loadIndices();
+    }, [loadIndices]);
 
     const handleSearchChange = (e) => {
-        setSearchQuery(e.target.value);
-        setCurrentPage(1);
+        dispatch(setSearchQuery(e.target.value));
     };
 
     const handlePageSizeChange = (e) => {
-        setPageSize(parseInt(e.target.value));
-        setCurrentPage(1);
+        dispatch(setPageSize(parseInt(e.target.value)));
     };
 
     const handleDelete = (code) => {
@@ -79,7 +64,7 @@ const IndicesListing = () => {
             await fundService.deleteBenchmark(deletingCode);
             setIsDeleteModalOpen(false);
             setDeletingCode(null);
-            fetchIndices();
+            loadIndices();
         } catch (err) {
             alert("Protocol breach detected. Delete operation aborted.");
         }
@@ -95,7 +80,7 @@ const IndicesListing = () => {
             }
             setIsFormOpen(false);
             setEditingIndex(null);
-            fetchIndices();
+            loadIndices();
         } catch (err) {
             alert("Ledger update failed. Check constraints.");
         }
@@ -380,7 +365,7 @@ const IndicesListing = () => {
                             <div className="flex gap-8 items-center">
                                 <button
                                     disabled={currentPage === 1}
-                                    onClick={() => setCurrentPage(p => p - 1)}
+                                    onClick={() => dispatch(setCurrentPage(currentPage - 1))}
                                     className="bck-btn btn-premium btn-premium-outline"
                                 >← BACK</button>
                                 <span className="page-info">
@@ -388,7 +373,7 @@ const IndicesListing = () => {
                                 </span>
                                 <button
                                     disabled={currentPage === totalPages}
-                                    onClick={() => setCurrentPage(p => p + 1)}
+                                    onClick={() => dispatch(setCurrentPage(currentPage + 1))}
                                     className="fwd-btn btn-premium btn-premium-outline"
                                 >NEXT →</button>
                             </div>

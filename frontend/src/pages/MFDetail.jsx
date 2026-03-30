@@ -13,6 +13,7 @@ const MFDetail = ({ schemeCode }) => {
     const [fund, setFund] = useState(null);
     const [navHistory, setNavHistory] = useState([]);
     const [metrics, setMetrics] = useState(null);
+    const [expenseRatios, setExpenseRatios] = useState([]);
     const [loading, setLoading] = useState(true);
     const [timeRange, setTimeRange] = useState('ALL');
 
@@ -32,6 +33,11 @@ const MFDetail = ({ schemeCode }) => {
             const res = await fundService.getFundMetrics(schemeCode).catch(() => null);
             if (res) {
                 setMetrics(res.metrics);
+            }
+
+            const expRes = await fundService.getFundExpenseRatio(schemeCode).catch(() => []);
+            if (expRes) {
+                setExpenseRatios(expRes);
             }
 
             if (force) {
@@ -227,9 +233,16 @@ const MFDetail = ({ schemeCode }) => {
                         { l: "Alpha", v: formatMetric(metrics?.alpha) },
                         { l: "Beta", v: formatMetric(metrics?.beta) },
                         { l: "Standard Dev.", v: formatMetric(metrics?.standard_deviation) },
-                        { l: "Max Drawdown", v: formatPercent(metrics?.maximum_drawdown * -1) },
+                        { l: "Max Drawdown", v: metrics?.maximum_drawdown != null ? formatPercent(metrics.maximum_drawdown * -1) : '--' },
                         { l: "Tracking Error", v: formatMetric(metrics?.tracking_error) },
-                        { l: "Info Ratio", v: formatMetric(metrics?.information_ratio) }
+                        { l: "Info Ratio", v: formatMetric(metrics?.information_ratio) },
+                        { l: "Abs 1Y Return", v: formatPercent(metrics?.absolute_return_1y) },
+                        { l: "Abs 3Y Return", v: formatPercent(metrics?.absolute_return_3y) },
+                        { l: "Abs 5Y Return", v: formatPercent(metrics?.absolute_return_5y) },
+                        { l: "Abs 10Y Return", v: formatPercent(metrics?.absolute_return_10y) },
+                        { l: "Short 6M Return", v: formatPercent(metrics?.short_term_return_6m) },
+                        { l: "Upside Capture", v: formatMetric(metrics?.upside_capture) },
+                        { l: "Downside Capture", v: formatMetric(metrics?.downside_capture) }
                     ].map((m, i) => (
                         <div key={i} className="glass-panel metric-box glow-card reveal active" style={{ animationDelay: `${i * 0.05}s` }}>
                             <span className="metric-label">{m.l}</span>
@@ -239,6 +252,20 @@ const MFDetail = ({ schemeCode }) => {
                 </div>
             </section>
 
+            {expenseRatios && expenseRatios.length > 0 && (
+                <section className="section-spacer">
+                    <h3 className="section-heading-lux uppercase mb-8">Internal Expense Breakdown (TER)</h3>
+                    <div className="glass-panel glow-card p-6 border border-white/10 flex gap-10 overflow-x-auto custom-scrollbar">
+                        {expenseRatios.map((exp, i) => (
+                            <div key={i} className="flex flex-col items-center justify-center min-w-max p-4 rounded-xl" style={{background: 'rgba(255,255,255,0.02)'}}>
+                                <span className="text-[10px] text-muted uppercase tracking-widest mb-2 font-bold">{exp.as_of_date}</span>
+                                <span className="font-heading text-xl text-primary">{Number(exp.expense_ratio * 100).toFixed(2)}%</span>
+                            </div>
+                        ))}
+                    </div>
+                </section>
+            )}
+
             <section className="section-spacer">
                 <h3 className="section-heading-lux uppercase mb-8">Asset Metadata & Identification</h3>
                 <div className="glass-panel glow-card p-0 overflow-hidden">
@@ -247,6 +274,10 @@ const MFDetail = ({ schemeCode }) => {
                             <tr>
                                 <td className="m-label">Scheme Identifier</td>
                                 <td className="m-value">{fund.scheme_code}</td>
+                            </tr>
+                            <tr>
+                                <td className="m-label">ISIN</td>
+                                <td className="m-value font-mono tracking-widest text-[11px] text-primary">{fund.isin || 'UNASSIGNED'}</td>
                             </tr>
                             <tr>
                                 <td className="m-label">AMC Name</td>

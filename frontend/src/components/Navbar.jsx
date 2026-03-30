@@ -3,7 +3,7 @@ import { useTheme } from '../context/ThemeContext';
 import './Navbar.css';
 
 const Navbar = () => {
-    const { theme } = useTheme();
+    useTheme(); // Consume theme context — may be used for conditional styling in future
 
     return (
         <nav className="navbar">

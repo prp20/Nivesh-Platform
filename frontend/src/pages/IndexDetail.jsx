@@ -1,9 +1,15 @@
 import React, { useState, useEffect, useMemo } from 'react';
+import { useSelector, useDispatch } from 'react-redux';
+import { triggerIndexSync, fetchIndexSyncStatus } from '../store/slices/syncSlice';
 import fundService from '../api/services/fundService';
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 import './MFDetail.css';
 
 const IndexDetail = ({ benchmarkCode }) => {
+    const dispatch = useDispatch();
+    const syncJob = useSelector(state => state.sync.indexJobs[benchmarkCode]);
+    const isSyncing = syncJob?.status === 'RUNNING';
+
     const [index, setIndex] = useState(null);
     const [navHistory, setNavHistory] = useState([]);
     const [loading, setLoading] = useState(true);
@@ -43,7 +49,23 @@ const IndexDetail = ({ benchmarkCode }) => {
             }
         };
         fetchDetail();
-    }, [benchmarkCode]);
+        dispatch(fetchIndexSyncStatus(benchmarkCode));
+    }, [benchmarkCode, dispatch]);
+
+    // Poll for sync status when a sync is in progress
+    useEffect(() => {
+        let interval;
+        if (isSyncing) {
+            interval = setInterval(() => {
+                dispatch(fetchIndexSyncStatus(benchmarkCode)).then((action) => {
+                    if (action.payload?.status === 'COMPLETED') {
+                        fetchHistory();
+                    }
+                });
+            }, 3000);
+        }
+        return () => clearInterval(interval);
+    }, [isSyncing, benchmarkCode, dispatch]);
 
     const handleFileUpload = async (event) => {
         const file = event.target.files[0];
@@ -127,7 +149,13 @@ const IndexDetail = ({ benchmarkCode }) => {
                     </div>
 
                     <div className="flex justify-center gap-4 mt-10">
-                        <button className="btn-premium btn-premium-refresh">Sync Market Stream</button>
+                        <button
+                            className={`btn-premium btn-premium-refresh ${isSyncing ? 'loading' : ''}`}
+                            onClick={() => dispatch(triggerIndexSync(benchmarkCode))}
+                            disabled={isSyncing}
+                        >
+                            {isSyncing ? 'Syncing Market Stream...' : 'Sync Market Stream'}
+                        </button>
                         <button className="btn-premium btn-premium-primary px-12">Monitor Integration</button>
                     </div>
                 </div>
@@ -144,7 +172,7 @@ const IndexDetail = ({ benchmarkCode }) => {
                 </div>
                 <div className="glass-panel metric-strip-item glow-card">
                     <span className="m-label">Volatility Delta</span>
-                    <div className="m-value font-heading text-primary">HEALTY</div>
+                    <div className="m-value font-heading text-primary">HEALTHY</div>
                 </div>
             </div>
 
@@ -269,7 +297,7 @@ const IndexDetail = ({ benchmarkCode }) => {
                             <tr>
                                 <td className="m-label">Monitoring Status</td>
                                 <td className="m-value">
-                                    <span style={{ color: 'var(--color-accent)' }}>HEALTY INTEGRATION</span>
+                                    <span style={{ color: 'var(--color-accent)' }}>HEALTHY INTEGRATION</span>
                                 </td>
                             </tr>
                         </tbody>

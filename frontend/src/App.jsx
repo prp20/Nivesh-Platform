@@ -31,7 +31,7 @@ const AppContent = () => {
       } else if (hash.startsWith('index-detail-')) {
         setActiveTab('index-detail');
         setActiveParams(hash.replace('index-detail-', ''));
-      } else if (hash === 'compare') {
+      } else if (hash.startsWith('compare')) {
         setActiveTab('compare');
         setActiveParams('');
       } else {
