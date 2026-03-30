@@ -5,20 +5,27 @@ Nivesh Elite uses **PostgreSQL** with the **TimescaleDB** extension to effective
 ## 🐘 Relational Schema
 
 ### 💎 Master Data
-- `fund_master`: Stores AMFI codes, scheme names, categories, and fund house details.
+- `fund_master`: Stores AMFI codes, scheme names, categories, ISIN, and fund house details.
 - `benchmark_master`: Maps market indices (e.g., NIFTY 50) to their respective exchange tickers.
 
 ### 📈 Computed Metrics
-- `fund_metrics`: Stores daily snapshots of Sharpe, Sortino, and volatility metrics to avoid redundant heavy calculations.
+- `fund_metrics`: Stores daily risk/return metrics:
+    - **Performance**: 1Y/3Y/5Y/10Y absolute returns, 3Y/5Y rolling returns, 6M short-term return.
+    - **Risk**: Sharpe, Sortino, Std Dev, Max Drawdown.
+    - **Relative**: Alpha, Beta, Tracking Error, Information Ratio.
+    - **Capture**: Upside/Downside capture ratios.
+    - **Metadata**: Data completeness percentage and calculation period.
+
+### 📑 Other Data
+- `fund_expense_ratio`: Stores historical Total Expense Ratio (TER) data for funds.
 
 ---
 
 ## ⚡ Time-Series (TimescaleDB)
-Historical values are stored in **Hypertables**, which automatically partition data by time segments (chunks) for optimized indexing and retrieval.
+Historical values are stored in **Hypertables**, partitioned by `nav_date`.
 
 ### `fund_nav_history`
 - **Primary Keys**: `(scheme_code, nav_date)`
-- **Partitioning**: Optimized for range queries over `nav_date`.
 
 ### `benchmark_nav_history`
 - **Primary Keys**: `(benchmark_code, nav_date)`
@@ -26,7 +33,9 @@ Historical values are stored in **Hypertables**, which automatically partition d
 ---
 
 ## 🔄 Sync Tracking
-- `sync_jobs`: Tracks the lifecycle of background data fetches. This prevents overlapping syncs for the same asset and provides real-time feedback to the UI.
+- `sync_jobs`: Manages asynchronous data fetches.
+    - **Statuses**: `RUNNING`, `COMPLETED`, `FAILED`.
+    - **Concurrency**: Prevent overlapping jobs for the same `scheme_code` using a partial unique index.
 
 ---
 

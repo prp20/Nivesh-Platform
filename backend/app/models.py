@@ -31,12 +31,14 @@ class FundMaster(Base):
     scheme_category = Column(String(100), nullable=False)
     scheme_subcategory = Column(String(100))
     benchmark_index_code = Column(String(50))
+    isin = Column(String(50), unique=True, index=True)
     is_active = Column(Boolean, default=True)
     created_at = Column(TIMESTAMP, server_default=func.now())
     updated_at = Column(TIMESTAMP, server_default=func.now(), onupdate=func.now())
 
     # Relationships
     metrics = relationship("FundMetrics", back_populates="fund", uselist=False)
+    expense_ratios = relationship("FundExpenseRatio", back_populates="fund", cascade="all, delete-orphan")
 
 
 class BenchmarkMaster(Base):
@@ -51,6 +53,9 @@ class BenchmarkMaster(Base):
     is_active = Column(Boolean, default=True)
     created_at = Column(TIMESTAMP, server_default=func.now())
     updated_at = Column(TIMESTAMP, server_default=func.now(), onupdate=func.now())
+
+    # Relationships
+    metrics = relationship("BenchmarkMetrics", back_populates="benchmark", uselist=False)
 
 
 class FundNavHistory(Base):
@@ -79,6 +84,26 @@ class BenchmarkNavHistory(Base):
     created_at = Column(TIMESTAMP, server_default=func.now())
 
 
+class BenchmarkMetrics(Base):
+    """Daily computed performance and risk metrics for indices"""
+    __tablename__ = "benchmark_metrics"
+    
+    benchmark_code = Column(String(50), ForeignKey("benchmark_master.benchmark_code", ondelete="CASCADE"), primary_key=True)
+    current_nav = Column(Numeric(15, 4), nullable=False)
+    nav_date = Column(Date, nullable=False)
+    rolling_return_3year = Column(Numeric(10, 4))
+    rolling_return_5year = Column(Numeric(10, 4))
+    sortino_ratio = Column(Numeric(10, 4))
+    sharpe_ratio = Column(Numeric(10, 4))
+    standard_deviation = Column(Numeric(10, 4))
+    maximum_drawdown = Column(Numeric(10, 4))
+    metrics_calculated_at = Column(TIMESTAMP, server_default=func.now())
+    updated_at = Column(TIMESTAMP, server_default=func.now(), onupdate=func.now())
+
+    # Relationships
+    benchmark = relationship("BenchmarkMaster", back_populates="metrics")
+
+
 class FundMetrics(Base):
     """Daily computed performance and risk metrics"""
     __tablename__ = "fund_metrics"
@@ -89,6 +114,13 @@ class FundMetrics(Base):
     aum_in_crores = Column(Numeric(18, 2))
     rolling_return_3year = Column(Numeric(10, 4))
     rolling_return_5year = Column(Numeric(10, 4))
+    absolute_return_1y = Column(Numeric(10, 4))
+    absolute_return_3y = Column(Numeric(10, 4))
+    absolute_return_5y = Column(Numeric(10, 4))
+    absolute_return_10y = Column(Numeric(10, 4))
+    short_term_return_6m = Column(Numeric(10, 4)) # Adding 6M as it's common
+    upside_capture = Column(Numeric(10, 4))
+    downside_capture = Column(Numeric(10, 4))
     sortino_ratio = Column(Numeric(10, 4))
     sharpe_ratio = Column(Numeric(10, 4))
     alpha = Column(Numeric(10, 4))
@@ -106,3 +138,22 @@ class FundMetrics(Base):
 
     # Relationships
     fund = relationship("FundMaster", back_populates="metrics")
+
+
+class FundExpenseRatio(Base):
+    """Historical expense ratio (TER) data for funds"""
+    __tablename__ = "fund_expense_ratio"
+    
+    id = Column(String(50), primary_key=True, default=lambda: str(uuid.uuid4()))
+    scheme_code = Column(String(50), ForeignKey("fund_master.scheme_code", ondelete="CASCADE"), nullable=False)
+    expense_ratio = Column(Numeric(5, 4), nullable=False)  # Example: 0.0125 for 1.25%
+    as_of_date = Column(Date, nullable=False, server_default=func.current_date())
+    created_at = Column(TIMESTAMP, server_default=func.now())
+    updated_at = Column(TIMESTAMP, server_default=func.now(), onupdate=func.now())
+
+    # Relationships
+    fund = relationship("FundMaster", back_populates="expense_ratios")
+
+    __table_args__ = (
+        UniqueConstraint('scheme_code', 'as_of_date', name='uq_fund_expense_ratio_date'),
+    )

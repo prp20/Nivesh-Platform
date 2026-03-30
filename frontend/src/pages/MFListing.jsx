@@ -1,4 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
+import { useSelector, useDispatch } from 'react-redux';
+import { fetchFunds, setCurrentPage, setPageSize, setCategoryFilter, setAmcSearch } from '../store/slices/fundsSlice';
+import { addToCompare, removeFromCompare, clearCompare } from '../store/slices/compareSlice';
 import fundService from '../api/services/fundService';
 import './MFListing.css';
 
@@ -19,12 +22,13 @@ const IconTrash = () => (
 );
 
 const MFListing = () => {
-    // UI State
+    // UI State (component-local only)
     const [viewMode, setViewMode] = useState('grid');
     const [isFormOpen, setIsFormOpen] = useState(false);
     const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
     const [deletingCode, setDeletingCode] = useState(null);
     const [editingFund, setEditingFund] = useState(null);
+    const [benchmarks, setBenchmarks] = useState([]);
     const [formData, setFormData] = useState({
         scheme_code: '', scheme_name: '', amc_name: '',
         scheme_category: 'Equity Scheme', plan_type: 'Direct',
@@ -32,52 +36,60 @@ const MFListing = () => {
         benchmark_index_code: ''
     });
 
-    // Data & Pagination State
-    const [funds, setFunds] = useState([]);
-    const [benchmarks, setBenchmarks] = useState([]);
-    const [total, setTotal] = useState(0);
-    const [loading, setLoading] = useState(true);
-    const [error, setError] = useState(null);
+    // Redux — funds data & pagination
+    const dispatch = useDispatch();
+    const { items: funds, total, loading, error, currentPage, pageSize, categoryFilter, amcSearch } = useSelector(state => state.funds);
 
-    const [currentPage, setCurrentPage] = useState(1);
-    const [pageSize, setPageSize] = useState(10);
+    // Redux — compare dock
+    const compareList = useSelector(state => state.compare.compareList);
 
-    // Filter State
-    const [categoryFilter, setCategoryFilter] = useState('All');
-    const [amcSearch, setAmcSearch] = useState('');
-
-    const fetchFunds = useCallback(async () => {
-        setLoading(true);
-        try {
-            const skip = (currentPage - 1) * pageSize;
-            const data = await fundService.getFunds(skip, pageSize, categoryFilter, amcSearch);
-            setFunds(data.items);
-            setTotal(data.total);
-            setLoading(false);
-        } catch (err) {
-            console.error("Failed to fetch funds", err);
-            setError("Connectivity error. Security protocol engaged.");
-            setLoading(false);
+    const toggleCompare = (fund) => {
+        const alreadyAdded = compareList.find(f => f.scheme_code === fund.scheme_code);
+        if (alreadyAdded) {
+            dispatch(removeFromCompare(fund.scheme_code));
+            return;
         }
-    }, [currentPage, pageSize, categoryFilter, amcSearch]);
+        if (compareList.length >= 4) {
+            alert('Comparison dock full. Maximum 4 assets allowed.');
+            return;
+        }
+        if (compareList.length > 0) {
+            const first = compareList[0];
+            if (first.scheme_category !== fund.scheme_category || first.scheme_subcategory !== fund.scheme_subcategory) {
+                alert(`Category mismatch! You can only compare funds of type: ${first.scheme_category} - ${first.scheme_subcategory || 'General'}`);
+                return;
+            }
+        }
+        dispatch(addToCompare({
+            scheme_code: fund.scheme_code,
+            scheme_name: fund.scheme_name,
+            scheme_category: fund.scheme_category,
+            scheme_subcategory: fund.scheme_subcategory,
+            amc_name: fund.amc_name,
+        }));
+    };
+
+    const loadFunds = useCallback(() => {
+        const skip = (currentPage - 1) * pageSize;
+        dispatch(fetchFunds({ skip, limit: pageSize, category: categoryFilter, amc: amcSearch }));
+    }, [currentPage, pageSize, categoryFilter, amcSearch, dispatch]);
 
     const fetchBenchmarks = async () => {
         try {
             const data = await fundService.getBenchmarks();
             setBenchmarks(data);
         } catch (err) {
-            console.error("Failed to fetch benchmarks", err);
+            console.error('Failed to fetch benchmarks', err);
         }
     };
 
     useEffect(() => {
-        fetchFunds();
+        loadFunds();
         fetchBenchmarks();
-    }, [fetchFunds]);
+    }, [loadFunds]);
 
     const handlePageSizeChange = (e) => {
-        setPageSize(parseInt(e.target.value));
-        setCurrentPage(1);
+        dispatch(setPageSize(parseInt(e.target.value)));
     };
 
     const handleDelete = (code) => {
@@ -91,21 +103,18 @@ const MFListing = () => {
             await fundService.deleteFund(deletingCode);
             setIsDeleteModalOpen(false);
             setDeletingCode(null);
-            fetchFunds();
+            loadFunds();
         } catch (err) {
-            alert("Operation failed. Unauthorized access?");
+            alert('Operation failed. Unauthorized access?');
         }
     };
 
     const handleSave = async (e) => {
         e.preventDefault();
-        
-        // Validation: Benchmark Index is Mandatory
         if (!formData.benchmark_index_code) {
-            alert("BENCHMARK SELECTION REQUIRED. Security protocol forbids unreferenced assets.");
+            alert('BENCHMARK SELECTION REQUIRED. Security protocol forbids unreferenced assets.');
             return;
         }
-
         try {
             if (editingFund) {
                 await fundService.updateFund(editingFund.scheme_code, formData);
@@ -114,15 +123,15 @@ const MFListing = () => {
             }
             setIsFormOpen(false);
             setEditingFund(null);
-            fetchFunds();
+            loadFunds();
         } catch (err) {
-            alert("Entry rejected by the ledger.");
+            alert('Entry rejected by the ledger.');
         }
     };
 
     const openEdit = (fund) => {
         setEditingFund(fund);
-        setFormData({ 
+        setFormData({
             scheme_code: fund.scheme_code,
             scheme_name: fund.scheme_name,
             amc_name: fund.amc_name,
@@ -156,18 +165,25 @@ const MFListing = () => {
                 <h1 className="font-heading heading-xl">Mutual Fund Vault</h1>
 
                 <div className="glass-panel p-6 flex justify-between items-center mb-10 control-bar-elite">
-                    <button onClick={openAdd} className="btn-premium btn-premium-primary py-2 px-6 text-xs whitespace-nowrap">
-                        + New Mutual Fund
-                    </button>
+                    <div className="flex gap-4">
+                        <button onClick={openAdd} className="btn-premium btn-premium-primary py-2 px-6 text-xs whitespace-nowrap">
+                            + New Mutual Fund
+                        </button>
+                    </div>
 
                     <div className="filter-chips-lux flex gap-4">
-                        {['All', 'Equity', 'Debt', 'Hybrid'].map(f => (
+                        {[
+                            { label: 'All', value: 'All' },
+                            { label: 'Equity', value: 'Equity Scheme' },
+                            { label: 'Debt', value: 'Debt Scheme' },
+                            { label: 'Hybrid', value: 'Hybrid Scheme' },
+                        ].map(f => (
                             <button
-                                key={f}
-                                className={`chip-lux ${categoryFilter === f ? 'active' : ''}`}
-                                onClick={() => { setCategoryFilter(f); setCurrentPage(1); }}
+                                key={f.value}
+                                className={`chip-lux ${categoryFilter === f.value ? 'active' : ''}`}
+                                onClick={() => { setCategoryFilter(f.value); setCurrentPage(1); }}
                             >
-                                {f.toUpperCase()}
+                                {f.label.toUpperCase()}
                             </button>
                         ))}
                     </div>
@@ -177,7 +193,7 @@ const MFListing = () => {
                             type="text"
                             placeholder="SEARCH ASSETS..."
                             value={amcSearch}
-                            onChange={(e) => { setAmcSearch(e.target.value); setCurrentPage(1); }}
+                            onChange={(e) => { dispatch(setAmcSearch(e.target.value)); }}
                             className="search-input-elite"
                             style={{ width: '220px' }}
                         />
@@ -243,7 +259,7 @@ const MFListing = () => {
                                 </div>
                                 <div className="input-group-lux">
                                     <label className="text-xs uppercase tracking-widest opacity-40 mb-2 block">Scheme Category</label>
-                                    <select 
+                                    <select
                                         className="form-input-elite"
                                         value={formData.scheme_category}
                                         onChange={e => setFormData({ ...formData, scheme_category: e.target.value })}
@@ -257,7 +273,7 @@ const MFListing = () => {
                                 </div>
                                 <div className="input-group-lux">
                                     <label className="text-xs uppercase tracking-widest opacity-40 mb-2 block text-primary font-bold">Benchmark Index *</label>
-                                    <select 
+                                    <select
                                         className="form-input-elite highlight"
                                         value={formData.benchmark_index_code}
                                         onChange={e => setFormData({ ...formData, benchmark_index_code: e.target.value })}
@@ -311,15 +327,15 @@ const MFListing = () => {
                                     <div className="card-identity-row flex justify-between items-start">
                                         <div className="rating-stars">★★★★★</div>
                                         <div className="flex gap-3">
-                                            <button 
-                                                onClick={() => openEdit(fund)} 
+                                            <button
+                                                onClick={() => openEdit(fund)}
                                                 className="btn-management-lux"
                                                 title="Edit Protocol"
                                             >
                                                 <IconPencil />
                                             </button>
-                                            <button 
-                                                onClick={() => handleDelete(fund.scheme_code)} 
+                                            <button
+                                                onClick={() => handleDelete(fund.scheme_code)}
                                                 className="btn-management-lux delete"
                                                 title="Decommission Asset"
                                             >
@@ -345,9 +361,18 @@ const MFListing = () => {
                                         </div>
                                     </div>
 
-                                    <div className="card-action-row mt-5">
-                                        <a href={`#mf-detail-${fund.scheme_code}`} className="btn-premium btn-premium-outline">ANALYZE</a>
-                                        <button className="btn-premium btn-premium-primary">ALLOCATE</button>
+                                    <div className="card-action-row mt-5 flex flex-col gap-2">
+
+                                        <div className="flex gap-2 w-full">
+                                            <a href={`#mf-detail-${fund.scheme_code}`} className="btn-premium btn-premium-outline flex-1 text-center py-2">ANALYZE</a>
+                                            <button
+                                                onClick={() => toggleCompare(fund)}
+                                                className={`btn-premium ${compareList.find(c => c.scheme_code === fund.scheme_code) ? 'btn-premium-refresh' : 'btn-premium-outline'} flex-1 py-2 text-xs`}
+                                                title={compareList.find(c => c.scheme_code === fund.scheme_code) ? 'Remove from Compare' : 'Add to Compare'}
+                                            >
+                                                {compareList.find(c => c.scheme_code === fund.scheme_code) ? '✓ DOCKED' : '+ COMPARE'}
+                                            </button>
+                                        </div>
                                     </div>
                                 </div>
                             ))}
@@ -379,7 +404,13 @@ const MFListing = () => {
                                             <td className="text-xs text-muted">{fund.amc_name}</td>
                                             <td className="text-md font-extrabold text-primary">₹{fund.metrics?.current_nav || '--'}</td>
                                             <td className="text-right">
-                                                <div className="flex justify-end gap-3">
+                                                <div className="flex justify-end gap-3 items-center">
+                                                    <button
+                                                        onClick={() => toggleCompare(fund)}
+                                                        className={`btn-management-lux px-2 text-[10px] font-bold tracking-widest ${compareList.find(c => c.scheme_code === fund.scheme_code) ? 'text-success' : 'text-primary'}`}
+                                                    >
+                                                        {compareList.find(c => c.scheme_code === fund.scheme_code) ? '✓ DOCKED' : '+ COMPARE'}
+                                                    </button>
                                                     <button onClick={() => openEdit(fund)} className="btn-management-lux" title="Edit"><IconPencil /></button>
                                                     <button onClick={() => handleDelete(fund.scheme_code)} className="btn-management-lux delete" title="Delete"><IconTrash /></button>
                                                 </div>
@@ -388,6 +419,39 @@ const MFListing = () => {
                                     ))}
                                 </tbody>
                             </table>
+                        </div>
+                    )}
+
+                    {compareList.length > 0 && (
+                        <div className="fixed bottom-0 left-0 right-0 z-50 p-4 border-t border-white/10" style={{ background: 'rgba(15, 23, 42, 0.95)', backdropFilter: 'blur(10px)' }}>
+                            <div className="container mx-auto flex justify-between items-center">
+                                <div className="flex items-center gap-6">
+                                    <h4 className="font-heading uppercase tracking-widest text-sm text-primary">Comparison Dock</h4>
+                                    <div className="flex gap-4">
+                                        {compareList.map((c, i) => (
+                                            <div key={i} className="flex items-center gap-3 bg-white/5 py-1 px-3 rounded text-xs border border-white/10">
+                                                <span className="font-bold truncate max-w-[150px]" title={c.scheme_name}>{c.scheme_name}</span>
+                                                <button onClick={() => toggleCompare(c)} className="text-error hover:text-white transition-colors">✕</button>
+                                            </div>
+                                        ))}
+                                        {compareList.length < 4 && (
+                                            <div className="flex items-center gap-3 bg-white/5 py-1 px-3 rounded text-xs border border-white/5 opacity-40 border-dashed">
+                                                <span className="font-bold">Add {4 - compareList.length} more to compare</span>
+                                            </div>
+                                        )}
+                                    </div>
+                                </div>
+                                <div className="flex gap-4">
+                                    <button onClick={() => dispatch(clearCompare())} className="btn-premium btn-premium-outline text-xs py-2">CLEAR ALL</button>
+                                    <a
+                                        href={`#compare?codes=${compareList.map(c => c.scheme_code).join(',')}`}
+                                        className={`btn-premium text-xs py-2 px-6 ${compareList.length >= 2 ? 'btn-premium-primary' : 'btn-premium-outline opacity-50 cursor-not-allowed'}`}
+                                        onClick={(e) => { if (compareList.length < 2) e.preventDefault(); }}
+                                    >
+                                        COMPARE NOW
+                                    </a>
+                                </div>
+                            </div>
                         </div>
                     )}
 
@@ -405,7 +469,7 @@ const MFListing = () => {
                             <div className="flex gap-8 items-center">
                                 <button
                                     disabled={currentPage === 1}
-                                    onClick={() => setCurrentPage(p => p - 1)}
+                                    onClick={() => dispatch(setCurrentPage(currentPage - 1))}
                                     className="bck-btn btn-premium btn-premium-outline"
                                 >← BACK</button>
                                 <span className="page-info">
@@ -413,7 +477,7 @@ const MFListing = () => {
                                 </span>
                                 <button
                                     disabled={currentPage === totalPages}
-                                    onClick={() => setCurrentPage(p => p + 1)}
+                                    onClick={() => dispatch(setCurrentPage(currentPage + 1))}
                                     className="fwd-btn btn-premium btn-premium-outline"
                                 >NEXT →</button>
                             </div>

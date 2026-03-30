@@ -3,7 +3,7 @@ import { useTheme } from '../context/ThemeContext';
 import './Navbar.css';
 
 const Navbar = () => {
-    const { theme } = useTheme();
+    useTheme(); // Consume theme context — may be used for conditional styling in future
 
     return (
         <nav className="navbar">
@@ -15,6 +15,7 @@ const Navbar = () => {
                 <div className="nav-links">
                     <a href="#stocks" className="nav-link">STOCKS</a>
                     <a href="#mf" className="nav-link">FUNDS</a>
+                    <a href="#compare" className="nav-link">COMPARE</a>
                     <a href="#indices" className="nav-link">INDICES</a>
                     <a href="#portfolio" className="nav-link">PORTFOLIO</a>
                 </div>

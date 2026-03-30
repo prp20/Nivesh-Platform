@@ -33,7 +33,7 @@ The backend will automatically:
 ### Method 2: Manual Sync Trigger
 To refresh a specific fund's data:
 ```bash
-POST /api/v1/sync/fund/{scheme_code}
+POST /api/v1/sync/{scheme_code}
 ```
 
 ### Method 3: Global Refresh

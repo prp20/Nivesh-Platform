@@ -1,9 +1,15 @@
 import React, { useState, useEffect, useMemo } from 'react';
+import { useSelector, useDispatch } from 'react-redux';
+import { triggerIndexSync, fetchIndexSyncStatus } from '../store/slices/syncSlice';
 import fundService from '../api/services/fundService';
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 import './MFDetail.css';
 
 const IndexDetail = ({ benchmarkCode }) => {
+    const dispatch = useDispatch();
+    const syncJob = useSelector(state => state.sync.indexJobs[benchmarkCode]);
+    const isSyncing = syncJob?.status === 'RUNNING';
+
     const [index, setIndex] = useState(null);
     const [navHistory, setNavHistory] = useState([]);
     const [loading, setLoading] = useState(true);
@@ -43,7 +49,23 @@ const IndexDetail = ({ benchmarkCode }) => {
             }
         };
         fetchDetail();
-    }, [benchmarkCode]);
+        dispatch(fetchIndexSyncStatus(benchmarkCode));
+    }, [benchmarkCode, dispatch]);
+
+    // Poll for sync status when a sync is in progress
+    useEffect(() => {
+        let interval;
+        if (isSyncing) {
+            interval = setInterval(() => {
+                dispatch(fetchIndexSyncStatus(benchmarkCode)).then((action) => {
+                    if (action.payload?.status === 'COMPLETED') {
+                        fetchHistory();
+                    }
+                });
+            }, 3000);
+        }
+        return () => clearInterval(interval);
+    }, [isSyncing, benchmarkCode, dispatch]);
 
     const handleFileUpload = async (event) => {
         const file = event.target.files[0];
@@ -81,7 +103,7 @@ const IndexDetail = ({ benchmarkCode }) => {
 
         return filtered.map(n => ({
             date: new Date(n.nav_date).toLocaleDateString('en-IN', { day: '2-digit', month: 'short' }),
-            nav: parseFloat(n.nav_value)
+            nav: parseFloat(n.index_value)
         }));
     }, [navHistory, timeRange]);
 
@@ -89,16 +111,18 @@ const IndexDetail = ({ benchmarkCode }) => {
     if (error) return <div className="glass-panel p-10 text-center text-error border-error/20 m-10">{error}</div>;
     if (!index) return <div className="glass-panel p-10 text-center m-10">Intelligence record not found.</div>;
 
-    const latestNav = navHistory.length > 0 ? navHistory[0].nav_value : 0;
-    const prevNav = navHistory.length > 1 ? navHistory[1].nav_value : latestNav;
+    const hasNavData = navHistory && navHistory.length > 0;
+
+    const latestNav = navHistory.length > 0 ? navHistory[0].index_value : 0;
+    const prevNav = navHistory.length > 1 ? navHistory[1].index_value : latestNav;
     const changePercent = prevNav !== 0 ? ((latestNav - prevNav) / prevNav * 100).toFixed(2) : "0.00";
 
     const calculateReturn = (days) => {
         if (navHistory.length < 2) return "0.00%";
         // navHistory is sorted by date DESC (latest first)
-        const current = navHistory[0].nav_value;
+        const current = navHistory[0].index_value;
         const pastIndex = navHistory.length > days ? days : navHistory.length - 1;
-        const past = navHistory[pastIndex].nav_value;
+        const past = navHistory[pastIndex].index_value;
         return `${(((current - past) / past) * 100).toFixed(2)}%`;
     };
 
@@ -125,7 +149,13 @@ const IndexDetail = ({ benchmarkCode }) => {
                     </div>
 
                     <div className="flex justify-center gap-4 mt-10">
-                        <button className="btn-premium btn-premium-refresh">Sync Market Stream</button>
+                        <button
+                            className={`btn-premium btn-premium-refresh ${isSyncing ? 'loading' : ''}`}
+                            onClick={() => dispatch(triggerIndexSync(benchmarkCode))}
+                            disabled={isSyncing}
+                        >
+                            {isSyncing ? 'Syncing Market Stream...' : 'Sync Market Stream'}
+                        </button>
                         <button className="btn-premium btn-premium-primary px-12">Monitor Integration</button>
                     </div>
                 </div>
@@ -142,7 +172,7 @@ const IndexDetail = ({ benchmarkCode }) => {
                 </div>
                 <div className="glass-panel metric-strip-item glow-card">
                     <span className="m-label">Volatility Delta</span>
-                    <div className="m-value font-heading text-primary">HEALTY</div>
+                    <div className="m-value font-heading text-primary">HEALTHY</div>
                 </div>
             </div>
 
@@ -161,43 +191,51 @@ const IndexDetail = ({ benchmarkCode }) => {
                         </div>
                     </div>
                     
-                    <div style={{ height: '450px', width: '100%' }}>
-                        <ResponsiveContainer width="100%" height="100%">
-                            <AreaChart data={chartData}>
-                                <defs>
-                                    <linearGradient id="navGradient" x1="0" y1="0" x2="0" y2="1">
-                                        <stop offset="5%" stopColor="var(--color-primary)" stopOpacity={0.3}/>
-                                        <stop offset="95%" stopColor="var(--color-primary)" stopOpacity={0}/>
-                                    </linearGradient>
-                                </defs>
-                                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="rgba(255,255,255,0.05)" />
-                                <XAxis 
-                                    dataKey="date" 
-                                    axisLine={false} 
-                                    tickLine={false} 
-                                    tick={{fontSize: 10, fill: 'var(--color-text-muted)'}}
-                                    interval={Math.floor(chartData.length / 8)}
-                                />
-                                <YAxis 
-                                    domain={['auto', 'auto']} 
-                                    axisLine={false} 
-                                    tickLine={false}
-                                    tick={{fontSize: 10, fill: 'var(--color-text-muted)'}}
-                                />
-                                <Tooltip 
-                                    contentStyle={{backgroundColor: '#0f172a', border: '1px solid var(--color-glass-border)', borderRadius: '8px', fontSize: '12px'}}
-                                    itemStyle={{color: 'var(--color-primary)'}}
-                                />
-                                <Area 
-                                    type="monotone" 
-                                    dataKey="nav" 
-                                    stroke="var(--color-primary)" 
-                                    strokeWidth={3}
-                                    fill="url(#navGradient)" 
-                                />
-                            </AreaChart>
-                        </ResponsiveContainer>
-                    </div>
+                    {!hasNavData ? (
+                        <div className="flex flex-col items-center justify-center p-10 border border-white/5 bg-white/5 mx-6 mb-6" style={{ height: '450px' }}>
+                            <div className="text-4xl mb-4 opacity-30">⚠️</div>
+                            <h4 className="font-heading text-xl text-primary mb-2 uppercase tracking-widest">Metadata Sequence Offline</h4>
+                            <p className="text-muted tracking-widest uppercase text-xs opacity-70">NAV historical data is not present in the core ledger.</p>
+                        </div>
+                    ) : (
+                        <div style={{ height: '450px', width: '100%' }}>
+                            <ResponsiveContainer width="100%" height="100%">
+                                <AreaChart data={chartData}>
+                                    <defs>
+                                        <linearGradient id="navGradient" x1="0" y1="0" x2="0" y2="1">
+                                            <stop offset="5%" stopColor="var(--color-primary)" stopOpacity={0.3}/>
+                                            <stop offset="95%" stopColor="var(--color-primary)" stopOpacity={0}/>
+                                        </linearGradient>
+                                    </defs>
+                                    <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="rgba(255,255,255,0.05)" />
+                                    <XAxis 
+                                        dataKey="date" 
+                                        axisLine={false} 
+                                        tickLine={false} 
+                                        tick={{fontSize: 10, fill: 'var(--color-text-muted)'}}
+                                        interval={Math.floor(chartData.length / 8)}
+                                    />
+                                    <YAxis 
+                                        domain={['auto', 'auto']} 
+                                        axisLine={false} 
+                                        tickLine={false}
+                                        tick={{fontSize: 10, fill: 'var(--color-text-muted)'}}
+                                    />
+                                    <Tooltip 
+                                        contentStyle={{backgroundColor: '#0f172a', border: '1px solid var(--color-glass-border)', borderRadius: '8px', fontSize: '12px'}}
+                                        itemStyle={{color: 'var(--color-primary)'}}
+                                    />
+                                    <Area 
+                                        type="monotone" 
+                                        dataKey="nav" 
+                                        stroke="var(--color-primary)" 
+                                        strokeWidth={3}
+                                        fill="url(#navGradient)" 
+                                    />
+                                </AreaChart>
+                            </ResponsiveContainer>
+                        </div>
+                    )}
                 </div>
             </div>
 
@@ -259,7 +297,7 @@ const IndexDetail = ({ benchmarkCode }) => {
                             <tr>
                                 <td className="m-label">Monitoring Status</td>
                                 <td className="m-value">
-                                    <span style={{ color: 'var(--color-accent)' }}>HEALTY INTEGRATION</span>
+                                    <span style={{ color: 'var(--color-accent)' }}>HEALTHY INTEGRATION</span>
                                 </td>
                             </tr>
                         </tbody>

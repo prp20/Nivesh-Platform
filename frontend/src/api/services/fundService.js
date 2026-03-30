@@ -11,6 +11,12 @@ const fundService = {
         return response.data; // Now returns {total, skip, limit, items}
     },
 
+    compareFunds: async (codes) => {
+        const codesStr = Array.isArray(codes) ? codes.join(',') : codes;
+        const response = await apiClient.get(`/funds/compare?codes=${codesStr}`);
+        return response.data;
+    },
+
     getFundDetail: async (schemeCode) => {
         const response = await apiClient.get(`/funds/${schemeCode}`);
         return response.data;
@@ -40,6 +46,11 @@ const fundService = {
     // METRICS
     getFundMetrics: async (schemeCode) => {
         const response = await apiClient.get(`/metrics/${schemeCode}`);
+        return response.data;
+    },
+
+    getFundExpenseRatio: async (schemeCode) => {
+        const response = await apiClient.get(`/funds/${schemeCode}/expense-ratio`);
         return response.data;
     },
 

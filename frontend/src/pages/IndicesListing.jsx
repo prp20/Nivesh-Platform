@@ -1,4 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
+import { useSelector, useDispatch } from 'react-redux';
+import { fetchIndices, setCurrentPage, setPageSize, setSearchQuery } from '../store/slices/indicesSlice';
 import fundService from '../api/services/fundService';
 import './MFListing.css'; // Utilizing primary design system
 
@@ -19,7 +21,7 @@ const IconTrash = () => (
 );
 
 const IndicesListing = () => {
-    // UI State
+    // UI State (component-local only)
     const [viewMode, setViewMode] = useState('grid');
     const [isFormOpen, setIsFormOpen] = useState(false);
     const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
@@ -30,42 +32,25 @@ const IndicesListing = () => {
         benchmark_type: 'Equity', asset_class: 'Equity', is_active: true
     });
 
-    // Data & Pagination State
-    const [indices, setIndices] = useState([]);
-    const [total, setTotal] = useState(0);
-    const [loading, setLoading] = useState(true);
-    const [error, setError] = useState(null);
-    const [currentPage, setCurrentPage] = useState(1);
-    const [pageSize, setPageSize] = useState(10);
-    const [searchQuery, setSearchQuery] = useState('');
+    // Redux — indices data & pagination
+    const dispatch = useDispatch();
+    const { items: indices, total, loading, error, currentPage, pageSize, searchQuery } = useSelector(state => state.indices);
 
-    const fetchIndices = useCallback(async () => {
-        setLoading(true);
-        try {
-            const skip = (currentPage - 1) * pageSize;
-            const data = await fundService.getBenchmarks(skip, pageSize, searchQuery);
-            setIndices(data.items);
-            setTotal(data.total);
-            setLoading(false);
-        } catch (err) {
-            console.error("Failed to fetch indices", err);
-            setError("Market monitoring feeds currently unavailable.");
-            setLoading(false);
-        }
-    }, [currentPage, pageSize, searchQuery]);
+    const loadIndices = useCallback(() => {
+        const skip = (currentPage - 1) * pageSize;
+        dispatch(fetchIndices({ skip, limit: pageSize, search: searchQuery }));
+    }, [currentPage, pageSize, searchQuery, dispatch]);
 
     useEffect(() => {
-        fetchIndices();
-    }, [fetchIndices]);
+        loadIndices();
+    }, [loadIndices]);
 
     const handleSearchChange = (e) => {
-        setSearchQuery(e.target.value);
-        setCurrentPage(1);
+        dispatch(setSearchQuery(e.target.value));
     };
 
     const handlePageSizeChange = (e) => {
-        setPageSize(parseInt(e.target.value));
-        setCurrentPage(1);
+        dispatch(setPageSize(parseInt(e.target.value)));
     };
 
     const handleDelete = (code) => {
@@ -79,7 +64,7 @@ const IndicesListing = () => {
             await fundService.deleteBenchmark(deletingCode);
             setIsDeleteModalOpen(false);
             setDeletingCode(null);
-            fetchIndices();
+            loadIndices();
         } catch (err) {
             alert("Protocol breach detected. Delete operation aborted.");
         }
@@ -95,7 +80,7 @@ const IndicesListing = () => {
             }
             setIsFormOpen(false);
             setEditingIndex(null);
-            fetchIndices();
+            loadIndices();
         } catch (err) {
             alert("Ledger update failed. Check constraints.");
         }
@@ -282,8 +267,20 @@ const IndicesListing = () => {
                                     </div>
 
                                     <div className="fund-metrics-row">
+                                        <div className="metric-item">
+                                            <span className="m-label">ROLLING 3Y</span>
+                                            <span className={`m-value font-heading ${idx.metrics?.rolling_return_3year >= 0 ? 'text-success' : 'text-error'}`}>
+                                                {idx.metrics?.rolling_return_3year != null ? `${(idx.metrics.rolling_return_3year * 100).toFixed(2)}%` : '--'}
+                                            </span>
+                                        </div>
+                                        <div className="metric-item">
+                                            <span className="m-label">RISK (STD)</span>
+                                            <span className="m-value font-heading text-white">
+                                                {idx.metrics?.standard_deviation != null ? `${(idx.metrics.standard_deviation * 100).toFixed(2)}%` : '--'}
+                                            </span>
+                                        </div>
                                         <div className="metric-item items-end">
-                                            <span className="m-label text-right">Ticker Symbol</span>
+                                            <span className="m-label text-right">TICKER</span>
                                             <span className="m-value text-primary font-heading">{idx.ticker}</span>
                                         </div>
                                     </div>
@@ -304,8 +301,9 @@ const IndicesListing = () => {
                                 <thead>
                                     <tr>
                                         <th>INDEX IDENTITY</th>
-                                        <th>TICKER</th>
-                                        <th>TYPE</th>
+                                        <th>TICKER / TYPE</th>
+                                        <th>3Y CAGR</th>
+                                        <th>RISK (STD)</th>
                                         <th>STATUS</th>
                                         <th className="text-right">OPERATIONS</th>
                                     </tr>
@@ -323,8 +321,18 @@ const IndicesListing = () => {
                                                     <span className="text-[10px] opacity-40 uppercase tracking-widest">{idx.benchmark_code}</span>
                                                 </div>
                                             </td>
-                                            <td className="text-xs uppercase text-muted font-bold tracking-wider">{idx.ticker}</td>
-                                            <td className="text-xs text-muted font-bold tracking-widest uppercase">{idx.benchmark_type}</td>
+                                            <td>
+                                                <div className="flex flex-col">
+                                                    <span className="text-xs uppercase text-muted font-bold tracking-wider">{idx.ticker}</span>
+                                                    <span className="text-[10px] text-muted font-bold tracking-widest uppercase">{idx.benchmark_type}</span>
+                                                </div>
+                                            </td>
+                                            <td className={`text-xs font-bold ${idx.metrics?.rolling_return_3year >= 0 ? 'text-success' : 'text-error'}`}>
+                                                {idx.metrics?.rolling_return_3year != null ? `${(idx.metrics.rolling_return_3year * 100).toFixed(2)}%` : '--'}
+                                            </td>
+                                            <td className="text-xs font-bold text-white">
+                                                {idx.metrics?.standard_deviation != null ? `${(idx.metrics.standard_deviation * 100).toFixed(2)}%` : '--'}
+                                            </td>
                                             <td>
                                                 <span className={idx.is_active ? "text-success text-[10px] font-bold uppercase tracking-widest" : "text-error text-[10px] font-bold uppercase tracking-widest"}>
                                                     {idx.is_active ? 'ACTIVE' : 'INACTIVE'}
@@ -357,7 +365,7 @@ const IndicesListing = () => {
                             <div className="flex gap-8 items-center">
                                 <button
                                     disabled={currentPage === 1}
-                                    onClick={() => setCurrentPage(p => p - 1)}
+                                    onClick={() => dispatch(setCurrentPage(currentPage - 1))}
                                     className="bck-btn btn-premium btn-premium-outline"
                                 >← BACK</button>
                                 <span className="page-info">
@@ -365,7 +373,7 @@ const IndicesListing = () => {
                                 </span>
                                 <button
                                     disabled={currentPage === totalPages}
-                                    onClick={() => setCurrentPage(p => p + 1)}
+                                    onClick={() => dispatch(setCurrentPage(currentPage + 1))}
                                     className="fwd-btn btn-premium btn-premium-outline"
                                 >NEXT →</button>
                             </div>

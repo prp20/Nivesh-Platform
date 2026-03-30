@@ -5,6 +5,7 @@ import StockListing from './pages/StockListing';
 import StockDetail from './pages/StockDetail';
 import MFListing from './pages/MFListing';
 import MFDetail from './pages/MFDetail';
+import MFCompare from './pages/MFCompare';
 import IndicesListing from './pages/IndicesListing';
 import IndexDetail from './pages/IndexDetail';
 import Login from './pages/Login';
@@ -30,6 +31,9 @@ const AppContent = () => {
       } else if (hash.startsWith('index-detail-')) {
         setActiveTab('index-detail');
         setActiveParams(hash.replace('index-detail-', ''));
+      } else if (hash.startsWith('compare')) {
+        setActiveTab('compare');
+        setActiveParams('');
       } else {
         setActiveTab(hash);
       }
@@ -58,6 +62,8 @@ const AppContent = () => {
         return <MFListing />;
       case 'mf-detail':
         return <MFDetail schemeCode={activeParams} />;
+      case 'compare':
+        return <MFCompare />;
       case 'indices':
         return <IndicesListing />;
       case 'index-detail':
