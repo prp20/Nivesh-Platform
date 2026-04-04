@@ -224,12 +224,14 @@ def pd_to_date(date_str: str) -> str:
 async def sync_all_funds(session: AsyncSession):
     """Sync all active funds in the database."""
     funds_list = await crud.get_all_fund_masters(session, is_active=True)
-    # Snapshot scheme codes before closing the listing session scope
+    # Snapshot scheme codes so the listing session can be released promptly
     scheme_codes = [f.scheme_code for f in funds_list]
     for scheme_code in scheme_codes:
-        # Use a dedicated session per fund so a failure in one does not
-        # corrupt session state for subsequent funds.
+        # Dedicated session per fund — failure in one does not contaminate others.
         async with session_factory() as fund_session:
-            await sync_fund_data(fund_session, scheme_code)
+            job, created = await crud.create_sync_job(fund_session, scheme_code)
+            if created:
+                await sync_fund_data(fund_session, scheme_code, job_id=job.id)
+            # If a job already exists (RUNNING), skip to avoid duplicate work.
         # Polite throttling
         await asyncio.sleep(1)

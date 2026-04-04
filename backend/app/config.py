@@ -12,6 +12,8 @@ class Settings(BaseSettings):
     # Security Toggle — set ENABLE_AUTH=true via environment variable in production
     ENABLE_AUTH: bool = False
     SECRET_KEY: str = "dev-secret-key-do-not-use-in-production"
+    # Token validity in minutes. Default 30 min; set ACCESS_TOKEN_EXPIRE_MINUTES in env for production.
+    ACCESS_TOKEN_EXPIRE_MINUTES: int = 30
     
     # CORS
     ALLOWED_ORIGINS: list = [

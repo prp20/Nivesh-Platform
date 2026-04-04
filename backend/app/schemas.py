@@ -215,4 +215,4 @@ class SyncJobRead(SyncJobBase):
 class ComparisonResponse(BaseModel):
     """Unified response for multi-fund comparison metrics."""
     funds: List[Dict[str, Any]]
-    metrics_comparison: Dict[str, Any]
+    warning: Optional[str] = None

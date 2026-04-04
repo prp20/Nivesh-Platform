@@ -77,9 +77,17 @@ async def upload_benchmark_csv(
         else:
             raise HTTPException(status_code=400, detail="CSV must contain 'Date' and either 'Close' or 'Value' columns")
             
+        # Vectorized date parsing — handles both Unix timestamps (int/float) and
+        # string dates without row-by-row iteration.
+        df['Date'] = pd.to_datetime(
+            df['Date'],
+            unit='s' if df['Date'].dtype in (float, int) else None,
+            infer_datetime_format=True,
+        )
+        df = df.dropna(subset=['Value'])
         nav_dict = {
-            pd.to_datetime(row['Date'], origin='unix').strftime('%Y-%m-%d') if isinstance(row['Date'], (int, float)) else pd.to_datetime(row['Date']).strftime('%Y-%m-%d'): float(row['Value'])
-            for _, row in df.iterrows() if pd.notna(row['Value'])
+            d.strftime('%Y-%m-%d'): float(v)
+            for d, v in zip(df['Date'], df['Value'])
         }
         
         records_inserted = await crud.bulk_insert_benchmark_navs(session, benchmark_code, nav_dict)

@@ -1,8 +1,12 @@
+from __future__ import annotations
+
 import pandas as pd
 import numpy as np
-from typing import List, Dict, Optional
+from typing import TYPE_CHECKING, List, Dict, Optional
 from datetime import date
-from sqlalchemy.ext.asyncio import AsyncSession
+
+if TYPE_CHECKING:
+    from sqlalchemy.ext.asyncio import AsyncSession
 
 def calculate_returns(nav_series: pd.Series) -> pd.Series:
     return nav_series.pct_change().dropna()
@@ -224,22 +228,25 @@ async def get_comparison_data(session: AsyncSession, scheme_codes: List[str]) ->
     Multi-fund comparison engine focusing on metrics.
     Fetches pre-calculated metrics for specified funds.
     """
+    import asyncio
     from . import crud, schemas
-    
-    funds_payload = []
-    
-    for code in scheme_codes:
-        # Get metrics from DB
-        metrics_db = await crud.get_fund_metrics(session, code)
-        
-        # If no metrics in DB, we could trigger a sync, but for comparison 
-        # we'll return what we have to keep it fast.
-        funds_payload.append({
+
+    # Fetch all fund metrics in parallel instead of sequentially
+    metrics_results = await asyncio.gather(
+        *[crud.get_fund_metrics(session, code) for code in scheme_codes]
+    )
+
+    funds_payload = [
+        {
             "scheme_code": code,
-            "metrics": schemas.FundMetricsRead.model_validate(metrics_db).model_dump(mode="json") if metrics_db else {}
-        })
-        
-    return {
-        "funds": funds_payload,
-        "metrics_comparison": {} # Placeholder for aggregate comparison metrics
-    }
+            # If no metrics in DB, return empty dict to keep comparison fast
+            "metrics": (
+                schemas.FundMetricsRead.model_validate(metrics_db).model_dump(mode="json")
+                if metrics_db
+                else {}
+            ),
+        }
+        for code, metrics_db in zip(scheme_codes, metrics_results)
+    ]
+
+    return {"funds": funds_payload}

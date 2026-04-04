@@ -53,21 +53,18 @@ async def get_similar_funds(session: AsyncSession, scheme_code: str, limit: int 
     res = await session.execute(q)
     return res.unique().scalars().all()
 
-async def get_all_fund_masters(
-    session: AsyncSession, 
-    is_active: Optional[bool] = None, 
+def _apply_fund_filters(
+    q,
+    is_active: Optional[bool] = None,
     category: Optional[str] = None,
     subcategory: Optional[str] = None,
     amc: Optional[str] = None,
     plan_type: Optional[str] = None,
-    order_by: Optional[str] = "scheme_name", # Default sorting
-    skip: int = 0, 
-    limit: int = 100
-) -> List[FundMaster]:
-    q = select(FundMaster)
+):
+    """Apply common FundMaster filter predicates to a query."""
     if is_active is not None:
         q = q.where(FundMaster.is_active == is_active)
-    if category and category != 'All':
+    if category and category != "All":
         q = q.where(FundMaster.scheme_category.ilike(f"%{category}%"))
     if subcategory:
         q = q.where(FundMaster.scheme_subcategory.ilike(f"%{subcategory}%"))
@@ -75,16 +72,33 @@ async def get_all_fund_masters(
         q = q.where(FundMaster.amc_name.ilike(f"%{amc}%"))
     if plan_type:
         q = q.where(FundMaster.plan_type == plan_type)
-        
-    # Sorting
+    return q
+
+
+async def get_all_fund_masters(
+    session: AsyncSession,
+    is_active: Optional[bool] = None,
+    category: Optional[str] = None,
+    subcategory: Optional[str] = None,
+    amc: Optional[str] = None,
+    plan_type: Optional[str] = None,
+    order_by: Optional[str] = "scheme_name",
+    skip: int = 0,
+    limit: int = 100,
+) -> List[FundMaster]:
+    q = _apply_fund_filters(
+        select(FundMaster), is_active, category, subcategory, amc, plan_type
+    )
+
     if order_by == "scheme_name":
         q = q.order_by(FundMaster.scheme_name.asc())
     elif order_by == "-scheme_name":
         q = q.order_by(FundMaster.scheme_name.desc())
-        
+
     q = q.options(joinedload(FundMaster.metrics)).offset(skip).limit(limit)
     res = await session.execute(q)
     return res.unique().scalars().all()
+
 
 async def get_fund_masters_count(
     session: AsyncSession,
@@ -92,20 +106,12 @@ async def get_fund_masters_count(
     category: Optional[str] = None,
     subcategory: Optional[str] = None,
     amc: Optional[str] = None,
-    plan_type: Optional[str] = None
+    plan_type: Optional[str] = None,
 ) -> int:
-    q = select(func.count(FundMaster.scheme_code))
-    if is_active is not None:
-        q = q.where(FundMaster.is_active == is_active)
-    if category and category != 'All':
-        q = q.where(FundMaster.scheme_category.ilike(f"%{category}%"))
-    if subcategory:
-        q = q.where(FundMaster.scheme_subcategory.ilike(f"%{subcategory}%"))
-    if amc:
-        q = q.where(FundMaster.amc_name.ilike(f"%{amc}%"))
-    if plan_type:
-        q = q.where(FundMaster.plan_type == plan_type)
-        
+    q = _apply_fund_filters(
+        select(func.count(FundMaster.scheme_code)),
+        is_active, category, subcategory, amc, plan_type,
+    )
     res = await session.execute(q)
     return res.scalar() or 0
 

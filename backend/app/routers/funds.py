@@ -1,8 +1,9 @@
+import asyncio
 from typing import List, Optional
 from fastapi import APIRouter, Depends, HTTPException, status, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 from ..database import get_db
-from .. import crud, schemas, security
+from .. import analytics, crud, schemas, security
 
 router = APIRouter(prefix="/funds", tags=["funds"])
 
@@ -60,27 +61,39 @@ async def compare_funds(
     if len(scheme_codes) > 4:
         raise HTTPException(status_code=400, detail="Maximum 4 funds can be compared at a time")
 
-    # 2. Fetch all fund masters
-    masters_tasks = [crud.get_fund_master_by_code(session, code) for code in scheme_codes]
-    masters = await asyncio.gather(*masters_tasks)
+    # 2. Fetch all fund masters in parallel
+    masters = await asyncio.gather(
+        *[crud.get_fund_master_by_code(session, code) for code in scheme_codes]
+    )
     
     for i, master in enumerate(masters):
         if not master:
             raise HTTPException(status_code=404, detail=f"Fund with code {scheme_codes[i]} not found")
 
-    # 3. Validate same category and subcategory
+    # 3. Validate same top-level category (hard requirement).
+    # Subcategory mismatch is allowed but surfaced as a warning.
     main_cat = masters[0].scheme_category
-    main_sub = masters[0].scheme_subcategory
     for m in masters[1:]:
-        if m.scheme_category != main_cat or m.scheme_subcategory != main_sub:
+        if m.scheme_category != main_cat:
             raise HTTPException(
-                status_code=400, 
-                detail=f"Category mismatch! Comparison requires identical classification. Found '{main_sub or main_cat}' vs '{m.scheme_subcategory or m.scheme_category}'"
+                status_code=400,
+                detail=(
+                    f"Category mismatch: all funds must share the same scheme_category. "
+                    f"Expected '{main_cat}', got '{m.scheme_category}'."
+                ),
             )
 
+    subcategory_warning = None
+    subcategories = {m.scheme_subcategory for m in masters}
+    if len(subcategories) > 1:
+        subcategory_warning = (
+            "Funds span multiple subcategories — comparison may not be apples-to-apples."
+        )
+
     # 4. Use optimized analytics helper
-    from .. import analytics
     comparison_data = await analytics.get_comparison_data(session, scheme_codes)
+    if subcategory_warning:
+        comparison_data["warning"] = subcategory_warning
     return comparison_data
 
 @router.get("/{scheme_code}", response_model=schemas.FundMasterRead)

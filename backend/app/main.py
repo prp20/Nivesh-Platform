@@ -26,8 +26,8 @@ app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.ALLOWED_ORIGINS,
     allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+    allow_headers=["Authorization", "Content-Type", "Accept"],
 )
 
 # Include Routers
@@ -44,6 +44,5 @@ async def root():
     return {
         "message": f"{settings.PROJECT_NAME} API",
         "status": "running",
-        "auth_enabled": settings.ENABLE_AUTH,
-        "documentation": "/docs"
+        "documentation": "/docs",
     }
