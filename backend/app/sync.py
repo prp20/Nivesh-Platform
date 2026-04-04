@@ -88,26 +88,37 @@ async def sync_fund_data(session: AsyncSession, scheme_code: str, job_id: Option
                 fetched = await asyncio.to_thread(
                     mf.get_scheme_historical_nav, scheme_code, True
                 )
-                if fetched is not None and not fetched.empty:
-                    nav_df = fetched
+                if fetched is not None and len(fetched) > 0:
+                    if isinstance(fetched, pd.DataFrame):
+                        nav_list = []
+                        for date_val, row in fetched.iterrows():
+                            nav_list.append({"date": str(date_val), "nav": row.get('nav', row.get('nav_value'))})
+                    elif isinstance(fetched, list):
+                        nav_list = fetched
+                    else:
+                        continue
+                    
+                    nav_df = nav_list
                     break
             except Exception as e:
                 if attempt == 2: raise e
                 wait_time = (attempt + 1) * 3
                 await update_progress(f"NAV Fetch Attempt {attempt+1} failed. Retrying in {wait_time}s...")
                 await asyncio.sleep(wait_time)
-
+        
         if nav_df is None:
             logger.warning(f"No NAV data found for {scheme_code}")
             if job_id: 
                 await crud.update_sync_job(session, job_id, status="FAILED", message="No NAV data found")
             return
-        
-        # 2. Transform to dict - handle index as date
-        nav_dict = {
-            pd_to_date(str(date_val)): float(row['nav'])
-            for date_val, row in nav_df.iterrows()
-        }
+
+        # 2. Transform to dict - handle various date formats
+        nav_dict = {}
+        for item in nav_df:
+            d = item.get('date')
+            v = item.get('nav')
+            if d and v:
+                nav_dict[pd_to_date(str(d))] = float(v)
         
         await update_progress(f"Storing {len(nav_dict)} NAV records...")
         # 3. Bulk insert NAVs
