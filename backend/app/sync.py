@@ -2,10 +2,11 @@ import asyncio
 import logging
 import pandas as pd
 from typing import Optional
-from datetime import datetime
+from datetime import datetime, timezone
 from mftool import Mftool
 from sqlalchemy.ext.asyncio import AsyncSession
 from . import crud, analytics, schemas
+from .database import session_factory
 import requests
 import json
 
@@ -84,7 +85,9 @@ async def sync_fund_data(session: AsyncSession, scheme_code: str, job_id: Option
         for attempt in range(3):
             try:
                 # mftool returns DataFrame or None
-                fetched = mf.get_scheme_historical_nav(scheme_code, as_Dataframe=True)
+                fetched = await asyncio.to_thread(
+                    mf.get_scheme_historical_nav, scheme_code, True
+                )
                 if fetched is not None and not fetched.empty:
                     nav_df = fetched
                     break
@@ -117,7 +120,7 @@ async def sync_fund_data(session: AsyncSession, scheme_code: str, job_id: Option
         # 4.1 Try mftool details first for ISIN if missing
         if not isin:
             try:
-                details = mf.get_scheme_details(scheme_code)
+                details = await asyncio.to_thread(mf.get_scheme_details, scheme_code)
                 if details and isinstance(details, dict):
                     isin = details.get("isin") or details.get("isin_code")
                     if isin:
@@ -128,7 +131,7 @@ async def sync_fund_data(session: AsyncSession, scheme_code: str, job_id: Option
         # 4.2 Fetch AUM and TER from Captnemo/Kuvera if ISIN is available
         if isin:
             await update_progress(f"Fetching AUM and Expense Ratio for ISIN {isin}...")
-            fund_data = get_aum_by_isin(isin)
+            fund_data = await asyncio.to_thread(get_aum_by_isin, isin)
             if fund_data:
                 aum = fund_data.get("aum_cr") or 0.0
                 ter_val = fund_data.get("expense_ratio")
@@ -191,7 +194,7 @@ async def sync_fund_data(session: AsyncSession, scheme_code: str, job_id: Option
             "tracking_error": calc_results.get("tracking_error"),
             "information_ratio": calc_results.get("information_ratio"),
             "final_verdict": calc_results.get("final_verdict"),
-            "metrics_calculated_at": datetime.now()
+            "metrics_calculated_at": datetime.now(timezone.utc)
         }
         await crud.upsert_fund_metrics(session, metrics_payload)
         
@@ -217,7 +220,12 @@ def pd_to_date(date_str: str) -> str:
 async def sync_all_funds(session: AsyncSession):
     """Sync all active funds in the database."""
     funds_list = await crud.get_all_fund_masters(session, is_active=True)
-    for fund in funds_list:
-        await sync_fund_data(session, fund.scheme_code)
+    # Snapshot scheme codes before closing the listing session scope
+    scheme_codes = [f.scheme_code for f in funds_list]
+    for scheme_code in scheme_codes:
+        # Use a dedicated session per fund so a failure in one does not
+        # corrupt session state for subsequent funds.
+        async with session_factory() as fund_session:
+            await sync_fund_data(fund_session, scheme_code)
         # Polite throttling
         await asyncio.sleep(1)

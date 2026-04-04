@@ -184,7 +184,7 @@ def compute_all_metrics(nav_history: List[Dict], benchmark_history: Optional[Lis
             })
             
     # Final Verdict Logic
-    sharpe_raw = metrics.get("sharpe_ratio")
+    sharpe_raw = metrics.get("sharpe")
     alpha_raw = metrics.get("alpha")
     
     sharpe = float(sharpe_raw) if sharpe_raw is not None else 0.0

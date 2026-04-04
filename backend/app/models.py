@@ -59,10 +59,11 @@ class BenchmarkMaster(Base):
 
 
 class FundNavHistory(Base):
-    """Historical NAV data for all mutual fund schemes (TimescaleDB Hypertable)"""
+    """Historical NAV data for all mutual fund schemes"""
     __tablename__ = "fund_nav_history"
     __table_args__ = (
         UniqueConstraint('scheme_code', 'nav_date', name='uq_fund_nav_scheme_date'),
+        Index('ix_fund_nav_history_nav_date', 'nav_date'),
     )
     
     scheme_code = Column(String(50), ForeignKey("fund_master.scheme_code", ondelete="CASCADE"), primary_key=True)
@@ -72,10 +73,11 @@ class FundNavHistory(Base):
 
 
 class BenchmarkNavHistory(Base):
-    """Historical index values for benchmark indices (TimescaleDB Hypertable)"""
+    """Historical index values for benchmark indices"""
     __tablename__ = "benchmark_nav_history"
     __table_args__ = (
         UniqueConstraint('benchmark_code', 'nav_date', name='uq_benchmark_nav_date'),
+        Index('ix_benchmark_nav_history_nav_date', 'nav_date'),
     )
     
     benchmark_code = Column(String(50), ForeignKey("benchmark_master.benchmark_code", ondelete="CASCADE"), primary_key=True)

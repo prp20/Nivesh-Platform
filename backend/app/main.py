@@ -1,7 +1,7 @@
 from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from sqlalchemy import text
+
 from .config import settings
 from .routers import funds, benchmarks, navs, benchmark_navs, metrics, sync, auth
 from .database import engine, Base
@@ -11,14 +11,6 @@ async def lifespan(app: FastAPI):
     # Startup logic
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
-        try:
-            # TimescaleDB hypertable setup
-            await conn.execute(text("SELECT create_hypertable('fund_nav_history', 'nav_date', if_not_exists => TRUE);"))
-            await conn.execute(text("SELECT create_hypertable('benchmark_nav_history', 'nav_date', if_not_exists => TRUE);"))
-            await conn.commit()
-        except Exception as e:
-            # Skip if already a hypertable or outside TimescaleDB context
-            print(f"Hypertable creation skipped or failed: {e}")
     yield
     # Shutdown logic (none needed for now)
 
