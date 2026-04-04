@@ -4,6 +4,7 @@ import compareReducer from './slices/compareSlice';
 import fundsReducer from './slices/fundsSlice';
 import indicesReducer from './slices/indicesSlice';
 import fundDetailReducer from './slices/fundDetailSlice';
+import dashboardReducer from './slices/dashboardSlice';
 
 export const store = configureStore({
   reducer: {
@@ -12,5 +13,6 @@ export const store = configureStore({
     funds: fundsReducer,
     indices: indicesReducer,
     fundDetail: fundDetailReducer,
+    dashboard: dashboardReducer,
   },
 });

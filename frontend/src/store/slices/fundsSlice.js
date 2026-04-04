@@ -1,14 +1,6 @@
 import { createSlice, createAsyncThunk } from '@reduxjs/toolkit';
 import fundService from '../../api/services/fundService';
 
-/**
- * fundsSlice — Redux state for the MFListing page.
- *
- * Moves funds list, pagination, and filter state into Redux so that:
- * - Data fetched on first load is cached; navigating back to the list does not re-fetch.
- * - Pagination / filter state persists across back navigation.
- */
-
 export const fetchFunds = createAsyncThunk(
     'funds/fetchFunds',
     async ({ skip, limit, category, subcategory, amc, plan_type, order_by }, { rejectWithValue }) => {
@@ -28,7 +20,6 @@ const fundsSlice = createSlice({
         total: 0,
         loading: false,
         error: null,
-        // Persist filter & pagination state
         currentPage: 1,
         pageSize: 10,
         categoryFilter: 'All',
@@ -55,7 +46,15 @@ const fundsSlice = createSlice({
             })
             .addCase(fetchFunds.fulfilled, (state, action) => {
                 state.loading = false;
-                state.items = action.payload.items;
+                state.items = action.payload.items.map(fund => ({
+                    ...fund,
+                    displayMetrics: {
+                        aum: fund.metrics?.aum_in_crores ? `${fund.metrics.aum_in_crores.toLocaleString()} Cr` : 'N/A',
+                        nav: fund.metrics?.current_nav ? fund.metrics.current_nav.toFixed(2) : '0.00',
+                        change: fund.metrics?.absolute_return_1y ? `${fund.metrics.absolute_return_1y > 0 ? '+' : ''}${fund.metrics.absolute_return_1y}%` : '0.0%',
+                        rating: fund.metrics?.fund_rating || 0
+                    }
+                }));
                 state.total = action.payload.total;
             })
             .addCase(fetchFunds.rejected, (state, action) => {

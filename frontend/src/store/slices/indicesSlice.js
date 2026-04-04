@@ -1,13 +1,6 @@
 import { createSlice, createAsyncThunk } from '@reduxjs/toolkit';
 import fundService from '../../api/services/fundService';
 
-/**
- * indicesSlice — Redux state for the IndicesListing page.
- *
- * Same pattern as fundsSlice — lifts the fetched data and filter/pagination
- * state into the global store so back-navigation doesn't lose state.
- */
-
 export const fetchIndices = createAsyncThunk(
     'indices/fetchIndices',
     async ({ skip, limit, search }, { rejectWithValue }) => {
@@ -45,7 +38,14 @@ const indicesSlice = createSlice({
             })
             .addCase(fetchIndices.fulfilled, (state, action) => {
                 state.loading = false;
-                state.items = action.payload.items;
+                state.items = action.payload.items.map(idx => ({
+                    ...idx,
+                    displayMetrics: {
+                        nav: idx.metrics?.current_nav ? idx.metrics.current_nav.toFixed(2) : '0.00',
+                        change: idx.metrics?.cagr_1year ? `${idx.metrics.cagr_1year > 0 ? '+' : ''}${idx.metrics.cagr_1year}%` : '+0.0%',
+                        status: idx.is_active ? 'ACTIVE' : 'OFFLINE'
+                    }
+                }));
                 state.total = action.payload.total;
             })
             .addCase(fetchIndices.rejected, (state, action) => {

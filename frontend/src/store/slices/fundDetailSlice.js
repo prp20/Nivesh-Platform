@@ -5,17 +5,23 @@ export const fetchFundDetail = createAsyncThunk(
     'fundDetail/fetchDetail',
     async (schemeCode, { rejectWithValue }) => {
         try {
-            const [fund, navHistory, metrics, similarFunds] = await Promise.all([
+            const [fundRes, navHistory, similarFunds] = await Promise.all([
                 fundService.getFundDetail(schemeCode),
-                fundService.getFundNavHistory(schemeCode, 2000), // Fetch more for better charts
-                fundService.getFundMetrics(schemeCode).catch(() => ({ metrics: null })),
+                fundService.getFundNavHistory(schemeCode, 1000), 
                 fundService.getSimilarFunds(schemeCode).catch(() => [])
             ]);
             
+            // The fund detail response itself contains the nested metrics according to the user's Postman output.
+            const fund = fundRes;
+            const metrics = fund.metrics || null;
+            
             return {
                 fund,
-                navHistory,
-                metrics: metrics.metrics,
+                navHistory: navHistory.map(pt => ({
+                    date: pt.nav_date,
+                    nav: parseFloat(pt.nav_value || pt.index_value)
+                })).reverse(),
+                metrics,
                 similarFunds
             };
         } catch (err) {
@@ -29,8 +35,8 @@ export const syncFundMetrics = createAsyncThunk(
     async (schemeCode, { dispatch, rejectWithValue }) => {
         try {
             await fundService.syncFund(schemeCode);
-            // Polling is normally handled in the component or a middleware, 
-            // but we'll just return the intent here.
+            // Refresh detail after sync
+            dispatch(fetchFundDetail(schemeCode));
             return schemeCode;
         } catch (err) {
             return rejectWithValue(err.response?.data || 'Sync trigger failed.');
