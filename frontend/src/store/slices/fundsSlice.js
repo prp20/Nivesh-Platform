@@ -27,6 +27,7 @@ const fundsSlice = createSlice({
         amcSearch: '',
         planTypeFilter: '',
         sortBy: 'scheme_name',
+        viewMode: 'card', // 'card' or 'table'
     },
     reducers: {
         setCurrentPage: (state, action) => { state.currentPage = action.payload; },
@@ -36,6 +37,7 @@ const fundsSlice = createSlice({
         setAmcSearch: (state, action) => { state.amcSearch = action.payload; state.currentPage = 1; },
         setPlanTypeFilter: (state, action) => { state.planTypeFilter = action.payload; state.currentPage = 1; },
         setSortBy: (state, action) => { state.sortBy = action.payload; state.currentPage = 1; },
+        setViewMode: (state, action) => { state.viewMode = action.payload; },
         clearError: (state) => { state.error = null; },
     },
     extraReducers: (builder) => {
@@ -50,7 +52,7 @@ const fundsSlice = createSlice({
                     ...fund,
                     displayMetrics: {
                         aum: fund.metrics?.aum_in_crores ? `${fund.metrics.aum_in_crores.toLocaleString()} Cr` : 'N/A',
-                        nav: fund.metrics?.current_nav ? fund.metrics.current_nav.toFixed(2) : '0.00',
+                        nav: fund.metrics?.current_nav ? fund.metrics.current_nav.toFixed(2).toLocaleString() : '0.00',
                         change: fund.metrics?.absolute_return_1y ? `${fund.metrics.absolute_return_1y > 0 ? '+' : ''}${fund.metrics.absolute_return_1y}%` : '0.0%',
                         rating: fund.metrics?.fund_rating || 0
                     }
@@ -72,6 +74,7 @@ export const {
     setAmcSearch, 
     setPlanTypeFilter,
     setSortBy,
+    setViewMode,
     clearError 
 } = fundsSlice.actions;
 export default fundsSlice.reducer;

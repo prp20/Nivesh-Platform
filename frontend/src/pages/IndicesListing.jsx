@@ -54,8 +54,8 @@ const IndicesListing = () => {
 
             {/* Indices List - Ultra Breadth Table */}
             <div className="glass-panel rounded-[4rem] overflow-hidden shadow-[0_64px_128px_rgba(0,0,0,0.6)] border border-white/5 bg-white/[0.01] backdrop-blur-3xl mb-24">
-                <div className="w-full overflow-x-auto">
-                    <table className="w-full text-left border-collapse min-w-[1400px]">
+                <div className="w-full overflow-x-auto border-collapse">
+                    <table className="w-full text-left min-w-[1400px]">
                         <thead>
                             <tr className="border-b border-white/5 bg-surface-container-low/50">
                                 <th className="px-16 py-12 text-[11px] uppercase tracking-[0.5em] text-slate-500 font-black">Benchmark Identity</th>
@@ -70,7 +70,7 @@ const IndicesListing = () => {
                             {items.map((idx, i) => (
                                 <tr key={i} className="border-b border-white/5 hover:bg-white/[0.03] transition-all duration-500 group cursor-crosshair">
                                     <td className="px-16 py-16">
-                                        <Link to={`/index/${idx.benchmark_code}`} className="flex items-center gap-10">
+                                        <Link to={`/indices/${idx.benchmark_code}`} className="flex items-center gap-10">
                                             <div className="w-24 h-24 rounded-3xl bg-gradient-to-br from-white/10 to-white/5 flex items-center justify-center font-black text-2xl text-primary border border-white/5 shadow-2xl group-hover:scale-110 transition-transform tracking-widest">IDX</div>
                                             <div>
                                                 <div className="font-extrabold text-4xl text-white mb-3 tracking-tighter truncate max-w-xl group-hover:text-primary transition-colors uppercase">{idx.benchmark_name}</div>
