@@ -4,11 +4,16 @@ from .. import security, schemas
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 
-# In a real app, this would check a database
+# Pre-computed bcrypt hash of "admin123" — avoids running bcrypt on every cold start.
+# In production, replace with a real user management system.
+_ADMIN_HASHED_PASSWORD = (
+    "$2b$12$FagauQNsqQSnJYIXGxiZJuEyZJgvQT7jDoNf7EyCByQ1qxfYdMNVS"
+)
+
 FAKE_USERS_DB = {
     "admin": {
         "username": "admin",
-        "hashed_password": security.get_password_hash("admin123"),
+        "hashed_password": _ADMIN_HASHED_PASSWORD,
         "disabled": False,
     }
 }

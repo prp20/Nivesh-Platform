@@ -11,7 +11,7 @@ graph TD
     User((User))
     Web[React Frontend]
     API[FastAPI Backend]
-    DB[(TimescaleDB)]
+    DB[(PostgreSQL)]
     Sync[Data Sync Service]
     AMFI[AMFI/mftool]
 
@@ -26,7 +26,7 @@ graph TD
 ### Core Components
 - **Frontend**: A sleek, dark-mode React application optimized for financial data visualization.
 - **Backend**: A high-performance asynchronous API built for complex risk calculations and time-series data management.
-- **Database**: PostgreSQL with the TimescaleDB extension, enabling efficient handling of millions of historical data points.
+- **Database**: PostgreSQL, enabling efficient handling of historical data points with optimized indexing.
 
 ---
 
@@ -36,7 +36,7 @@ graph TD
 | :--- | :--- |
 | **Frontend** | React, Vite, Vanilla CSS (Califino Style) |
 | **Backend** | FastAPI, SQLAlchemy (Async), Uvicorn |
-| **Database** | PostgreSQL + TimescaleDB |
+| **Database** | PostgreSQL 16 |
 | **Data Engine** | Pandas, mftool |
 | **Infrastructure** | Docker, Docker Compose |
 
@@ -45,4 +45,4 @@ graph TD
 ## 🔐 Security Model
 - **JWT Authentication**: Secure stateless authentication for administrative tools.
 - **Role-Based Access**: Public read access to metrics with write/sync restrictions for authenticated users.
-- **Data Integrity**: Enforced via unique constraints and TimescaleDB segmentations.
+- **Data Integrity**: Enforced via unique constraints and B-Tree indexing.

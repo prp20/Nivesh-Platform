@@ -183,6 +183,24 @@ def compute_all_metrics(nav_history: List[Dict], benchmark_history: Optional[Lis
                 "downside_capture": capture["downside_capture"]
             })
             
+    # Data completeness metadata
+    start_date = nav_series.index[0].date()
+    end_date = nav_series.index[-1].date()
+    total_calendar_days = (nav_series.index[-1] - nav_series.index[0]).days
+    expected_trading_days = total_calendar_days * 252 / 365
+    actual_trading_days = len(nav_series)
+    completeness = (
+        min(actual_trading_days / expected_trading_days * 100, 100.0)
+        if expected_trading_days > 0
+        else 0.0
+    )
+    metrics.update({
+        "calculation_period_start_date": start_date,
+        "calculation_period_end_date": end_date,
+        "data_completeness_percentage": round(completeness, 2),
+        "has_sufficient_data": completeness >= 80.0,
+    })
+
     # Final Verdict Logic
     sharpe_raw = metrics.get("sharpe")
     alpha_raw = metrics.get("alpha")

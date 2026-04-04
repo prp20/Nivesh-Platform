@@ -1,4 +1,4 @@
-from sqlalchemy import Column, String, Numeric, TIMESTAMP, Date, Boolean, ForeignKey, text, UniqueConstraint, Index
+from sqlalchemy import Column, String, Numeric, TIMESTAMP, Date, Boolean, ForeignKey, text, Index
 from sqlalchemy.sql import func
 from sqlalchemy.orm import relationship
 import uuid
@@ -62,7 +62,6 @@ class FundNavHistory(Base):
     """Historical NAV data for all mutual fund schemes"""
     __tablename__ = "fund_nav_history"
     __table_args__ = (
-        UniqueConstraint('scheme_code', 'nav_date', name='uq_fund_nav_scheme_date'),
         Index('ix_fund_nav_history_nav_date', 'nav_date'),
     )
     
@@ -76,7 +75,6 @@ class BenchmarkNavHistory(Base):
     """Historical index values for benchmark indices"""
     __tablename__ = "benchmark_nav_history"
     __table_args__ = (
-        UniqueConstraint('benchmark_code', 'nav_date', name='uq_benchmark_nav_date'),
         Index('ix_benchmark_nav_history_nav_date', 'nav_date'),
     )
     

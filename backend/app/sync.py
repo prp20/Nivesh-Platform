@@ -150,13 +150,13 @@ async def sync_fund_data(session: AsyncSession, scheme_code: str, job_id: Option
         benchmark_history_list = None
         if fund_master.benchmark_index_code:
             await update_progress(f"Loading benchmark history ({fund_master.benchmark_index_code})...")
-            bench_history = await crud.get_benchmark_nav_history(session, fund_master.benchmark_index_code, limit=2000)
+            bench_history = await crud.get_benchmark_nav_history(session, fund_master.benchmark_index_code, limit=5000)
             if bench_history:
                 benchmark_history_list = [{"nav_date": b.nav_date, "index_value": float(b.index_value)} for b in bench_history]
 
         await update_progress("Computing complex financial metrics...")
         # 6. Recompute Metrics
-        nav_history = await crud.get_fund_nav_history(session, scheme_code, limit=2500)
+        nav_history = await crud.get_fund_nav_history(session, scheme_code, limit=5000)
         nav_list = [{"nav_date": n.nav_date, "nav_value": float(n.nav_value)} for n in nav_history]
         
         calc_results = analytics.compute_all_metrics(nav_list, benchmark_history_list)
@@ -194,6 +194,10 @@ async def sync_fund_data(session: AsyncSession, scheme_code: str, job_id: Option
             "tracking_error": calc_results.get("tracking_error"),
             "information_ratio": calc_results.get("information_ratio"),
             "final_verdict": calc_results.get("final_verdict"),
+            "calculation_period_start_date": calc_results.get("calculation_period_start_date"),
+            "calculation_period_end_date": calc_results.get("calculation_period_end_date"),
+            "data_completeness_percentage": calc_results.get("data_completeness_percentage"),
+            "has_sufficient_data": calc_results.get("has_sufficient_data", True),
             "metrics_calculated_at": datetime.now(timezone.utc)
         }
         await crud.upsert_fund_metrics(session, metrics_payload)

@@ -1,5 +1,6 @@
 # Getting Started
 
+
 ## 🛠️ Prerequisites
 - **Docker & Docker Compose**: For the database layer.
 - **Python 3.9+**: For the FastAPI application.
@@ -7,11 +8,11 @@
 ## 🚀 Local Setup
 
 ### 1. Database Infrastructure
-Start the dedicated TimescaleDB container:
+Start the PostgreSQL database container:
 ```bash
 docker-compose up -d
 ```
-*Verification*: Connect to `localhost:5432` with user `postgres` and password `postgres`.
+*Verification*: Connect to `localhost:5432` with user `nivesh_admin` and password `nivesh_password_123`.
 
 ### 2. Python Environment
 ```bash
