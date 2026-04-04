@@ -24,8 +24,10 @@ def get_all_funds():
 
 def populate_nav_data():
     mf = Mftool()
-    funds = get_all_funds()
-    
+    response_data = get_all_funds()
+    # API returns a pagination envelope: {total, skip, limit, items}
+    funds = response_data.get("items", []) if isinstance(response_data, dict) else []
+
     if not funds:
         print("No funds found in database. Please seed funds first.")
         return

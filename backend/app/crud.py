@@ -212,17 +212,20 @@ async def bulk_insert_fund_navs(session: AsyncSession, scheme_code: str, nav_dat
     rows = []
     for d, v in nav_data.items():
         try:
-            # Handle potential string dates from JSON
+            nav_value = float(v)
+            if nav_value <= 0:
+                continue  # Reject zero/negative NAVs — invalid data
             date_obj = datetime.strptime(d, "%Y-%m-%d").date() if isinstance(d, str) else d
             rows.append({
                 "scheme_code": scheme_code,
                 "nav_date": date_obj,
-                "nav_value": float(v)
+                "nav_value": nav_value,
             })
         except (ValueError, TypeError):
             continue
 
-    if not rows: return 0
+    if not rows:
+        return 0
 
     stmt = pg_insert(FundNavHistory).values(rows)
     stmt = stmt.on_conflict_do_update(

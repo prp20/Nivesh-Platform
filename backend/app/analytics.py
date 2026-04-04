@@ -18,14 +18,19 @@ def calculate_sharpe_ratio(returns: pd.Series, risk_free_rate: float = 0.065) ->
     return np.sqrt(252) * excess_returns.mean() / returns.std()
 
 def calculate_sortino_ratio(returns: pd.Series, risk_free_rate: float = 0.065) -> float:
-    """Calculate annualized Sortino Ratio."""
-    if returns.empty: return 0.0
+    """Calculate annualized Sortino Ratio.
+
+    Uses the correct downside deviation: sqrt(mean(min(r, 0)^2))
+    rather than the biased sample std of negative returns.
+    """
+    if returns.empty:
+        return 0.0
     excess_returns = returns - (risk_free_rate / 252)
-    downside_returns = excess_returns[excess_returns < 0]
-    if downside_returns.empty or downside_returns.std() == 0: 
-        # If no downside, return a high ratio if mean is positive
+    downside_returns = np.minimum(excess_returns, 0)
+    downside_deviation = np.sqrt(np.mean(downside_returns ** 2))
+    if downside_deviation == 0:
         return 10.0 if excess_returns.mean() > 0 else 0.0
-    return np.sqrt(252) * excess_returns.mean() / downside_returns.std()
+    return float(np.sqrt(252) * excess_returns.mean() / downside_deviation)
 
 def calculate_max_drawdown(nav_series: pd.Series) -> float:
     """Calculate maximum drawdown."""
@@ -133,8 +138,8 @@ def compute_all_metrics(nav_history: List[Dict], benchmark_history: Optional[Lis
         "sharpe": calculate_sharpe_ratio(returns),
         "sortino": calculate_sortino_ratio(returns),
         "max_drawdown": calculate_max_drawdown(nav_series),
-        "rolling_return_3year": calculate_cagr(nav_series, 3),
-        "rolling_return_5year": calculate_cagr(nav_series, 5),
+        "cagr_3year": calculate_cagr(nav_series, 3),
+        "cagr_5year": calculate_cagr(nav_series, 5),
         "absolute_return_1y": calculate_absolute_return(nav_series, years=1),
         "absolute_return_3y": calculate_absolute_return(nav_series, years=3),
         "absolute_return_5y": calculate_absolute_return(nav_series, years=5),
@@ -169,11 +174,16 @@ def compute_all_metrics(nav_history: List[Dict], benchmark_history: Optional[Lis
             alpha = fund_ann_ret - (risk_free_rate + beta * (bench_ann_ret - risk_free_rate))
             
             # Tracking Error
-            tracking_error = (fund_ret - bench_ret).std() * np.sqrt(252)
-            
-            # Information Ratio
-            excess_ret = fund_ann_ret - bench_ann_ret
-            info_ratio = excess_ret / tracking_error if tracking_error != 0 else 0
+            active_returns = fund_ret - bench_ret
+            tracking_error = active_returns.std() * np.sqrt(252)
+
+            # Information Ratio — computed from daily active returns for consistency
+            # IR = mean(active_daily) / std(active_daily) * sqrt(252)
+            info_ratio = (
+                float(active_returns.mean() / active_returns.std() * np.sqrt(252))
+                if active_returns.std() != 0
+                else 0.0
+            )
             
             # Capture Ratios
             capture = calculate_capture_ratios(fund_ret, bench_ret)

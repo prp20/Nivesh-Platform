@@ -24,12 +24,24 @@ class FundMaster(Base):
     __tablename__ = "fund_master"
 
     __table_args__ = (
-        # Support fast filtering on the most common list-endpoint query params.
-        # For substring ilike queries (amc_name, scheme_category) a pg_trgm GIN
-        # index would be optimal; these B-Tree indexes cover equality and prefix
-        # matches and are created automatically via create_all.
-        Index("ix_fund_master_scheme_category", "scheme_category"),
-        Index("ix_fund_master_amc_name", "amc_name"),
+        # GIN trigram indexes for fast substring ilike() searches.
+        # Requires: CREATE EXTENSION IF NOT EXISTS pg_trgm;
+        # These replace the earlier B-Tree indexes which did not help for
+        # %pattern% queries. create_all will create them on a fresh DB;
+        # run the CREATE INDEX statements manually on existing deployments.
+        Index(
+            "ix_fund_master_amc_name_trgm",
+            "amc_name",
+            postgresql_using="gin",
+            postgresql_ops={"amc_name": "gin_trgm_ops"},
+        ),
+        Index(
+            "ix_fund_master_scheme_category_trgm",
+            "scheme_category",
+            postgresql_using="gin",
+            postgresql_ops={"scheme_category": "gin_trgm_ops"},
+        ),
+        # B-Tree indexes for equality filters (plan_type, is_active)
         Index("ix_fund_master_plan_type", "plan_type"),
         Index("ix_fund_master_is_active", "is_active"),
     )
@@ -102,8 +114,8 @@ class BenchmarkMetrics(Base):
     benchmark_code = Column(String(50), ForeignKey("benchmark_master.benchmark_code", ondelete="CASCADE"), primary_key=True)
     current_nav = Column(Numeric(15, 4), nullable=False)
     nav_date = Column(Date, nullable=False)
-    rolling_return_3year = Column(Numeric(10, 4))
-    rolling_return_5year = Column(Numeric(10, 4))
+    cagr_3year = Column(Numeric(10, 4))
+    cagr_5year = Column(Numeric(10, 4))
     sortino_ratio = Column(Numeric(10, 4))
     sharpe_ratio = Column(Numeric(10, 4))
     standard_deviation = Column(Numeric(10, 4))
@@ -126,8 +138,8 @@ class FundMetrics(Base):
     expense_ratio = Column(Numeric(5, 4))
     fund_rating = Column(Numeric(5, 2))
     volatility = Column(Numeric(10, 4))
-    rolling_return_3year = Column(Numeric(10, 4))
-    rolling_return_5year = Column(Numeric(10, 4))
+    cagr_3year = Column(Numeric(10, 4))
+    cagr_5year = Column(Numeric(10, 4))
     absolute_return_1y = Column(Numeric(10, 4))
     absolute_return_3y = Column(Numeric(10, 4))
     absolute_return_5y = Column(Numeric(10, 4))

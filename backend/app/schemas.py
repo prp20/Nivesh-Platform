@@ -39,8 +39,8 @@ class FundMetricsBase(BaseModel):
     expense_ratio: Optional[float] = None
     fund_rating: Optional[float] = None
     volatility: Optional[float] = None
-    rolling_return_3year: Optional[float] = None
-    rolling_return_5year: Optional[float] = None
+    cagr_3year: Optional[float] = None
+    cagr_5year: Optional[float] = None
     absolute_return_1y: Optional[float] = None
     absolute_return_3y: Optional[float] = None
     absolute_return_5y: Optional[float] = None
@@ -73,8 +73,8 @@ class FundMetricsReadWithoutNav(BaseModel):
     expense_ratio: Optional[float] = None
     fund_rating: Optional[float] = None
     volatility: Optional[float] = None
-    rolling_return_3year: Optional[float] = None
-    rolling_return_5year: Optional[float] = None
+    cagr_3year: Optional[float] = None
+    cagr_5year: Optional[float] = None
     absolute_return_1y: Optional[float] = None
     absolute_return_3y: Optional[float] = None
     absolute_return_5y: Optional[float] = None
@@ -168,8 +168,8 @@ class BenchmarkMetricsBase(BaseModel):
     benchmark_code: str
     current_nav: float
     nav_date: date
-    rolling_return_3year: Optional[float] = None
-    rolling_return_5year: Optional[float] = None
+    cagr_3year: Optional[float] = None
+    cagr_5year: Optional[float] = None
     sortino_ratio: Optional[float] = None
     sharpe_ratio: Optional[float] = None
     standard_deviation: Optional[float] = None
