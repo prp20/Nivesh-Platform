@@ -60,6 +60,7 @@ def _apply_fund_filters(
     subcategory: Optional[str] = None,
     amc: Optional[str] = None,
     plan_type: Optional[str] = None,
+    benchmark_code: Optional[str] = None,
 ):
     """Apply common FundMaster filter predicates to a query."""
     if is_active is not None:
@@ -72,6 +73,8 @@ def _apply_fund_filters(
         q = q.where(FundMaster.amc_name.ilike(f"%{amc}%"))
     if plan_type:
         q = q.where(FundMaster.plan_type == plan_type)
+    if benchmark_code:
+        q = q.where(FundMaster.benchmark_index_code.ilike(f"%{benchmark_code}%"))
     return q
 
 
@@ -82,12 +85,13 @@ async def get_all_fund_masters(
     subcategory: Optional[str] = None,
     amc: Optional[str] = None,
     plan_type: Optional[str] = None,
+    benchmark_code: Optional[str] = None,
     order_by: Optional[str] = "scheme_name",
     skip: int = 0,
     limit: int = 100,
 ) -> List[FundMaster]:
     q = _apply_fund_filters(
-        select(FundMaster), is_active, category, subcategory, amc, plan_type
+        select(FundMaster), is_active, category, subcategory, amc, plan_type, benchmark_code
     )
 
     if order_by == "scheme_name":
@@ -107,10 +111,10 @@ async def get_fund_masters_count(
     subcategory: Optional[str] = None,
     amc: Optional[str] = None,
     plan_type: Optional[str] = None,
+    benchmark_code: Optional[str] = None,
 ) -> int:
     q = _apply_fund_filters(
-        select(func.count(FundMaster.scheme_code)),
-        is_active, category, subcategory, amc, plan_type,
+        select(func.count(FundMaster.scheme_code)), is_active, category, subcategory, amc, plan_type, benchmark_code
     )
     res = await session.execute(q)
     return res.scalar() or 0

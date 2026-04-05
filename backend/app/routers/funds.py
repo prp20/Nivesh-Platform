@@ -26,6 +26,7 @@ async def list_funds(
     subcategory: Optional[str] = Query(None, description="Filter by scheme subcategory"),
     amc: Optional[str] = Query(None, description="Filter by AMC name"),
     plan_type: Optional[str] = Query(None, description="Filter by plan type (Direct/Regular)"),
+    benchmark_code: Optional[str] = Query(None, description="Filter by benchmark index code"),
     order_by: Optional[str] = Query("scheme_name", description="Sort field (scheme_name, -scheme_name)"),
     skip: int = Query(0, ge=0),
     limit: int = Query(100, ge=1, le=500),
@@ -33,10 +34,10 @@ async def list_funds(
 ):
     """List all mutual funds with pagination and filtering."""
     total = await crud.get_fund_masters_count(
-        session, is_active=is_active, category=category, subcategory=subcategory, amc=amc, plan_type=plan_type
+        session, is_active=is_active, category=category, subcategory=subcategory, amc=amc, plan_type=plan_type, benchmark_code=benchmark_code
     )
     items = await crud.get_all_fund_masters(
-        session, is_active=is_active, category=category, subcategory=subcategory, amc=amc, plan_type=plan_type,
+        session, is_active=is_active, category=category, subcategory=subcategory, amc=amc, plan_type=plan_type, benchmark_code=benchmark_code,
         order_by=order_by, skip=skip, limit=limit
     )
     return {

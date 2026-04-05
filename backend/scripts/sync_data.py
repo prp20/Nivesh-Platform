@@ -105,8 +105,47 @@ def sync_fund_data_sync(session, scheme_code):
         )
         session.execute(stmt)
 
-        # 4. Compute Metrics
-        # Load benchmark history synchronously
+        # 4. Fetch AUM and metrics from Captnemo/Kuvera
+        aum = 0.0
+        expense_ratio = None
+        fund_rating = None
+        volatility = None
+        
+        isin = fund_master.isin
+        if isin:
+            try:
+                # Use headers to mimic browser for the API call
+                headers = {
+                    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36"
+                }
+                # Captnemo API lookup
+                resp = requests.get(f"https://mf.captnemo.in/kuvera/{isin}", headers=headers, timeout=10)
+                if resp.status_code == 200:
+                    data = resp.json()
+                    # Kuvera response is usually a list
+                    fund_data = data[0] if isinstance(data, list) and data else {}
+                    if fund_data:
+                        # aum is in Millions, convert to Crores (/ 10.0)
+                        a_val = fund_data.get("aum")
+                        aum = (float(a_val) / 10.0) if a_val else 0.0
+                        
+                        te_val = fund_data.get("expense_ratio")
+                        expense_ratio = float(te_val) / 100.0 if te_val is not None else None
+                        
+                        fund_rating = float(fund_data.get("fund_rating")) if fund_data.get("fund_rating") else None
+                        volatility = float(fund_data.get("volatility")) if fund_data.get("volatility") else None
+                        # tqdm.write(f"[+] Found AUM for {scheme_code}: {aum} Cr")
+                elif resp.status_code == 404:
+                    # tqdm.write(f"[!] AUM not found on Kuvera for ISIN {isin}")
+                    pass
+                else:
+                    # tqdm.write(f"[!] AUM Fetch Error {resp.status_code} for ISIN {isin}")
+                    pass
+            except Exception as e:
+                # tqdm.write(f"[!] AUM lookup error for {scheme_code}: {e}")
+                pass
+
+        # 5. Compute Metrics
         bench_code = fund_master.benchmark_index_code
         benchmark_history = []
         if bench_code:
@@ -122,12 +161,15 @@ def sync_fund_data_sync(session, scheme_code):
         if not calc_results or "current_nav" not in calc_results:
             return False, "Insufficient data to compute financial metrics"
 
-        # 5. Upsert Metrics
+        # 6. Upsert Metrics
         metrics_payload = {
             "scheme_code": scheme_code,
             "current_nav": calc_results["current_nav"],
             "nav_date": calc_results["nav_date"],
-            "aum_in_crores": 0.0, # Sync AUM from Kuvera could be added here if needed
+            "aum_in_crores": aum,
+            "expense_ratio": expense_ratio,
+            "fund_rating": fund_rating,
+            "volatility": volatility,
             "calculation_period_start_date": calc_results.get("calculation_period_start_date"),
             "calculation_period_end_date": calc_results.get("calculation_period_end_date"),
             "has_sufficient_data": calc_results.get("has_sufficient_data", True),
