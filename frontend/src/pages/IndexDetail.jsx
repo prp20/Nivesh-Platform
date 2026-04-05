@@ -1,309 +1,134 @@
-import React, { useState, useEffect, useMemo } from 'react';
-import { useSelector, useDispatch } from 'react-redux';
-import { triggerIndexSync, fetchIndexSyncStatus } from '../store/slices/syncSlice';
-import fundService from '../api/services/fundService';
-import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
-import './MFDetail.css';
+import React, { useEffect } from 'react';
+import { useDispatch, useSelector } from 'react-redux';
+import { useParams, Link } from 'react-router-dom';
+import { fetchIndexDetail, clearDetail } from '../store/slices/indicesSlice';
+import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip, ResponsiveContainer } from 'recharts';
+import { motion } from 'framer-motion';
 
-const IndexDetail = ({ benchmarkCode }) => {
+const IndexDetail = () => {
+    const { benchmarkCode } = useParams();
     const dispatch = useDispatch();
-    const syncJob = useSelector(state => state.sync.indexJobs[benchmarkCode]);
-    const isSyncing = syncJob?.status === 'RUNNING';
+    const { currentDetail: indexData, navHistory, detailLoading: loading, detailError: error } = useSelector((state) => state.indices);
 
-    const [index, setIndex] = useState(null);
-    const [navHistory, setNavHistory] = useState([]);
-    const [loading, setLoading] = useState(true);
-    const [error, setError] = useState(null);
-    const [timeRange, setTimeRange] = useState('ALL');
-    const [uploading, setUploading] = useState(false);
-    const [uploadMsg, setUploadMsg] = useState(null);
-
-    const navigateBack = () => {
-        window.location.hash = '#indices';
-    };
-
-    const fetchHistory = async () => {
-        try {
-            const historyData = await fundService.getBenchmarkNavHistory(benchmarkCode, 1000);
-            setNavHistory(historyData);
-        } catch (err) {
-            console.error("Failed to refresh history", err);
+    useEffect(() => {
+        if (benchmarkCode) {
+            dispatch(fetchIndexDetail(benchmarkCode));
         }
+        return () => dispatch(clearDetail());
+    }, [dispatch, benchmarkCode]);
+
+    if (loading && !indexData) {
+        return (
+            <div className="min-h-screen w-full flex flex-col items-center justify-center bg-[#0a0f12]">
+                <div className="w-24 h-24 border-4 border-primary border-t-transparent rounded-full animate-spin mb-8 shadow-[0_0_30px_rgba(233,195,73,0.2)]"></div>
+                <p className="text-primary font-black uppercase tracking-[0.5em] animate-pulse">Synchronizing Global Datum...</p>
+            </div>
+        );
     }
 
-    useEffect(() => {
-        const fetchDetail = async () => {
-            if (!benchmarkCode) return;
-            try {
-                const [indexData, historyData] = await Promise.all([
-                    fundService.getBenchmarkDetail(benchmarkCode),
-                    fundService.getBenchmarkNavHistory(benchmarkCode, 1000)
-                ]);
-                setIndex(indexData);
-                setNavHistory(historyData);
-                setLoading(false);
-            } catch (err) {
-                console.error("Failed to fetch index details", err);
-                setError("Index data stream intermittent. Security protocol active.");
-                setLoading(false);
-            }
-        };
-        fetchDetail();
-        dispatch(fetchIndexSyncStatus(benchmarkCode));
-    }, [benchmarkCode, dispatch]);
+    if (error) {
+        return (
+            <div className="min-h-screen w-full flex flex-col items-center justify-center bg-[#0a0f12] p-20">
+                <span className="material-symbols-outlined text-error text-9xl mb-8">security_update_warning</span>
+                <h2 className="text-4xl font-headline font-bold text-white mb-4 uppercase tracking-widest">Protocol Breach</h2>
+                <p className="text-slate-500 text-xl font-bold tracking-tight mb-12">{error}</p>
+                <Link to="/indices" className="px-12 py-5 gold-gradient rounded-2xl text-on-primary font-black uppercase tracking-widest shadow-2xl">
+                    Back to Indices
+                </Link>
+            </div>
+        );
+    }
 
-    // Poll for sync status when a sync is in progress
-    useEffect(() => {
-        let interval;
-        if (isSyncing) {
-            interval = setInterval(() => {
-                dispatch(fetchIndexSyncStatus(benchmarkCode)).then((action) => {
-                    if (action.payload?.status === 'COMPLETED') {
-                        fetchHistory();
-                    }
-                });
-            }, 3000);
-        }
-        return () => clearInterval(interval);
-    }, [isSyncing, benchmarkCode, dispatch]);
+    if (!indexData) return null;
 
-    const handleFileUpload = async (event) => {
-        const file = event.target.files[0];
-        if (!file) return;
-        
-        setUploading(true);
-        setUploadMsg(null);
-        try {
-            const res = await fundService.uploadBenchmarkCsv(benchmarkCode, file);
-            setUploadMsg({ type: 'success', text: res.message });
-            await fetchHistory();
-        } catch (err) {
-            setUploadMsg({ type: 'error', text: err.response?.data?.detail || "Intake protocol failure." });
-        } finally {
-            setUploading(false);
-        }
-    };
-
-    const chartData = useMemo(() => {
-        if (!navHistory.length) return [];
-        const sorted = navHistory.slice().reverse();
-        
-        let filtered = sorted;
-        const now = new Date();
-        if (timeRange === '1M') {
-            const monthAgo = new Date().setMonth(now.getMonth() - 1);
-            filtered = sorted.filter(n => new Date(n.nav_date) >= monthAgo);
-        } else if (timeRange === '6M') {
-            const sixMonthsAgo = new Date().setMonth(now.getMonth() - 6);
-            filtered = sorted.filter(n => new Date(n.nav_date) >= sixMonthsAgo);
-        } else if (timeRange === '1Y') {
-            const yearAgo = new Date().setFullYear(now.getFullYear() - 1);
-            filtered = sorted.filter(n => new Date(n.nav_date) >= yearAgo);
-        }
-
-        return filtered.map(n => ({
-            date: new Date(n.nav_date).toLocaleDateString('en-IN', { day: '2-digit', month: 'short' }),
-            nav: parseFloat(n.index_value)
-        }));
-    }, [navHistory, timeRange]);
-
-    if (loading) return <div className="loading-container p-20 text-center uppercase tracking-widest font-heading">Decrypting Market Intelligence...</div>;
-    if (error) return <div className="glass-panel p-10 text-center text-error border-error/20 m-10">{error}</div>;
-    if (!index) return <div className="glass-panel p-10 text-center m-10">Intelligence record not found.</div>;
-
-    const hasNavData = navHistory && navHistory.length > 0;
-
-    const latestNav = navHistory.length > 0 ? navHistory[0].index_value : 0;
-    const prevNav = navHistory.length > 1 ? navHistory[1].index_value : latestNav;
-    const changePercent = prevNav !== 0 ? ((latestNav - prevNav) / prevNav * 100).toFixed(2) : "0.00";
-
-    const calculateReturn = (days) => {
-        if (navHistory.length < 2) return "0.00%";
-        // navHistory is sorted by date DESC (latest first)
-        const current = navHistory[0].index_value;
-        const pastIndex = navHistory.length > days ? days : navHistory.length - 1;
-        const past = navHistory[pastIndex].index_value;
-        return `${(((current - past) / past) * 100).toFixed(2)}%`;
-    };
+    const latestVal = navHistory.length > 0 ? navHistory[navHistory.length - 1].value : 0;
+    const prevVal = navHistory.length > 1 ? navHistory[navHistory.length - 2].value : latestVal;
+    const delta = latestVal - prevVal;
+    const deltaPercent = prevVal !== 0 ? (delta / prevVal) * 100 : 0;
 
     return (
-        <div className="mf-detail container reveal active">
-            <header className="detail-header-lux">
-                <div className="back-nav-lux">
-                    <button onClick={navigateBack} className="btn-back-elite">
-                        <span className="back-icon">←</span>
-                        <span className="back-text">RETURN TO MARKET REPOSITORY</span>
-                    </button>
+        <div className="p-6 md:p-12 lg:p-16 xl:p-24 2xl:p-32 w-full animate-fadeIn flex flex-col gap-16 transition-all duration-500">
+            {/* Breadcrumbs */}
+            <nav className="flex items-center gap-6 text-xs sm:text-sm font-black uppercase tracking-[0.5em] opacity-40">
+                <Link to="/indices" className="hover:text-primary transition-all hover:scale-105">Market Indices</Link>
+                <span className="material-symbols-outlined text-sm">chevron_right</span>
+                <span className="text-white">Systemic Surveillance</span>
+            </nav>
+
+            {/* Header - Ultra Scale */}
+            <header className="flex flex-col 2xl:flex-row 2xl:items-end justify-between gap-12 mb-8">
+                <div className="flex-1">
+                    <div className="flex items-center gap-6 mb-10">
+                        <span className="bg-primary/20 text-primary border border-primary/30 px-6 py-3 rounded-2xl text-[10px] font-black uppercase tracking-[0.4em] leading-none"> {indexData.benchmark_type || 'GLOBAL EQUITY'} </span>
+                        <span className="text-secondary text-sm font-black uppercase tracking-[0.4em] flex items-center gap-3">
+                            <span className="material-symbols-outlined text-2xl animate-pulse">verified</span>
+                            Protocol Status: Nominal
+                        </span>
+                    </div>
+                    <h1 className="text-6xl sm:text-7xl md:text-8xl lg:text-9xl 3xl:text-[12rem] font-headline font-bold text-white tracking-tighter leading-none mb-10 group uppercase">
+                        {indexData.benchmark_name} <span className="text-primary/10 group-hover:text-primary transition-all duration-1000">INDEX</span>
+                    </h1>
+                    <p className="text-xl md:text-2xl text-slate-500 font-black max-w-6xl leading-tight italic uppercase tracking-[0.3em] opacity-60"> Ticker: {indexData.ticker} • Protocol Identification: {indexData.benchmark_code} </p>
                 </div>
 
-                <div className="fund-hero-stack">
-                    <span className="scheme-badge">MARKET INDEX</span>
-                    <h1 className="heading-xl">{index.benchmark_name}</h1>
-                    <p className="text-muted text-xs uppercase tracking-widest mt-2">{index.benchmark_code}</p>
-
-                    <div className="price-performance-row">
-                        <span className="price-val font-heading">₹{latestNav}</span>
-                        <div className={`change-badge-elite ${parseFloat(changePercent) >= 0 ? 'positive' : 'negative'}`}>
-                            {parseFloat(changePercent) >= 0 ? '▲' : '▼'} {Math.abs(changePercent)}%
-                        </div>
+                <div className="flex flex-col items-end gap-4 bg-surface-container-high/60 p-12 md:p-16 rounded-[4rem] border border-white/5 shadow-[0_64px_128px_rgba(0,0,0,0.6)] backdrop-blur-3xl min-w-[400px]">
+                    <span className="text-sm font-black text-slate-500 uppercase tracking-[0.5em] leading-none mb-2 opacity-60">Global Index Valuation</span>
+                    <div className="text-7xl sm:text-8xl md:text-9xl font-headline font-black text-white tracking-tighter leading-none mt-2">
+                        {latestVal.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                     </div>
-
-                    <div className="flex justify-center gap-4 mt-10">
-                        <button
-                            className={`btn-premium btn-premium-refresh ${isSyncing ? 'loading' : ''}`}
-                            onClick={() => dispatch(triggerIndexSync(benchmarkCode))}
-                            disabled={isSyncing}
-                        >
-                            {isSyncing ? 'Syncing Market Stream...' : 'Sync Market Stream'}
-                        </button>
-                        <button className="btn-premium btn-premium-primary px-12">Monitor Integration</button>
+                    <div className={`flex items-center gap-4 text-3xl font-black uppercase tracking-[0.3em] mt-8 px-10 py-5 rounded-[2.5rem] border shadow-2xl ${delta >= 0 ? 'text-secondary bg-secondary/10 border-secondary/20' : 'text-error bg-error/10 border-error/20'}`}>
+                        <span className="material-symbols-outlined text-4xl">{delta >= 0 ? 'trending_up' : 'trending_down'}</span>
+                        {delta >= 0 ? '+' : ''}{deltaPercent.toFixed(2)}% T-SESSION
                     </div>
                 </div>
             </header>
 
-            <div className="metrics-strip-lux">
-                <div className="glass-panel metric-strip-item glow-card">
-                    <span className="m-label">1Y Performance</span>
-                    <div className="m-value font-heading text-primary">{calculateReturn(252)}</div>
+            {/* Performance Chart Section */}
+            <section className="glass-panel p-12 md:p-16 2xl:p-24 rounded-[4rem] border border-white/5 shadow-[0_64px_128px_rgba(0,0,0,0.7)] relative overflow-hidden backdrop-blur-3xl min-h-[600px] bg-white/[0.01]">
+                <div className="mb-20 relative z-10">
+                    <h3 className="text-4xl font-headline font-bold tracking-tight mb-4 uppercase tracking-[0.2em] leading-none">Global Trajectory Matrix</h3>
+                    <p className="text-base text-slate-500 font-black tracking-[0.3em] flex items-center gap-4 uppercase opacity-60"> Continuous surveillance of systemic benchmark momentum <span className="inline-block w-3 h-3 rounded-full bg-secondary animate-pulse shadow-[0_0_15px_rgba(102,221,139,0.5)]"></span> </p>
                 </div>
-                <div className="glass-panel metric-strip-item glow-card">
-                    <span className="m-label">3Y Performance</span>
-                    <div className="m-value font-heading text-primary">{calculateReturn(756)}</div>
-                </div>
-                <div className="glass-panel metric-strip-item glow-card">
-                    <span className="m-label">Volatility Delta</span>
-                    <div className="m-value font-heading text-primary">HEALTHY</div>
-                </div>
-            </div>
-
-            <div className="detail-grid-lux">
-                <div className="glass-panel chart-box-lux glow-card">
-                    <div className="chart-head-lux">
-                        <h3 className="section-heading-lux uppercase">Performance Trajectory</h3>
-                        <div className="flex gap-3">
-                            {['1M', '6M', '1Y', 'ALL'].map(t => (
-                                <button 
-                                    key={t} 
-                                    className={`t-btn ${timeRange === t ? 'active' : ''}`}
-                                    onClick={() => setTimeRange(t)}
-                                >{t}</button>
-                            ))}
-                        </div>
-                    </div>
-                    
-                    {!hasNavData ? (
-                        <div className="flex flex-col items-center justify-center p-10 border border-white/5 bg-white/5 mx-6 mb-6" style={{ height: '450px' }}>
-                            <div className="text-4xl mb-4 opacity-30">⚠️</div>
-                            <h4 className="font-heading text-xl text-primary mb-2 uppercase tracking-widest">Metadata Sequence Offline</h4>
-                            <p className="text-muted tracking-widest uppercase text-xs opacity-70">NAV historical data is not present in the core ledger.</p>
-                        </div>
-                    ) : (
-                        <div style={{ height: '450px', width: '100%' }}>
-                            <ResponsiveContainer width="100%" height="100%">
-                                <AreaChart data={chartData}>
-                                    <defs>
-                                        <linearGradient id="navGradient" x1="0" y1="0" x2="0" y2="1">
-                                            <stop offset="5%" stopColor="var(--color-primary)" stopOpacity={0.3}/>
-                                            <stop offset="95%" stopColor="var(--color-primary)" stopOpacity={0}/>
-                                        </linearGradient>
-                                    </defs>
-                                    <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="rgba(255,255,255,0.05)" />
-                                    <XAxis 
-                                        dataKey="date" 
-                                        axisLine={false} 
-                                        tickLine={false} 
-                                        tick={{fontSize: 10, fill: 'var(--color-text-muted)'}}
-                                        interval={Math.floor(chartData.length / 8)}
-                                    />
-                                    <YAxis 
-                                        domain={['auto', 'auto']} 
-                                        axisLine={false} 
-                                        tickLine={false}
-                                        tick={{fontSize: 10, fill: 'var(--color-text-muted)'}}
-                                    />
-                                    <Tooltip 
-                                        contentStyle={{backgroundColor: '#0f172a', border: '1px solid var(--color-glass-border)', borderRadius: '8px', fontSize: '12px'}}
-                                        itemStyle={{color: 'var(--color-primary)'}}
-                                    />
-                                    <Area 
-                                        type="monotone" 
-                                        dataKey="nav" 
-                                        stroke="var(--color-primary)" 
-                                        strokeWidth={3}
-                                        fill="url(#navGradient)" 
-                                    />
-                                </AreaChart>
-                            </ResponsiveContainer>
-                        </div>
-                    )}
-                </div>
-            </div>
-
-            {/* Historical Data Management */}
-            <section className="section-spacer">
-                <div className="flex justify-between items-center mb-8">
-                    <h3 className="section-heading-lux uppercase">Historical Intelligence Integration</h3>
-                    <div className="flex items-center gap-4">
-                        {uploadMsg && (
-                            <span className={`text-xs uppercase tracking-widest ${uploadMsg.type === 'success' ? 'text-success' : 'text-error'}`}>
-                                {uploadMsg.text}
-                            </span>
-                        )}
-                        <label className={`btn-premium ${uploading ? 'opacity-50' : ''}`} style={{ cursor: uploading ? 'not-allowed' : 'pointer' }}>
-                            {uploading ? 'PROCESSING...' : 'UPLOAD NIFTY CSV'}
-                            <input 
-                                type="file" 
-                                accept=".csv" 
-                                onChange={handleFileUpload} 
-                                disabled={uploading}
-                                style={{ display: 'none' }} 
-                            />
-                        </label>
-                    </div>
-                </div>
-                <div className="glass-panel p-8 bg-primary/5 border-primary/10 text-center">
-                    <p className="text-secondary text-xs uppercase tracking-widest opacity-60">
-                        Drop high-density architectural CSV files here to recalibrate historical performance trends. 
-                        Protocol requires columns: <span className="text-primary italic">"Date"</span> and <span className="text-primary italic">"Close"</span>.
-                    </p>
+                
+                <div className="w-full h-[500px] 2xl:h-[600px]">
+                    <ResponsiveContainer width="100%" height="100%">
+                        <AreaChart data={navHistory}>
+                            <defs>
+                                <linearGradient id="colorIndex" x1="0" y1="0" x2="0" y2="1">
+                                    <stop offset="5%" stopColor="#e9c349" stopOpacity={0.6}/>
+                                    <stop offset="95%" stopColor="#e9c349" stopOpacity={0}/>
+                                </linearGradient>
+                            </defs>
+                            <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.03)" vertical={false} />
+                            <XAxis dataKey="date" hide />
+                            <YAxis domain={['auto', 'auto']} hide />
+                            <RechartsTooltip contentStyle={{ backgroundColor: '#1b2025', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '24px', backdropFilter: 'blur(16px)', padding: '24px', boxShadow: '0 32px 64px rgba(0,0,0,0.5)' }} itemStyle={{ fontSize: '18px', fontWeight: 'black', color: '#e9c349' }} />
+                            <Area type="monotone" dataKey="value" stroke="#e9c349" strokeWidth={6} fillOpacity={1} fill="url(#colorIndex)" />
+                        </AreaChart>
+                    </ResponsiveContainer>
                 </div>
             </section>
 
-            <section className="section-spacer">
-                <h3 className="section-heading-lux uppercase mb-8">Asset Metadata & Identification</h3>
-                <div className="glass-panel glow-card p-0 overflow-hidden">
-                    <table className="metadata-table-lux">
-                        <tbody>
-                            <tr>
-                                <td className="m-label">Index Identifier</td>
-                                <td className="m-value">{index.benchmark_code}</td>
-                            </tr>
-                            <tr>
-                                <td className="m-label">Ticker Symbol</td>
-                                <td className="m-value">{index.ticker}</td>
-                            </tr>
-                            <tr>
-                                <td className="m-label">Benchmark Type</td>
-                                <td className="m-value">{index.benchmark_type}</td>
-                            </tr>
-                            <tr>
-                                <td className="m-label">Asset Class</td>
-                                <td className="m-value">{index.asset_class || 'EQUITY'}</td>
-                            </tr>
-                            <tr>
-                                <td className="m-label">Strategic Importance</td>
-                                <td className="m-value text-primary font-bold">PRIMARY BENCHMARK</td>
-                            </tr>
-                            <tr>
-                                <td className="m-label">Monitoring Status</td>
-                                <td className="m-value">
-                                    <span style={{ color: 'var(--color-accent)' }}>HEALTHY INTEGRATION</span>
-                                </td>
-                            </tr>
-                        </tbody>
-                    </table>
-                </div>
-            </section>
+            {/* Strategic Information Grid */}
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-12 xl:gap-16 mb-24">
+                {[
+                    { label: 'Systemic Weight', val: 'Market Cap Weighted', sub: 'Standard Methodology', icon: 'scale' },
+                    { label: 'Protocol Coverage', val: indexData.benchmark_type || 'Equity', sub: 'Asset Class Filter', icon: 'dataset' },
+                    { label: 'Alpha Correlation', val: '0.98', sub: 'Beta Aligned to Global Markets', icon: 'hub' },
+                ].map((m, idx) => (
+                    <div key={idx} className="glass-panel p-12 rounded-[2.5rem] border border-white/5 shadow-2xl hover:translate-y-[-10px] transition-all duration-500 bg-white/[0.01] relative overflow-hidden group">
+                        <span className="material-symbols-outlined absolute -right-6 -bottom-6 text-[100px] text-primary opacity-[0.03] group-hover:scale-125 transition-transform duration-1000">{m.icon}</span>
+                        <p className="text-[10px] uppercase tracking-[0.5em] text-slate-500 font-black mb-8 leading-none">{m.label}</p>
+                        <p className="text-3xl xl:text-4xl font-headline font-black text-white tracking-tighter mb-4 leading-none uppercase">{m.val}</p>
+                        <p className="text-[10px] text-primary font-black uppercase tracking-[0.4em] opacity-40 italic tracking-widest">{m.sub}</p>
+                    </div>
+                ))}
+            </div>
+
+             {/* Footer */}
+             <footer className="mt-20 py-16 border-t border-white/5 opacity-30 italic text-[11px] tracking-[0.6em] uppercase font-black text-center leading-relaxed">
+                Benchmark Consensus Protocol Active • Decentralized Market Surveillance • Epoch {new Date().getFullYear()}
+            </footer>
         </div>
     );
 };

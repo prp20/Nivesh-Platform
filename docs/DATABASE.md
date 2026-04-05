@@ -1,6 +1,6 @@
-# Database Schema & Time-Series Design
+# Database Schema & Design
 
-Nivesh Elite uses **PostgreSQL** with the **TimescaleDB** extension to effectively manage master data and millions of NAV history points.
+Nivesh Elite uses **PostgreSQL** to manage master data and historical NAV data points.
 
 ## 🐘 Relational Schema
 
@@ -16,19 +16,18 @@ Nivesh Elite uses **PostgreSQL** with the **TimescaleDB** extension to effective
     - **Capture**: Upside/Downside capture ratios.
     - **Metadata**: Data completeness percentage and calculation period.
 
-### 📑 Other Data
-- `fund_expense_ratio`: Stores historical Total Expense Ratio (TER) data for funds.
-
 ---
 
-## ⚡ Time-Series (TimescaleDB)
-Historical values are stored in **Hypertables**, partitioned by `nav_date`.
+## ⚡ Time-Series Tables
+Historical values are stored in standard PostgreSQL tables with composite primary keys and B-Tree indexes on `nav_date`.
 
 ### `fund_nav_history`
 - **Primary Keys**: `(scheme_code, nav_date)`
+- **Indexes**: `ix_fund_nav_history_nav_date` on `nav_date`
 
 ### `benchmark_nav_history`
 - **Primary Keys**: `(benchmark_code, nav_date)`
+- **Indexes**: `ix_benchmark_nav_history_nav_date` on `nav_date`
 
 ---
 

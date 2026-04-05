@@ -2,10 +2,11 @@ import asyncio
 import logging
 import pandas as pd
 from typing import Optional
-from datetime import datetime
+from datetime import datetime, timezone
 from mftool import Mftool
 from sqlalchemy.ext.asyncio import AsyncSession
 from . import crud, analytics, schemas
+from .database import session_factory
 import requests
 import json
 
@@ -84,27 +85,40 @@ async def sync_fund_data(session: AsyncSession, scheme_code: str, job_id: Option
         for attempt in range(3):
             try:
                 # mftool returns DataFrame or None
-                fetched = mf.get_scheme_historical_nav(scheme_code, as_Dataframe=True)
-                if fetched is not None and not fetched.empty:
-                    nav_df = fetched
+                fetched = await asyncio.to_thread(
+                    mf.get_scheme_historical_nav, scheme_code, True
+                )
+                if fetched is not None and len(fetched) > 0:
+                    if isinstance(fetched, pd.DataFrame):
+                        nav_list = []
+                        for date_val, row in fetched.iterrows():
+                            nav_list.append({"date": str(date_val), "nav": row.get('nav', row.get('nav_value'))})
+                    elif isinstance(fetched, list):
+                        nav_list = fetched
+                    else:
+                        continue
+                    
+                    nav_df = nav_list
                     break
             except Exception as e:
                 if attempt == 2: raise e
                 wait_time = (attempt + 1) * 3
                 await update_progress(f"NAV Fetch Attempt {attempt+1} failed. Retrying in {wait_time}s...")
                 await asyncio.sleep(wait_time)
-
+        
         if nav_df is None:
             logger.warning(f"No NAV data found for {scheme_code}")
             if job_id: 
                 await crud.update_sync_job(session, job_id, status="FAILED", message="No NAV data found")
             return
-        
-        # 2. Transform to dict - handle index as date
-        nav_dict = {
-            pd_to_date(str(date_val)): float(row['nav'])
-            for date_val, row in nav_df.iterrows()
-        }
+
+        # 2. Transform to dict - handle various date formats
+        nav_dict = {}
+        for item in nav_df:
+            d = item.get('date')
+            v = item.get('nav')
+            if d and v:
+                nav_dict[pd_to_date(str(d))] = float(v)
         
         await update_progress(f"Storing {len(nav_dict)} NAV records...")
         # 3. Bulk insert NAVs
@@ -117,7 +131,7 @@ async def sync_fund_data(session: AsyncSession, scheme_code: str, job_id: Option
         # 4.1 Try mftool details first for ISIN if missing
         if not isin:
             try:
-                details = mf.get_scheme_details(scheme_code)
+                details = await asyncio.to_thread(mf.get_scheme_details, scheme_code)
                 if details and isinstance(details, dict):
                     isin = details.get("isin") or details.get("isin_code")
                     if isin:
@@ -128,7 +142,7 @@ async def sync_fund_data(session: AsyncSession, scheme_code: str, job_id: Option
         # 4.2 Fetch AUM and TER from Captnemo/Kuvera if ISIN is available
         if isin:
             await update_progress(f"Fetching AUM and Expense Ratio for ISIN {isin}...")
-            fund_data = get_aum_by_isin(isin)
+            fund_data = await asyncio.to_thread(get_aum_by_isin, isin)
             if fund_data:
                 aum = fund_data.get("aum_cr") or 0.0
                 ter_val = fund_data.get("expense_ratio")
@@ -147,13 +161,13 @@ async def sync_fund_data(session: AsyncSession, scheme_code: str, job_id: Option
         benchmark_history_list = None
         if fund_master.benchmark_index_code:
             await update_progress(f"Loading benchmark history ({fund_master.benchmark_index_code})...")
-            bench_history = await crud.get_benchmark_nav_history(session, fund_master.benchmark_index_code, limit=2000)
+            bench_history = await crud.get_benchmark_nav_history(session, fund_master.benchmark_index_code, limit=5000)
             if bench_history:
                 benchmark_history_list = [{"nav_date": b.nav_date, "index_value": float(b.index_value)} for b in bench_history]
 
         await update_progress("Computing complex financial metrics...")
         # 6. Recompute Metrics
-        nav_history = await crud.get_fund_nav_history(session, scheme_code, limit=2500)
+        nav_history = await crud.get_fund_nav_history(session, scheme_code, limit=5000)
         nav_list = [{"nav_date": n.nav_date, "nav_value": float(n.nav_value)} for n in nav_history]
         
         calc_results = analytics.compute_all_metrics(nav_list, benchmark_history_list)
@@ -173,8 +187,8 @@ async def sync_fund_data(session: AsyncSession, scheme_code: str, job_id: Option
             "expense_ratio": expense_ratio,
             "fund_rating": fund_rating,
             "volatility": volatility,
-            "rolling_return_3year": calc_results.get("rolling_return_3year"),
-            "rolling_return_5year": calc_results.get("rolling_return_5year"),
+            "cagr_3year": calc_results.get("cagr_3year"),
+            "cagr_5year": calc_results.get("cagr_5year"),
             "absolute_return_1y": calc_results.get("absolute_return_1y"),
             "absolute_return_3y": calc_results.get("absolute_return_3y"),
             "absolute_return_5y": calc_results.get("absolute_return_5y"),
@@ -191,7 +205,11 @@ async def sync_fund_data(session: AsyncSession, scheme_code: str, job_id: Option
             "tracking_error": calc_results.get("tracking_error"),
             "information_ratio": calc_results.get("information_ratio"),
             "final_verdict": calc_results.get("final_verdict"),
-            "metrics_calculated_at": datetime.now()
+            "calculation_period_start_date": calc_results.get("calculation_period_start_date"),
+            "calculation_period_end_date": calc_results.get("calculation_period_end_date"),
+            "data_completeness_percentage": calc_results.get("data_completeness_percentage"),
+            "has_sufficient_data": calc_results.get("has_sufficient_data", True),
+            "metrics_calculated_at": datetime.now(timezone.utc)
         }
         await crud.upsert_fund_metrics(session, metrics_payload)
         
@@ -217,7 +235,14 @@ def pd_to_date(date_str: str) -> str:
 async def sync_all_funds(session: AsyncSession):
     """Sync all active funds in the database."""
     funds_list = await crud.get_all_fund_masters(session, is_active=True)
-    for fund in funds_list:
-        await sync_fund_data(session, fund.scheme_code)
+    # Snapshot scheme codes so the listing session can be released promptly
+    scheme_codes = [f.scheme_code for f in funds_list]
+    for scheme_code in scheme_codes:
+        # Dedicated session per fund — failure in one does not contaminate others.
+        async with session_factory() as fund_session:
+            job, created = await crud.create_sync_job(fund_session, scheme_code)
+            if created:
+                await sync_fund_data(fund_session, scheme_code, job_id=job.id)
+            # If a job already exists (RUNNING), skip to avoid duplicate work.
         # Polite throttling
         await asyncio.sleep(1)

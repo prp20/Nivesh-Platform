@@ -1,92 +1,80 @@
-import React, { useState, useEffect } from 'react';
+import React from 'react';
+import { BrowserRouter as Router, Routes, Route, Navigate, useParams } from 'react-router-dom';
 import Dashboard from './pages/Dashboard';
 import Portfolio from './pages/Portfolio';
 import StockListing from './pages/StockListing';
-import StockDetail from './pages/StockDetail';
 import MFListing from './pages/MFListing';
-import MFDetail from './pages/MFDetail';
 import MFCompare from './pages/MFCompare';
 import IndicesListing from './pages/IndicesListing';
-import IndexDetail from './pages/IndexDetail';
 import Login from './pages/Login';
 import { ThemeProvider } from './context/ThemeContext';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import Layout from './components/Layout';
-import './App.css';
+import StockDetail from './pages/StockDetail';
+import MFDetail from './pages/MFDetail';
+import IndexDetail from './pages/IndexDetail';
+import Admin from './pages/Admin';
+
+const StockDetailRoute = () => {
+  const { symbol } = useParams();
+  return <StockDetail symbol={symbol} />;
+}
+
+const MFDetailRoute = () => {
+  const { schemeCode } = useParams();
+  return <MFDetail schemeCode={schemeCode} />;
+}
+
+const IndexDetailRoute = () => {
+  const { benchmarkCode } = useParams();
+  return <IndexDetail benchmarkCode={benchmarkCode} />;
+}
 
 const AppContent = () => {
   const { user, loading } = useAuth();
-  const [activeTab, setActiveTab] = useState('dashboard');
-  const [activeParams, setActiveParams] = useState('');
+  
+  if (loading) return (
+      <div className="min-h-screen bg-[#0f1419] flex items-center justify-center">
+          <div className="w-12 h-12 border-2 border-[#D4AF37] border-t-transparent rounded-full animate-spin"></div>
+      </div>
+  );
 
-  useEffect(() => {
-    const handleHashChange = () => {
-      const hash = window.location.hash.replace('#', '') || 'dashboard';
-      if (hash.startsWith('stock-detail-')) {
-        setActiveTab('stock-detail');
-        setActiveParams(hash.replace('stock-detail-', ''));
-      } else if (hash.startsWith('mf-detail-')) {
-        setActiveTab('mf-detail');
-        setActiveParams(hash.replace('mf-detail-', ''));
-      } else if (hash.startsWith('index-detail-')) {
-        setActiveTab('index-detail');
-        setActiveParams(hash.replace('index-detail-', ''));
-      } else if (hash.startsWith('compare')) {
-        setActiveTab('compare');
-        setActiveParams('');
-      } else {
-        setActiveTab(hash);
-      }
-    };
-
-    window.addEventListener('hashchange', handleHashChange);
-    handleHashChange();
-
-    return () => window.removeEventListener('hashchange', handleHashChange);
-  }, []);
-
-  if (loading) return <div className="loading-screen">Loading Nivesh...</div>;
-  if (!user) return <Login />;
-
-  const renderContent = () => {
-    switch (activeTab) {
-      case 'dashboard':
-        return <Dashboard />;
-      case 'portfolio':
-        return <Portfolio />;
-      case 'stocks':
-        return <StockListing />;
-      case 'stock-detail':
-        return <StockDetail symbol={activeParams} />;
-      case 'mf':
-        return <MFListing />;
-      case 'mf-detail':
-        return <MFDetail schemeCode={activeParams} />;
-      case 'compare':
-        return <MFCompare />;
-      case 'indices':
-        return <IndicesListing />;
-      case 'index-detail':
-        return <IndexDetail benchmarkCode={activeParams} />;
-      default:
-        return <Dashboard />;
-    }
-  };
+  if (!user) return (
+    <Routes>
+      <Route path="/login" element={<Login />} />
+      <Route path="*" element={<Navigate to="/login" replace />} />
+    </Routes>
+  );
 
   return (
     <Layout>
-      {renderContent()}
+      <Routes>
+        <Route path="/" element={<Navigate to="/dashboard" replace />} />
+        <Route path="/dashboard" element={<Dashboard />} />
+        <Route path="/portfolio" element={<Portfolio />} />
+        <Route path="/stocks" element={<StockListing />} />
+        <Route path="/stocks/:symbol" element={<StockDetailRoute />} />
+        <Route path="/mf" element={<MFListing />} />
+        <Route path="/mf/:schemeCode" element={<MFDetailRoute />} />
+        <Route path="/compare" element={<MFCompare />} />
+        <Route path="/indices" element={<IndicesListing />} />
+        <Route path="/indices/:benchmarkCode" element={<IndexDetailRoute />} />
+        <Route path="/admin" element={<Admin />} />
+        <Route path="*" element={<Navigate to="/dashboard" replace />} />
+      </Routes>
     </Layout>
   );
 };
 
 function App() {
   return (
-    <ThemeProvider>
-      <AuthProvider>
-        <AppContent />
-      </AuthProvider>
-    </ThemeProvider>
+    <Router>
+      <ThemeProvider>
+        <AuthProvider>
+          <AppContent />
+        </AuthProvider>
+      </ThemeProvider>
+    </Router>
   );
 }
 

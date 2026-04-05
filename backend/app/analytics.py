@@ -1,8 +1,12 @@
+from __future__ import annotations
+
 import pandas as pd
 import numpy as np
-from typing import List, Dict, Optional
+from typing import TYPE_CHECKING, List, Dict, Optional
 from datetime import date
-from sqlalchemy.ext.asyncio import AsyncSession
+
+if TYPE_CHECKING:
+    from sqlalchemy.ext.asyncio import AsyncSession
 
 def calculate_returns(nav_series: pd.Series) -> pd.Series:
     return nav_series.pct_change().dropna()
@@ -14,14 +18,19 @@ def calculate_sharpe_ratio(returns: pd.Series, risk_free_rate: float = 0.065) ->
     return np.sqrt(252) * excess_returns.mean() / returns.std()
 
 def calculate_sortino_ratio(returns: pd.Series, risk_free_rate: float = 0.065) -> float:
-    """Calculate annualized Sortino Ratio."""
-    if returns.empty: return 0.0
+    """Calculate annualized Sortino Ratio.
+
+    Uses the correct downside deviation: sqrt(mean(min(r, 0)^2))
+    rather than the biased sample std of negative returns.
+    """
+    if returns.empty:
+        return 0.0
     excess_returns = returns - (risk_free_rate / 252)
-    downside_returns = excess_returns[excess_returns < 0]
-    if downside_returns.empty or downside_returns.std() == 0: 
-        # If no downside, return a high ratio if mean is positive
+    downside_returns = np.minimum(excess_returns, 0)
+    downside_deviation = np.sqrt(np.mean(downside_returns ** 2))
+    if downside_deviation == 0:
         return 10.0 if excess_returns.mean() > 0 else 0.0
-    return np.sqrt(252) * excess_returns.mean() / downside_returns.std()
+    return float(np.sqrt(252) * excess_returns.mean() / downside_deviation)
 
 def calculate_max_drawdown(nav_series: pd.Series) -> float:
     """Calculate maximum drawdown."""
@@ -129,8 +138,8 @@ def compute_all_metrics(nav_history: List[Dict], benchmark_history: Optional[Lis
         "sharpe": calculate_sharpe_ratio(returns),
         "sortino": calculate_sortino_ratio(returns),
         "max_drawdown": calculate_max_drawdown(nav_series),
-        "rolling_return_3year": calculate_cagr(nav_series, 3),
-        "rolling_return_5year": calculate_cagr(nav_series, 5),
+        "cagr_3year": calculate_cagr(nav_series, 3),
+        "cagr_5year": calculate_cagr(nav_series, 5),
         "absolute_return_1y": calculate_absolute_return(nav_series, years=1),
         "absolute_return_3y": calculate_absolute_return(nav_series, years=3),
         "absolute_return_5y": calculate_absolute_return(nav_series, years=5),
@@ -165,11 +174,16 @@ def compute_all_metrics(nav_history: List[Dict], benchmark_history: Optional[Lis
             alpha = fund_ann_ret - (risk_free_rate + beta * (bench_ann_ret - risk_free_rate))
             
             # Tracking Error
-            tracking_error = (fund_ret - bench_ret).std() * np.sqrt(252)
-            
-            # Information Ratio
-            excess_ret = fund_ann_ret - bench_ann_ret
-            info_ratio = excess_ret / tracking_error if tracking_error != 0 else 0
+            active_returns = fund_ret - bench_ret
+            tracking_error = active_returns.std() * np.sqrt(252)
+
+            # Information Ratio — computed from daily active returns for consistency
+            # IR = mean(active_daily) / std(active_daily) * sqrt(252)
+            info_ratio = (
+                float(active_returns.mean() / active_returns.std() * np.sqrt(252))
+                if active_returns.std() != 0
+                else 0.0
+            )
             
             # Capture Ratios
             capture = calculate_capture_ratios(fund_ret, bench_ret)
@@ -183,8 +197,26 @@ def compute_all_metrics(nav_history: List[Dict], benchmark_history: Optional[Lis
                 "downside_capture": capture["downside_capture"]
             })
             
+    # Data completeness metadata
+    start_date = nav_series.index[0].date()
+    end_date = nav_series.index[-1].date()
+    total_calendar_days = (nav_series.index[-1] - nav_series.index[0]).days
+    expected_trading_days = total_calendar_days * 252 / 365
+    actual_trading_days = len(nav_series)
+    completeness = (
+        min(actual_trading_days / expected_trading_days * 100, 100.0)
+        if expected_trading_days > 0
+        else 0.0
+    )
+    metrics.update({
+        "calculation_period_start_date": start_date,
+        "calculation_period_end_date": end_date,
+        "data_completeness_percentage": round(completeness, 2),
+        "has_sufficient_data": completeness >= 80.0,
+    })
+
     # Final Verdict Logic
-    sharpe_raw = metrics.get("sharpe_ratio")
+    sharpe_raw = metrics.get("sharpe")
     alpha_raw = metrics.get("alpha")
     
     sharpe = float(sharpe_raw) if sharpe_raw is not None else 0.0
@@ -206,22 +238,25 @@ async def get_comparison_data(session: AsyncSession, scheme_codes: List[str]) ->
     Multi-fund comparison engine focusing on metrics.
     Fetches pre-calculated metrics for specified funds.
     """
+    import asyncio
     from . import crud, schemas
-    
-    funds_payload = []
-    
-    for code in scheme_codes:
-        # Get metrics from DB
-        metrics_db = await crud.get_fund_metrics(session, code)
-        
-        # If no metrics in DB, we could trigger a sync, but for comparison 
-        # we'll return what we have to keep it fast.
-        funds_payload.append({
+
+    # Fetch all fund metrics in parallel instead of sequentially
+    metrics_results = await asyncio.gather(
+        *[crud.get_fund_metrics(session, code) for code in scheme_codes]
+    )
+
+    funds_payload = [
+        {
             "scheme_code": code,
-            "metrics": schemas.FundMetricsRead.model_validate(metrics_db).model_dump(mode="json") if metrics_db else {}
-        })
-        
-    return {
-        "funds": funds_payload,
-        "metrics_comparison": {} # Placeholder for aggregate comparison metrics
-    }
+            # If no metrics in DB, return empty dict to keep comparison fast
+            "metrics": (
+                schemas.FundMetricsRead.model_validate(metrics_db).model_dump(mode="json")
+                if metrics_db
+                else {}
+            ),
+        }
+        for code, metrics_db in zip(scheme_codes, metrics_results)
+    ]
+
+    return {"funds": funds_payload}

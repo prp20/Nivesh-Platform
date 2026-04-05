@@ -1,4 +1,4 @@
-from sqlalchemy import Column, String, Numeric, TIMESTAMP, Date, Boolean, ForeignKey, text, UniqueConstraint, Index
+from sqlalchemy import Column, String, Numeric, TIMESTAMP, Date, Boolean, ForeignKey, text, Index
 from sqlalchemy.sql import func
 from sqlalchemy.orm import relationship
 import uuid
@@ -22,7 +22,30 @@ class SyncJob(Base):
 class FundMaster(Base):
     """Master data for mutual fund schemes"""
     __tablename__ = "fund_master"
-    
+
+    __table_args__ = (
+        # GIN trigram indexes for fast substring ilike() searches.
+        # Requires: CREATE EXTENSION IF NOT EXISTS pg_trgm;
+        # These replace the earlier B-Tree indexes which did not help for
+        # %pattern% queries. create_all will create them on a fresh DB;
+        # run the CREATE INDEX statements manually on existing deployments.
+        Index(
+            "ix_fund_master_amc_name_trgm",
+            "amc_name",
+            postgresql_using="gin",
+            postgresql_ops={"amc_name": "gin_trgm_ops"},
+        ),
+        Index(
+            "ix_fund_master_scheme_category_trgm",
+            "scheme_category",
+            postgresql_using="gin",
+            postgresql_ops={"scheme_category": "gin_trgm_ops"},
+        ),
+        # B-Tree indexes for equality filters (plan_type, is_active)
+        Index("ix_fund_master_plan_type", "plan_type"),
+        Index("ix_fund_master_is_active", "is_active"),
+    )
+
     scheme_code = Column(String(50), primary_key=True, nullable=False)
     scheme_name = Column(String(500), nullable=False)
     amc_name = Column(String(200), nullable=False)
@@ -59,10 +82,10 @@ class BenchmarkMaster(Base):
 
 
 class FundNavHistory(Base):
-    """Historical NAV data for all mutual fund schemes (TimescaleDB Hypertable)"""
+    """Historical NAV data for all mutual fund schemes"""
     __tablename__ = "fund_nav_history"
     __table_args__ = (
-        UniqueConstraint('scheme_code', 'nav_date', name='uq_fund_nav_scheme_date'),
+        Index('ix_fund_nav_history_nav_date', 'nav_date'),
     )
     
     scheme_code = Column(String(50), ForeignKey("fund_master.scheme_code", ondelete="CASCADE"), primary_key=True)
@@ -72,10 +95,10 @@ class FundNavHistory(Base):
 
 
 class BenchmarkNavHistory(Base):
-    """Historical index values for benchmark indices (TimescaleDB Hypertable)"""
+    """Historical index values for benchmark indices"""
     __tablename__ = "benchmark_nav_history"
     __table_args__ = (
-        UniqueConstraint('benchmark_code', 'nav_date', name='uq_benchmark_nav_date'),
+        Index('ix_benchmark_nav_history_nav_date', 'nav_date'),
     )
     
     benchmark_code = Column(String(50), ForeignKey("benchmark_master.benchmark_code", ondelete="CASCADE"), primary_key=True)
@@ -91,8 +114,8 @@ class BenchmarkMetrics(Base):
     benchmark_code = Column(String(50), ForeignKey("benchmark_master.benchmark_code", ondelete="CASCADE"), primary_key=True)
     current_nav = Column(Numeric(15, 4), nullable=False)
     nav_date = Column(Date, nullable=False)
-    rolling_return_3year = Column(Numeric(10, 4))
-    rolling_return_5year = Column(Numeric(10, 4))
+    cagr_3year = Column(Numeric(10, 4))
+    cagr_5year = Column(Numeric(10, 4))
     sortino_ratio = Column(Numeric(10, 4))
     sharpe_ratio = Column(Numeric(10, 4))
     standard_deviation = Column(Numeric(10, 4))
@@ -115,8 +138,8 @@ class FundMetrics(Base):
     expense_ratio = Column(Numeric(5, 4))
     fund_rating = Column(Numeric(5, 2))
     volatility = Column(Numeric(10, 4))
-    rolling_return_3year = Column(Numeric(10, 4))
-    rolling_return_5year = Column(Numeric(10, 4))
+    cagr_3year = Column(Numeric(10, 4))
+    cagr_5year = Column(Numeric(10, 4))
     absolute_return_1y = Column(Numeric(10, 4))
     absolute_return_3y = Column(Numeric(10, 4))
     absolute_return_5y = Column(Numeric(10, 4))

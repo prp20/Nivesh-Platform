@@ -1,3 +1,5 @@
+import re
+
 from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks
 from typing import Optional, Dict, Any
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -7,6 +9,17 @@ from .. import crud, schemas, sync, security
 
 router = APIRouter(prefix="/metrics", tags=["metrics"])
 
+# Scheme codes from AMFI are numeric strings (e.g. "119533").
+# Reject anything that doesn't look like a valid code before hitting the DB
+# or spawning a sync job.
+_SCHEME_CODE_RE = re.compile(r"^\w{1,50}$")
+
+
+def _validate_scheme_code(scheme_code: str) -> None:
+    if not _SCHEME_CODE_RE.match(scheme_code):
+        raise HTTPException(status_code=400, detail="Invalid scheme_code format.")
+
+
 async def background_sync_wrapper(scheme_code: str, job_id: str):
     """Worker function for background synchronization."""
     async with session_factory() as session:
@@ -14,11 +27,13 @@ async def background_sync_wrapper(scheme_code: str, job_id: str):
 
 @router.get("/{scheme_code}", response_model=schemas.FundMetricsResponse)
 async def get_metrics(
-    scheme_code: str, 
+    scheme_code: str,
     background_tasks: BackgroundTasks,
-    session: AsyncSession = Depends(get_db)
+    session: AsyncSession = Depends(get_db),
 ):
     """Retrieve fund metrics, triggering a background sync if data is stale."""
+    _validate_scheme_code(scheme_code)
+
     # 1. Fetch existing metrics and latest job status
     metrics = await crud.get_fund_metrics(session, scheme_code)
     latest_job = await crud.get_latest_sync_job(session, scheme_code)
@@ -79,12 +94,13 @@ async def get_sync_status(scheme_code: str, session: AsyncSession = Depends(get_
 
 @router.post("/{scheme_code}/compute", status_code=200)
 async def compute_metrics_endpoint(
-    scheme_code: str, 
+    scheme_code: str,
     background_tasks: BackgroundTasks,
     session: AsyncSession = Depends(get_db),
-    current_user: str = Depends(security.get_current_user)
+    current_user: str = Depends(security.get_current_user),
 ):
     """Manually trigger a background metrics recomputation."""
+    _validate_scheme_code(scheme_code)
     latest_job = await crud.get_latest_sync_job(session, scheme_code)
     now = datetime.now(timezone.utc)
     

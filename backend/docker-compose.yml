@@ -1,15 +1,14 @@
 version: '3.8'
 
 services:
-  timescaledb:
-    image: timescale/timescaledb:latest-pg16
-    container_name: nivesh_timescaledb
+  postgres:
+    image: postgres:16-alpine
+    container_name: nivesh_postgres
     restart: unless-stopped
     environment:
       POSTGRES_DB: nivesh_db
       POSTGRES_USER: nivesh_admin
       POSTGRES_PASSWORD: nivesh_password_123
-      TIMESCALEDB_TELEMETRY: 'off'
     ports:
       - "5432:5432"
     volumes:

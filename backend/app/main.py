@@ -1,7 +1,10 @@
 from contextlib import asynccontextmanager
+from pathlib import Path
 from fastapi import FastAPI
+from fastapi.responses import FileResponse
+from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
-from sqlalchemy import text
+
 from .config import settings
 from .routers import funds, benchmarks, navs, benchmark_navs, metrics, sync, auth
 from .database import engine, Base
@@ -11,14 +14,6 @@ async def lifespan(app: FastAPI):
     # Startup logic
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
-        try:
-            # TimescaleDB hypertable setup
-            await conn.execute(text("SELECT create_hypertable('fund_nav_history', 'nav_date', if_not_exists => TRUE);"))
-            await conn.execute(text("SELECT create_hypertable('benchmark_nav_history', 'nav_date', if_not_exists => TRUE);"))
-            await conn.commit()
-        except Exception as e:
-            # Skip if already a hypertable or outside TimescaleDB context
-            print(f"Hypertable creation skipped or failed: {e}")
     yield
     # Shutdown logic (none needed for now)
 
@@ -34,8 +29,8 @@ app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.ALLOWED_ORIGINS,
     allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+    allow_headers=["Authorization", "Content-Type", "Accept"],
 )
 
 # Include Routers
@@ -47,11 +42,31 @@ app.include_router(benchmark_navs.router, prefix=settings.API_V1_STR)
 app.include_router(metrics.router, prefix=settings.API_V1_STR)
 app.include_router(sync.router, prefix=settings.API_V1_STR)
 
-@app.get("/", tags=["root"])
+@app.get("/api/health", tags=["root"])
 async def root():
     return {
         "message": f"{settings.PROJECT_NAME} API",
         "status": "running",
-        "auth_enabled": settings.ENABLE_AUTH,
-        "documentation": "/docs"
+        "documentation": "/docs",
     }
+
+# SPA Fallback routing for production deployment
+dist_dir = Path(__file__).parent.parent.parent / "frontend" / "dist"
+
+if dist_dir.exists() and dist_dir.is_dir():
+    app.mount("/assets", StaticFiles(directory=dist_dir / "assets"), name="assets")
+    
+    @app.get("/{full_path:path}", include_in_schema=False)
+    async def serve_spa(full_path: str):
+        index_file = dist_dir / "index.html"
+        if index_file.exists():
+            return FileResponse(index_file)
+        return {"error": "Frontend build not found"}
+else:
+    @app.get("/", tags=["root"])
+    async def fallback_root():
+        return {
+            "message": f"{settings.PROJECT_NAME} API",
+            "status": "running",
+            "warning": "Frontend not built. Run 'npm run build' in frontend directory to serve SPA."
+        }
