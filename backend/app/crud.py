@@ -61,6 +61,7 @@ def _apply_fund_filters(
     amc: Optional[str] = None,
     plan_type: Optional[str] = None,
     benchmark_code: Optional[str] = None,
+    search: Optional[str] = None,
 ):
     """Apply common FundMaster filter predicates to a query."""
     if is_active is not None:
@@ -75,6 +76,11 @@ def _apply_fund_filters(
         q = q.where(FundMaster.plan_type == plan_type)
     if benchmark_code:
         q = q.where(FundMaster.benchmark_index_code.ilike(f"%{benchmark_code}%"))
+    if search:
+        q = q.where(
+            (FundMaster.scheme_name.ilike(f"%{search}%")) |
+            (FundMaster.scheme_code.ilike(f"%{search}%"))
+        )
     return q
 
 
@@ -86,12 +92,21 @@ async def get_all_fund_masters(
     amc: Optional[str] = None,
     plan_type: Optional[str] = None,
     benchmark_code: Optional[str] = None,
+    search: Optional[str] = None,
     order_by: Optional[str] = "scheme_name",
     skip: int = 0,
     limit: int = 100,
 ) -> List[FundMaster]:
+    query = select(FundMaster)
     q = _apply_fund_filters(
-        select(FundMaster), is_active, category, subcategory, amc, plan_type, benchmark_code
+        q=query,
+        is_active=is_active,
+        category=category,
+        subcategory=subcategory,
+        amc=amc,
+        plan_type=plan_type,
+        benchmark_code=benchmark_code,
+        search=search,
     )
 
     if order_by == "scheme_name":
@@ -112,12 +127,44 @@ async def get_fund_masters_count(
     amc: Optional[str] = None,
     plan_type: Optional[str] = None,
     benchmark_code: Optional[str] = None,
+    search: Optional[str] = None,
 ) -> int:
+    query = select(func.count(FundMaster.scheme_code))
     q = _apply_fund_filters(
-        select(func.count(FundMaster.scheme_code)), is_active, category, subcategory, amc, plan_type, benchmark_code
+        q=query,
+        is_active=is_active,
+        category=category,
+        subcategory=subcategory,
+        amc=amc,
+        plan_type=plan_type,
+        benchmark_code=benchmark_code,
+        search=search,
     )
     res = await session.execute(q)
     return res.scalar() or 0
+
+async def get_distinct_categories(session: AsyncSession) -> List[str]:
+    """Return sorted distinct scheme_category values from active funds."""
+    q = (
+        select(FundMaster.scheme_category)
+        .where(FundMaster.is_active == True)
+        .distinct()
+    )
+    res = await session.execute(q)
+    return sorted([row[0] for row in res.all()])
+
+
+async def get_distinct_subcategories(session: AsyncSession, category: str) -> List[str]:
+    """Return sorted distinct scheme_subcategory values for a given category."""
+    q = (
+        select(FundMaster.scheme_subcategory)
+        .where(FundMaster.is_active == True, FundMaster.scheme_category == category)
+        .where(FundMaster.scheme_subcategory.isnot(None))
+        .distinct()
+    )
+    res = await session.execute(q)
+    return sorted([row[0] for row in res.all() if row[0]])
+
 
 async def update_fund_master(session: AsyncSession, scheme_code: str, fund_in: FundMasterUpdate):
     data = fund_in.model_dump(exclude_unset=True)

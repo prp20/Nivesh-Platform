@@ -212,7 +212,29 @@ class SyncJobRead(SyncJobBase):
     updated_at: datetime
     model_config = ConfigDict(from_attributes=True)
 
+class FundRanking(BaseModel):
+    """Individual fund's ranking in a comparison."""
+    scheme_code: str
+    rank: int
+    composite_score: float
+    group_scores: Dict[str, float]
+    wins: List[str] = []
+    is_recommended: bool = False
+    recommendation_reason: Optional[str] = None
+
+class RankingResult(BaseModel):
+    """Full ranking output from the comparison engine."""
+    rankings: List[FundRanking]
+    comparison_summary: str
+
+class FundComparisonItem(BaseModel):
+    """Container for fund master details and computed metrics for comparison."""
+    scheme_code: str
+    fund_info: Optional[FundMasterRead] = None
+    metrics: Optional[FundMetricsRead] = None
+
 class ComparisonResponse(BaseModel):
     """Unified response for multi-fund comparison metrics."""
-    funds: List[Dict[str, Any]]
+    funds: List[FundComparisonItem]
+    ranking: Optional[RankingResult] = None
     warning: Optional[str] = None
