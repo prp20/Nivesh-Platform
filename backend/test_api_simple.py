@@ -107,6 +107,10 @@ def main():
     test_endpoint("GET", "/funds/119533", [200, 404])
     test_endpoint("GET", "/funds/119533/similar", [200, 404])
     test_endpoint("GET", "/funds/compare?codes=1,2", [200, 400])
+    test_endpoint("GET", "/funds/categories", 200)
+    test_endpoint("GET", "/funds/categories/Equity/subcategories", [200, 404])
+    # 119533 is a common test code in this suite. 119598 is another valid one.
+    test_endpoint("GET", "/funds/compare?codes=119533,119598", [200, 400, 404])
     test_endpoint("POST", "/funds/", 201, auth_token=token,
                  data={
                      "scheme_code": "TEST001",

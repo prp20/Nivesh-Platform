@@ -235,28 +235,242 @@ def compute_all_metrics(nav_history: List[Dict], benchmark_history: Optional[Lis
 
 async def get_comparison_data(session: AsyncSession, scheme_codes: List[str]) -> Dict:
     """
-    Multi-fund comparison engine focusing on metrics.
-    Fetches pre-calculated metrics for specified funds.
+    Multi-fund comparison engine that fetches both master data and computed metrics.
+    Parallelizes I/O to minimize total execution time.
     """
     import asyncio
     from . import crud, schemas
 
-    # Fetch all fund metrics in parallel instead of sequentially
-    metrics_results = await asyncio.gather(
-        *[crud.get_fund_metrics(session, code) for code in scheme_codes]
+    # Fetch all fund masters and metrics in parallel (2*N queries)
+    # Note: joinedload in crud already fetches metrics if we use get_fund_master_by_code,
+    # but we already have optimized get_fund_metrics calls. Let's use get_fund_master_by_code
+    # as it's cleaner and already has joinedload(FundMaster.metrics).
+    
+    masters_results = await asyncio.gather(
+        *[crud.get_fund_master_by_code(session, code) for code in scheme_codes]
     )
 
-    funds_payload = [
-        {
-            "scheme_code": code,
-            # If no metrics in DB, return empty dict to keep comparison fast
-            "metrics": (
-                schemas.FundMetricsRead.model_validate(metrics_db).model_dump(mode="json")
-                if metrics_db
-                else {}
-            ),
-        }
-        for code, metrics_db in zip(scheme_codes, metrics_results)
-    ]
+    funds_payload = []
+    for code, master_db in zip(scheme_codes, masters_results):
+        if not master_db:
+            # Should not happen as router already checked existence, 
+            # but we preserve list length and order for the ranking engine.
+            funds_payload.append({
+                "scheme_code": code,
+                "fund_info": None,
+                "metrics": None
+            })
+            continue
+            
+        # Serialize master details
+        fund_info = schemas.FundMasterRead.model_validate(master_db).model_dump(mode="json")
+        
+        # Serialize metrics (if any)
+        metrics = None
+        if master_db.metrics:
+            metrics = schemas.FundMetricsRead.model_validate(master_db.metrics).model_dump(mode="json")
+            
+        funds_payload.append({
+            "scheme_code": master_db.scheme_code,
+            "fund_info": fund_info,
+            "metrics": metrics
+        })
 
     return {"funds": funds_payload}
+
+
+# ============================================================================
+# COMPARISON RANKING ENGINE
+# ============================================================================
+
+# Metric definitions: (key, higher_is_better, group)
+_METRIC_DEFS = {
+    # Returns group
+    "cagr_3year":           (True,  "returns"),
+    "cagr_5year":           (True,  "returns"),
+    "absolute_return_1y":   (True,  "returns"),
+    "absolute_return_3y":   (True,  "returns"),
+    "absolute_return_5y":   (True,  "returns"),
+    "absolute_return_10y":  (True,  "returns"),
+    "short_term_return_6m": (True,  "returns"),
+    # Risk-Adjusted group
+    "sharpe_ratio":         (True,  "risk_adjusted"),
+    "sortino_ratio":        (True,  "risk_adjusted"),
+    "information_ratio":    (True,  "risk_adjusted"),
+    "alpha":                (True,  "risk_adjusted"),
+    # Risk group (lower is better for all except upside_capture)
+    "standard_deviation":   (False, "risk"),
+    "maximum_drawdown":     (True,  "risk"),  # Less negative = better, so higher is better
+    "beta":                 (False, "risk"),
+    "downside_capture":     (False, "risk"),
+    "volatility":           (False, "risk"),
+    "tracking_error":       (False, "risk"),
+    # Cost & Size group
+    "expense_ratio":        (False, "cost_and_size"),
+    "aum_in_crores":        (True,  "cost_and_size"),
+    "fund_rating":          (True,  "cost_and_size"),
+    # Consistency group
+    "upside_capture":       (True,  "consistency"),
+    "data_completeness_percentage": (True, "consistency"),
+}
+
+_GROUP_WEIGHTS = {
+    "returns":       0.35,
+    "risk_adjusted": 0.30,
+    "risk":          0.20,
+    "cost_and_size": 0.10,
+    "consistency":   0.05,
+}
+
+# Human-readable labels for explanation text
+_METRIC_LABELS = {
+    "cagr_3year": "3Y CAGR", "cagr_5year": "5Y CAGR",
+    "absolute_return_1y": "1Y Return", "absolute_return_3y": "3Y Return",
+    "absolute_return_5y": "5Y Return", "absolute_return_10y": "10Y Return",
+    "short_term_return_6m": "6M Return",
+    "sharpe_ratio": "Sharpe Ratio", "sortino_ratio": "Sortino Ratio",
+    "information_ratio": "Information Ratio", "alpha": "Alpha",
+    "standard_deviation": "Std Deviation", "maximum_drawdown": "Max Drawdown",
+    "beta": "Beta", "downside_capture": "Downside Capture",
+    "volatility": "Volatility", "tracking_error": "Tracking Error",
+    "expense_ratio": "Expense Ratio", "aum_in_crores": "AUM",
+    "fund_rating": "Fund Rating",
+    "upside_capture": "Upside Capture",
+    "data_completeness_percentage": "Data Completeness",
+}
+
+_GROUP_LABELS = {
+    "returns": "Returns", "risk_adjusted": "Risk-Adjusted Performance",
+    "risk": "Risk Management", "cost_and_size": "Cost & Size",
+    "consistency": "Consistency",
+}
+
+
+def rank_funds_for_comparison(
+    funds_metrics: List[Dict],
+    scheme_codes: List[str],
+) -> Dict:
+    """
+    Rank funds using weighted min-max normalisation across metric groups.
+
+    Args:
+        funds_metrics: List of metric dicts (one per fund, in same order as scheme_codes).
+                       Each dict is the serialised FundMetricsRead or empty {}.
+        scheme_codes:  Parallel list of scheme_code strings.
+
+    Returns:
+        Dict with 'rankings' (list) and 'comparison_summary' (str).
+    """
+    n = len(scheme_codes)
+    if n < 2:
+        return {"rankings": [], "comparison_summary": "Need at least 2 funds to compare."}
+
+    # Initialise per-fund accumulators
+    # group_scores[i][group] = list of normalised scores for that group
+    group_scores: List[Dict[str, List[float]]] = [
+        {g: [] for g in _GROUP_WEIGHTS} for _ in range(n)
+    ]
+
+    # Per-fund: track which metrics they "won" (best value)
+    wins: List[List[str]] = [[] for _ in range(n)]
+
+    for metric_key, (higher_is_better, group) in _METRIC_DEFS.items():
+        # Extract values, treating missing metrics dicts as empty
+        raw_values = []
+        for m in funds_metrics:
+            val = m.get(metric_key) if m else None
+            # Coerce to float or None
+            if val is not None:
+                try:
+                    val = float(val)
+                except (TypeError, ValueError):
+                    val = None
+            raw_values.append(val)
+
+        # If fewer than 2 funds have data for this metric, skip it
+        non_none = [v for v in raw_values if v is not None]
+        if len(non_none) < 2:
+            continue
+
+        min_val = min(non_none)
+        max_val = max(non_none)
+
+        normalised = []
+        for val in raw_values:
+            if val is None:
+                normalised.append(0.0)
+            elif max_val == min_val:
+                normalised.append(50.0)  # tie
+            else:
+                if higher_is_better:
+                    normalised.append((val - min_val) / (max_val - min_val) * 100.0)
+                else:
+                    normalised.append((max_val - val) / (max_val - min_val) * 100.0)
+
+        # Record win (best normalised score)
+        best_idx = int(np.argmax(normalised))
+        if normalised[best_idx] > 0:
+            wins[best_idx].append(_METRIC_LABELS.get(metric_key, metric_key))
+
+        for i in range(n):
+            group_scores[i][group].append(normalised[i])
+
+    # Compute group averages and composite score
+    rankings = []
+    for i in range(n):
+        gs = {}
+        composite = 0.0
+        for group, weight in _GROUP_WEIGHTS.items():
+            scores = group_scores[i][group]
+            avg = sum(scores) / len(scores) if scores else 0.0
+            gs[group] = round(avg, 2)
+            composite += avg * weight
+        rankings.append({
+            "scheme_code": scheme_codes[i],
+            "composite_score": round(composite, 2),
+            "group_scores": gs,
+            "wins": wins[i],
+        })
+
+    # Sort by composite score descending
+    rankings.sort(key=lambda x: x["composite_score"], reverse=True)
+
+    # Assign ranks and recommendation
+    for rank_idx, r in enumerate(rankings):
+        r["rank"] = rank_idx + 1
+        r["is_recommended"] = rank_idx == 0
+
+    # Build recommendation reason for the top fund
+    top = rankings[0]
+    best_group = max(top["group_scores"], key=top["group_scores"].get)
+    top_wins = top["wins"][:4]  # Top 4 winning metrics
+
+    metrics_part = funds_metrics[scheme_codes.index(top["scheme_code"])] or {}
+
+    reason_parts = [f"Highest composite score ({top['composite_score']:.1f}/100)"]
+    reason_parts.append(f"strongest in {_GROUP_LABELS.get(best_group, best_group)} ({top['group_scores'][best_group]:.1f})")
+    if top_wins:
+        reason_parts.append(f"leading in {', '.join(top_wins[:3])}")
+
+    # Add a specific metric callout if available
+    if metrics_part.get("sharpe_ratio") is not None:
+        reason_parts.append(f"Sharpe {float(metrics_part['sharpe_ratio']):.2f}")
+    if metrics_part.get("expense_ratio") is not None:
+        reason_parts.append(f"Expense Ratio {float(metrics_part['expense_ratio'])*100:.2f}%")
+
+    top["recommendation_reason"] = ". ".join(reason_parts[:5]) + "."
+
+    # Build comparison summary
+    if len(rankings) >= 2:
+        gap = rankings[0]["composite_score"] - rankings[1]["composite_score"]
+        summary = (
+            f"{rankings[0]['scheme_code']} leads by {gap:.1f} points. "
+            f"Primary advantage: {_GROUP_LABELS.get(best_group, best_group)}."
+        )
+    else:
+        summary = "Insufficient data for comparison summary."
+
+    return {
+        "rankings": rankings,
+        "comparison_summary": summary,
+    }

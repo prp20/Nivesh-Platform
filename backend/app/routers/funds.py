@@ -27,6 +27,7 @@ async def list_funds(
     amc: Optional[str] = Query(None, description="Filter by AMC name"),
     plan_type: Optional[str] = Query(None, description="Filter by plan type (Direct/Regular)"),
     benchmark_code: Optional[str] = Query(None, description="Filter by benchmark index code"),
+    q: Optional[str] = Query(None, description="Search by fund name or code"),
     order_by: Optional[str] = Query("scheme_name", description="Sort field (scheme_name, -scheme_name)"),
     skip: int = Query(0, ge=0),
     limit: int = Query(100, ge=1, le=500),
@@ -34,11 +35,11 @@ async def list_funds(
 ):
     """List all mutual funds with pagination and filtering."""
     total = await crud.get_fund_masters_count(
-        session, is_active=is_active, category=category, subcategory=subcategory, amc=amc, plan_type=plan_type, benchmark_code=benchmark_code
+        session, is_active=is_active, category=category, subcategory=subcategory, amc=amc, plan_type=plan_type, benchmark_code=benchmark_code, search=q
     )
     items = await crud.get_all_fund_masters(
         session, is_active=is_active, category=category, subcategory=subcategory, amc=amc, plan_type=plan_type, benchmark_code=benchmark_code,
-        order_by=order_by, skip=skip, limit=limit
+        search=q, order_by=order_by, skip=skip, limit=limit
     )
     return {
         "total": total,
@@ -47,14 +48,24 @@ async def list_funds(
         "items": items
     }
 
+@router.get("/categories", response_model=List[str])
+async def list_categories(session: AsyncSession = Depends(get_db)):
+    """Return distinct scheme_category values from active funds."""
+    return await crud.get_distinct_categories(session)
+
+
+@router.get("/categories/{category}/subcategories", response_model=List[str])
+async def list_subcategories(category: str, session: AsyncSession = Depends(get_db)):
+    """Return distinct subcategories for a given category."""
+    return await crud.get_distinct_subcategories(session, category)
+
+
 @router.get("/compare", response_model=schemas.ComparisonResponse)
 async def compare_funds(
     codes: str = Query(..., description="Comma-separated scheme codes for comparison"),
     session: AsyncSession = Depends(get_db)
 ):
     """Compare multiple funds (max 4). Enforces same category matching."""
-    import asyncio
-    
     # 1. Parse and validate codes
     scheme_codes = [c.strip() for c in codes.split(",") if c.strip()]
     if len(scheme_codes) < 2:
@@ -93,6 +104,12 @@ async def compare_funds(
 
     # 4. Use optimized analytics helper
     comparison_data = await analytics.get_comparison_data(session, scheme_codes)
+
+    # 5. Compute recommendation ranking
+    all_metrics = [f["metrics"] for f in comparison_data["funds"]]
+    ranking = analytics.rank_funds_for_comparison(all_metrics, scheme_codes)
+    comparison_data["ranking"] = ranking
+
     if subcategory_warning:
         comparison_data["warning"] = subcategory_warning
     return comparison_data
