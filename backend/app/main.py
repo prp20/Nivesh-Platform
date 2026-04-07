@@ -8,14 +8,21 @@ from fastapi.middleware.cors import CORSMiddleware
 from .config import settings
 from .routers import funds, benchmarks, navs, benchmark_navs, metrics, sync, auth
 from .database import engine, Base
+from pipeline.scheduler import configure_scheduler, scheduler
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     # Startup logic
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
+
+    # Configure and start scheduler
+    configure_scheduler()
+    scheduler.start()
+
     yield
-    # Shutdown logic (none needed for now)
+    # Shutdown logic
+    scheduler.shutdown(wait=False)
 
 app = FastAPI(
     title=settings.PROJECT_NAME,
