@@ -35,7 +35,8 @@ async def audit_job(job_name: str, stock_id: int = None):
 
 async def _insert_audit(job_name: str, stock_id: int = None) -> int:
     """Insert a new audit record and return its ID."""
-    conn = await asyncpg.connect(settings.DATABASE_URL)
+    db_url = settings.DATABASE_URL.replace("postgresql+asyncpg://", "postgresql://")
+    conn = await asyncpg.connect(db_url)
     try:
         sql = """
             INSERT INTO pipeline_audit (job_name, stock_id, status, started_at)
@@ -50,7 +51,8 @@ async def _insert_audit(job_name: str, stock_id: int = None) -> int:
 
 async def _close_audit(audit_id: int, record: _AuditRecord) -> None:
     """Close an audit record with final status and metrics."""
-    conn = await asyncpg.connect(settings.DATABASE_URL)
+    db_url = settings.DATABASE_URL.replace("postgresql+asyncpg://", "postgresql://")
+    conn = await asyncpg.connect(db_url)
     try:
         sql = """
             UPDATE pipeline_audit
