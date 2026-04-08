@@ -26,6 +26,11 @@ const stockService = {
     return response.data;
   },
 
+  getShareholding: async (symbol, params) => {
+    const response = await apiClient.get(`/stocks/${symbol}/shareholding`, { params });
+    return response.data;
+  },
+
   getRatios: async (symbol) => {
     const response = await apiClient.get(`/stocks/${symbol}/ratios`);
     return response.data;

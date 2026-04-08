@@ -226,3 +226,59 @@ async def _get_stock_id(symbol: str, db: AsyncSession):
     )
     row = result.fetchone()
     return dict(row._mapping) if row else None
+
+
+# ─── GET /stocks/{symbol}/fundamentals ────────────────────────────────────────
+
+@router.get("/{symbol}/fundamentals")
+async def get_fundamentals(
+    symbol:         str,
+    statement_type: str = Query("PL", regex="^(PL|BS|CF)$"),
+    period_type:    str = Query("annual", regex="^(annual|quarterly)$"),
+    limit:          int = Query(5, ge=1, le=20),
+    db: AsyncSession = Depends(get_db),
+):
+    stock = await _get_stock_id(symbol, db)
+    if not stock:
+        raise HTTPException(404, f"Stock '{symbol}' not found")
+
+    sql = """
+        SELECT period_end, period_type, data, scraped_at
+        FROM financial_statements
+        WHERE stock_id      = :sid
+          AND statement_type = :st
+          AND period_type    = :pt
+        ORDER BY period_end DESC
+        LIMIT :limit
+    """
+    result = await db.execute(text(sql), {
+        "sid": stock["id"], "st": statement_type, "pt": period_type, "limit": limit
+    })
+    rows = [dict(r._mapping) for r in result.fetchall()]
+    return {"symbol": symbol.upper(), "statement_type": statement_type, "records": rows}
+
+
+# ─── GET /stocks/{symbol}/shareholding ────────────────────────────────────────
+
+@router.get("/{symbol}/shareholding")
+async def get_shareholding(
+    symbol: str,
+    limit:  int = Query(8, ge=1, le=20),
+    db: AsyncSession = Depends(get_db),
+):
+    stock = await _get_stock_id(symbol, db)
+    if not stock:
+        raise HTTPException(404, f"Stock '{symbol}' not found")
+
+    sql = """
+        SELECT period_end, promoter_pct, fii_pct, dii_pct, public_pct, pledged_pct,
+               promoter_change, fii_change
+        FROM shareholding_pattern
+        WHERE stock_id = :sid
+        ORDER BY period_end DESC
+        LIMIT :limit
+    """
+    result = await db.execute(text(sql), {"sid": stock["id"], "limit": limit})
+    return {"symbol": symbol.upper(), "records": [dict(r._mapping) for r in result.fetchall()]}
+
+

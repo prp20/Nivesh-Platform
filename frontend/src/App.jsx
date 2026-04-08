@@ -3,6 +3,7 @@ import { BrowserRouter as Router, Routes, Route, Navigate, useParams } from 'rea
 import Dashboard from './pages/Dashboard';
 import Portfolio from './pages/Portfolio';
 import StockListing from './pages/StockListing';
+import Screener from './pages/Screener';
 import MFListing from './pages/MFListing';
 import MFCompare from './pages/MFCompare';
 import IndicesListing from './pages/IndicesListing';
@@ -54,6 +55,7 @@ const AppContent = () => {
         <Route path="/portfolio" element={<Portfolio />} />
         <Route path="/stocks" element={<StockListing />} />
         <Route path="/stocks/:symbol" element={<StockDetailRoute />} />
+        <Route path="/screener" element={<Screener />} />
         <Route path="/mf" element={<MFListing />} />
         <Route path="/mf/:schemeCode" element={<MFDetailRoute />} />
         <Route path="/compare" element={<MFCompare />} />
