@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { useDispatch, useSelector } from "react-redux";
 import { fetchScreener } from "../store/slices/stocksSlice";
+import { useNavigate } from "react-router-dom";
 
 const SECTORS = ["Banking","IT","Pharma","Auto","FMCG","Energy","Telecom","NBFC","Infrastructure","Metals"];
 const RATINGS = ["STRONG_BUY","BUY","HOLD","SELL","STRONG_SELL"];
@@ -8,6 +9,7 @@ const MKT_CAPS = [["Large","Large Cap"],["Mid","Mid Cap"],["Small","Small Cap"]]
 
 export default function Screener() {
   const dispatch = useDispatch();
+  const navigate = useNavigate();
   const { screenerResult, status } = useSelector(s => s.stocks);
   const [filters, setFilters] = useState({
     min_roe: "", max_pe: "", max_debt_equity: "",
@@ -233,7 +235,7 @@ export default function Screener() {
                   <tr 
                     key={s.symbol} 
                     className="border-b border-outline-variant hover:bg-surface-container hover:bg-opacity-30 transition cursor-pointer"
-                    onClick={() => { window.location.hash = `#/stocks/${s.symbol}` }}
+                    onClick={() => navigate(`/stocks/${s.symbol}`)}
                   >
                     <td className="p-4 font-headline text-on-surface">{s.symbol}</td>
                     <td className="p-4 text-on-surface-variant">{s.company_name}</td>
