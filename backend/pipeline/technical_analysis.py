@@ -29,16 +29,20 @@ MIN_ROWS_REQUIRED = 200  # need 200 rows for SMA-200; shorter series get NaN
 
 async def run_technical_analysis_all() -> dict:
     """Compute TA indicators for all active non-index stocks. For scheduler."""
-    async with audit_job("technical_analysis_all") as audit:
-        stocks = await _fetch_active_stocks()
+    stocks = await _fetch_active_stocks()
+    async with audit_job("technical_analysis_all", records_in=len(stocks)) as audit:
         success, failed = 0, 0
-        for stock in stocks:
+        for i, stock in enumerate(stocks):
             try:
                 await _compute_and_store(stock["id"], stock["symbol"])
                 success += 1
             except Exception as e:
                 logger.error(f"TA failed for {stock['symbol']}: {e}")
                 failed += 1
+            
+            # Report progress after each stock
+            await audit.update_progress(i + 1)
+            
         audit.records_out = success
         logger.info(f"technical_analysis_all: {success} ok, {failed} failed")
         return {"stocks_processed": success, "stocks_failed": failed}

@@ -208,4 +208,54 @@ LEFT JOIN LATERAL (
 
 - Avoids N+1 queries (single query gets latest ratio per stock)
 - PostgreSQL materializes subquery only for matching stocks
-- Fallback to NULL for stocks with no ratio data (LEFT JOIN)
+---
+
+## ⚙️ Data Pipeline & Admin Triggers
+
+The system provides a robust administrative API for triggering and monitoring the multi-stage data pipeline. All endpoints require **JWT Admin Authentication**.
+
+### Phase-Based Automation Cadence
+| Job | Path | Schedule (IST) |
+|---|---|---|
+| Price Ingestion | `/pipeline/prices/all` | Mon–Fri 18:30 |
+| Index Ingestion | `/pipeline/prices/indices` | Mon–Fri 18:40 |
+| Metric Refresh | `/pipeline/metrics/price-refresh/all` | Mon–Fri 19:00 |
+| Tech Analysis | `/pipeline/technical/all` | Mon–Fri 19:30 |
+| Rating Compute | `/pipeline/ratings/all` | Mon–Fri 20:15 |
+| Screener Scrape | `/pipeline/screener/all` | Sun 02:00 |
+| Ratio Compute | `/pipeline/ratios/all` | Sun 09:00 |
+
+### Pipeline Endpoints Reference
+
+#### 1. Price Ingestion (Yahoo Finance)
+- **Trigger All**: `POST /api/v1/pipeline/prices/all` (Background Task)
+- **Trigger Indices**: `POST /api/v1/pipeline/prices/indices` (Background Task)
+- **Backfill**: `POST /api/v1/pipeline/prices/backfill`
+    - **Params**: `period` (default "5y")
+
+#### 2. Metric Recompute (Price-Dependent)
+- **Refresh All**: `POST /api/v1/pipeline/metrics/price-refresh/all`
+- **Refresh Stock**: `POST /api/v1/pipeline/metrics/price-refresh/{symbol}`
+
+#### 3. Screener.in Sync (Fundamental Data)
+- **Scrape Overdue**: `POST /api/v1/pipeline/screener/all` (Recent > 90 days)
+- **Scrape Stock**: `POST /api/v1/pipeline/screener/{symbol}`
+    - **Params**: `force` (bool, default False) - overrides checksum check
+- **Scrape Status**: `GET /api/v1/pipeline/screener/status`
+
+#### 4. Technical Analysis (TA-Lib)
+- **Compute All**: `POST /api/v1/pipeline/technical/all`
+- **Compute Stock**: `POST /api/v1/pipeline/technical/{symbol}`
+- **TA Status**: `GET /api/v1/pipeline/technical/status`
+
+#### 5. Financial Ratio Engine
+- **Compute All**: `POST /api/v1/pipeline/ratios/all` (Group B metrics)
+- **Compute Stock**: `POST /api/v1/pipeline/ratios/{symbol}`
+
+#### 6. Rating Engine (Composite Scoring)
+- **Rate All**: `POST /api/v1/pipeline/ratings/all`
+- **Rate Stock**: `POST /api/v1/pipeline/ratings/{symbol}`
+
+#### 7. Pipeline Audit & Health
+- **Audit Logs**: `GET /api/v1/pipeline/audit` (View recent job status and errors)
+

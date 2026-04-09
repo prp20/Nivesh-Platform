@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { NavLink, Link, useNavigate } from 'react-router-dom';
+import { NavLink, Link, useNavigate, useLocation } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useSelector } from 'react-redux';
 import fundService from '../api/services/fundService';
@@ -170,69 +170,154 @@ const SideNavBar = () => {
     const { compareList } = useSelector((state) => state.compare);
     const { logout } = useAuth();
     const navigate = useNavigate();
+    const location = useLocation();
+    const [isOpsOpen, setIsOpsOpen] = useState(true);
+    const [isAdminOpen, setIsAdminOpen] = useState(location.pathname.startsWith('/admin'));
 
     const navItems = [
-        { name: 'Homepage', icon: 'home', path: '/dashboard' },
-        { name: 'Stocks Listing', icon: 'monitoring', path: '/stocks' },
-        { name: 'Mutual Funds', icon: 'account_balance', path: '/mf' },
-        { name: 'Compare Funds', icon: 'compare_arrows', path: '/compare', badge: compareList.length },
-        { name: 'Portfolio Page', icon: 'account_balance_wallet', path: '/portfolio' },
-        { name: 'Admin Panel', icon: 'admin_panel_settings', path: '/admin' },
+        { name: 'Sovereign Hub', icon: 'home', path: '/dashboard' },
+        { name: 'Equity Pulse', icon: 'monitoring', path: '/stocks' },
+        { name: 'Vault Assets', icon: 'account_balance', path: '/mf' },
+        { name: 'Analysis Lab', icon: 'compare_arrows', path: '/compare', badge: compareList.length },
+        { name: 'Private Portfolio', icon: 'account_balance_wallet', path: '/portfolio' },
     ];
 
+    const adminSubItems = [
+      { id: 'dashboard', label: 'Command Center', icon: 'dashboard' },
+      { id: 'health', label: 'System Health', icon: 'monitor_heart' },
+      { id: 'pipeline', label: 'Pipeline Hub', icon: 'cyclone' },
+      { id: 'assets', label: 'Asset Ledger', icon: 'account_balance_wallet' },
+      { id: 'logs', label: 'Security Logs', icon: 'security' },
+    ];
+
+    const isActive = (path) => location.pathname === path;
+    const isParentActive = (pathPrefix) => location.pathname.startsWith(pathPrefix);
+
     return (
-        <aside className="h-screen w-72 left-0 top-0 fixed bg-[#0f1419] border-r border-white/5 flex flex-col py-10 z-40 hidden lg:flex shadow-2xl">
+        <aside className="h-screen w-72 left-0 top-0 fixed bg-[#0f1419] border-r border-white/5 flex flex-col py-8 z-40 hidden lg:flex shadow-2xl overflow-y-auto no-scrollbar">
             {/* Branding block */}
-            <div className="px-8 mb-10">
-                <div className="text-[11px] font-label font-black uppercase tracking-[0.25em] text-primary mb-1">The Sovereign Ledger</div>
-                <div className="text-[9px] font-label font-black uppercase tracking-[0.3em] text-slate-500">Private Tier</div>
+            <div className="px-8 mb-12">
+                <div className="flex items-center gap-3 mb-2">
+                    <div className="w-8 h-8 rounded bg-primary flex items-center justify-center">
+                        <span className="material-symbols-outlined text-black text-lg font-black">shield</span>
+                    </div>
+                    <div className="text-[12px] font-headline font-black uppercase tracking-[0.2em] text-white">The Sovereign</div>
+                </div>
+                <div className="text-[9px] font-label font-black uppercase tracking-[0.4em] text-slate-500/80">Private Tier v1.1.0</div>
             </div>
 
-            <nav className="flex-1 space-y-1">
-                {navItems.map((item) => (
-                    <NavLink
-                        key={item.path}
-                        to={item.path}
-                        className={({ isActive }) => `
-                            flex items-center justify-between py-5 font-body text-[11px] tracking-[0.2em] uppercase font-bold transition-all duration-300 group
-                            ${isActive
-                                ? 'text-[#e9c349] bg-primary/10 rounded-r-full px-8'
-                                : 'text-slate-500 hover:bg-white/5 hover:text-slate-200 px-8'}
-                        `}
+            <nav className="flex-1 px-2 space-y-2">
+                {/* Operations Section */}
+                <div>
+                    <button
+                        onClick={() => setIsOpsOpen(!isOpsOpen)}
+                        className={`w-full flex items-center justify-between py-4 px-6 rounded-xl transition-all duration-300 group ${
+                          !isParentActive('/admin') ? 'text-primary bg-primary/5 border-r-2 border-primary' : 'text-slate-500 hover:text-slate-200'
+                        }`}
                     >
-                        {({ isActive }) => (
-                            <>
-                                <div className="flex items-center gap-4">
-                                    <span className={`material-symbols-outlined transition-transform duration-300 group-hover:scale-110 ${isActive ? 'scale-110' : ''}`}>{item.icon}</span>
-                                    <span>{item.name}</span>
-                                </div>
-                                {item.badge > 0 && (
-                                    <span className="bg-primary text-on-primary text-[10px] px-2 py-0.5 rounded-full font-black animate-pulse shadow-lg shadow-primary/20">
-                                        {item.badge}
-                                    </span>
-                                )}
-                            </>
+                        <div className="flex items-center gap-4">
+                            <span className="material-symbols-outlined text-xl">grid_view</span>
+                            <span className="text-[11px] font-black uppercase tracking-[0.2em]">Operations</span>
+                        </div>
+                        <span className={`material-symbols-outlined transition-transform duration-300 text-sm ${isOpsOpen ? 'rotate-180' : ''}`}>expand_more</span>
+                    </button>
+
+                    <AnimatePresence>
+                        {isOpsOpen && (
+                            <motion.div
+                                initial={{ height: 0, opacity: 0 }}
+                                animate={{ height: 'auto', opacity: 1 }}
+                                exit={{ height: 0, opacity: 0 }}
+                                className="overflow-hidden space-y-1 mt-1"
+                            >
+                                {navItems.map((item) => {
+                                    const active = isActive(item.path);
+                                    return (
+                                        <NavLink
+                                            key={item.path}
+                                            to={item.path}
+                                            className={`
+                                                flex items-center justify-between py-3.5 pl-12 pr-6 font-body text-[10px] tracking-[0.2em] uppercase font-bold transition-all duration-300 group
+                                                ${active
+                                                    ? 'text-primary border-l-2 border-primary'
+                                                    : 'text-slate-600 hover:text-slate-200 hover:pl-14'}
+                                            `}
+                                        >
+                                            <div className="flex items-center gap-4">
+                                                <span className={`material-symbols-outlined text-lg transition-transform duration-300 group-hover:scale-110 ${active ? 'scale-110' : ''}`}>{item.icon}</span>
+                                                <span>{item.name}</span>
+                                            </div>
+                                            {item.badge > 0 && (
+                                                <span className="bg-primary text-on-primary text-[9px] px-2 py-0.5 rounded-full font-black">
+                                                    {item.badge}
+                                                </span>
+                                            )}
+                                        </NavLink>
+                                    );
+                                })}
+                            </motion.div>
                         )}
-                    </NavLink>
-                ))}
+                    </AnimatePresence>
+                </div>
+
+                {/* Management / Admin Section */}
+                <div className="pt-4">
+                    <button
+                        onClick={() => setIsAdminOpen(!isAdminOpen)}
+                        className={`w-full flex items-center justify-between py-4 px-6 rounded-xl transition-all duration-300 group ${
+                            isParentActive('/admin') ? 'text-primary bg-primary/5 border-r-2 border-primary' : 'text-slate-500 hover:text-slate-200'
+                        }`}
+                    >
+                        <div className="flex items-center gap-4">
+                            <span className="material-symbols-outlined text-xl">admin_panel_settings</span>
+                            <span className="text-[11px] font-black uppercase tracking-[0.2em]">Management</span>
+                        </div>
+                        <span className={`material-symbols-outlined transition-transform duration-300 text-sm ${isAdminOpen ? 'rotate-180' : ''}`}>expand_more</span>
+                    </button>
+
+                    <AnimatePresence>
+                        {isAdminOpen && (
+                            <motion.div
+                                initial={{ height: 0, opacity: 0 }}
+                                animate={{ height: 'auto', opacity: 1 }}
+                                exit={{ height: 0, opacity: 0 }}
+                                className="overflow-hidden space-y-1 mt-1"
+                            >
+                                {adminSubItems.map((subItem) => {
+                                    const searchParams = new URLSearchParams(location.search);
+                                    const active = location.pathname === '/admin' && (searchParams.get('tab') === subItem.id || (!searchParams.get('tab') && subItem.id === 'dashboard'));
+                                    
+                                    return (
+                                        <Link
+                                            key={subItem.id}
+                                            to={`/admin?tab=${subItem.id}`}
+                                            className={`flex items-center gap-4 py-3.5 pl-12 pr-6 font-body text-[10px] tracking-[0.2em] uppercase font-bold transition-all duration-300 group ${
+                                                active ? 'text-primary border-l-2 border-primary font-black' : 'text-slate-600 hover:text-slate-200 hover:pl-14'
+                                            }`}
+                                        >
+                                            <span className={`material-symbols-outlined text-lg ${active ? 'text-primary' : 'text-slate-700 group-hover:text-slate-400'}`}>{subItem.icon}</span>
+                                            <span>{subItem.label}</span>
+                                        </Link>
+                                    );
+                                })}
+                            </motion.div>
+                        )}
+                    </AnimatePresence>
+                </div>
             </nav>
 
-            <div className="px-8 mt-auto space-y-6">
-                <button className="w-full gold-gradient text-on-primary py-4 rounded-xl font-bold text-[10px] tracking-widest uppercase shadow-xl shadow-primary/10 transition-all hover:brightness-110 active:scale-95">
-                    Expert Concierge
+            <div className="px-6 mt-auto pt-8 border-t border-white/5 space-y-4">
+                <button className="w-full gold-gradient text-on-primary py-4 rounded-xl font-bold text-[10px] tracking-widest uppercase shadow-xl shadow-primary/20 transition-all hover:brightness-110 active:scale-95">
+                    Concierge Protocol
                 </button>
-                <div className="pt-6 border-t border-white/5 flex flex-col gap-5">
-                    <div className="flex items-center gap-4 text-slate-500 hover:text-white cursor-pointer transition-colors text-xs font-bold tracking-widest uppercase">
-                        <span className="material-symbols-outlined text-lg">help_center</span>
-                        <span>Support</span>
-                    </div>
-                    <div
-                        className="flex items-center gap-4 text-slate-500 hover:text-error cursor-pointer transition-colors text-xs font-bold tracking-widest uppercase"
+                <div className="pb-6">
+                    <button
+                        className="w-full flex items-center gap-4 px-6 py-4 text-slate-500 hover:text-error transition-all duration-300 rounded-xl hover:bg-white/5 group"
                         onClick={() => { logout(); navigate('/login'); }}
                     >
-                        <span className="material-symbols-outlined text-lg">logout</span>
-                        <span>Logout</span>
-                    </div>
+                        <span className="material-symbols-outlined text-xl group-hover:translate-x-1 transition-transform">logout</span>
+                        <span className="text-[10px] font-black tracking-widest uppercase">Terminal Exit</span>
+                    </button>
                 </div>
             </div>
         </aside>

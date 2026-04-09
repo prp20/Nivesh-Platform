@@ -1,9 +1,10 @@
 import React, { useEffect, useState } from "react";
 import { useParams, Link, useNavigate } from "react-router-dom";
 import { useDispatch, useSelector } from "react-redux";
-import { fetchStockDetail } from "../store/slices/stocksSlice";
+import { fetchStockDetail, triggerFullStockSync } from "../store/slices/stocksSlice";
 import stockService from "../api/services/stockService";
 import { motion, AnimatePresence } from 'framer-motion';
+import { AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer } from 'recharts';
 
 export default function StockDetail() {
   const { symbol } = useParams();
@@ -17,14 +18,80 @@ export default function StockDetail() {
   const [loadingFundamentals, setLoadingFundamentals] = useState(false);
   const [loadingShareholding, setLoadingShareholding] = useState(false);
 
+  const [ratios, setRatios] = useState(null);
+  const [priceHistory, setPriceHistory] = useState([]);
+  const [syncingPrices, setSyncingPrices] = useState(false);
+  const [syncingFundamentals, setSyncingFundamentals] = useState(false);
+
+  const timeframes = [
+    { id: '1M', interval: '1d', limit: 20 },
+    { id: '6M', interval: '1d', limit: 120 },
+    { id: '1Y', interval: '1d', limit: 260 },
+    { id: '5Y', interval: '1w', limit: 260 },
+    { id: '10Y', interval: '1mo', limit: 120 },
+    { id: 'MAX', interval: '1mo', limit: 300 }
+  ];
+  const [activeTimeframe, setActiveTimeframe] = useState('1Y');
+
   useEffect(() => {
     if (symbol) {
       dispatch(fetchStockDetail(symbol));
     }
   }, [symbol, dispatch]);
+  
+  useEffect(() => {
+    if (symbol && detail?.symbol === symbol) {
+      const tf = timeframes.find(t => t.id === activeTimeframe) || timeframes[2];
+      stockService.getPriceHistory(symbol, { interval: tf.interval, limit: tf.limit })
+        .then(res => setPriceHistory(res.data))
+        .catch(err => console.error("Failed to fetch price history:", err));
+      
+      stockService.getRatios(symbol)
+        .then(res => {
+          if (res.records && res.records.length > 0) {
+            setRatios(res.records[0]);
+          }
+        })
+        .catch(err => console.error("Failed to fetch ratios:", err));
+    }
+  }, [symbol, detail?.symbol, activeTimeframe]);
+
+  const handleSyncDaily = async () => {
+    setSyncingPrices(true);
+    try {
+      await stockService.triggerDeepPriceSync(symbol, "1y");
+      await stockService.triggerTechnicalAnalysis(symbol);
+      await stockService.triggerRatingCompute(symbol);
+      const hist = await stockService.getPriceHistory(symbol, { interval: timeframes.find(t => t.id === activeTimeframe).interval, limit: timeframes.find(t => t.id === activeTimeframe).limit });
+      setPriceHistory(hist.data);
+      dispatch(fetchStockDetail(symbol));
+    } catch (e) {
+      console.error(e);
+    } finally {
+      setSyncingPrices(false);
+    }
+  };
+
+  const handleSyncFundamentals = async () => {
+    setSyncingFundamentals(true);
+    try {
+      await stockService.triggerScreenerScrape(symbol, true);
+      const [rat, fund] = await Promise.all([
+        stockService.getRatios(symbol),
+        stockService.getFundamentals(symbol, { statement_type: stmtType, limit: 5 })
+      ]);
+      if (rat.records?.length > 0) setRatios(rat.records[0]);
+      setFundamentals(fund);
+      dispatch(fetchStockDetail(symbol));
+    } catch (e) {
+      console.error(e);
+    } finally {
+      setSyncingFundamentals(false);
+    }
+  };
 
   useEffect(() => {
-    if (symbol && activeTab === "fundamentals" && !fundamentals) {
+    if (symbol && activeTab === "fundamentals") {
       setLoadingFundamentals(true);
       stockService
         .getFundamentals(symbol, { statement_type: stmtType, limit: 5 })
@@ -32,7 +99,7 @@ export default function StockDetail() {
         .catch(err => console.error("Failed to fetch fundamentals:", err))
         .finally(() => setLoadingFundamentals(false));
     }
-  }, [symbol, activeTab, stmtType, fundamentals]);
+  }, [symbol, activeTab, stmtType]);
 
   useEffect(() => {
     if (symbol && activeTab === "shareholding" && !shareholding) {
@@ -84,13 +151,29 @@ export default function StockDetail() {
             <p className="text-xl md:text-2xl font-headline text-slate-400 capitalize tracking-tight">Ticker:  {detail.symbol}</p>
           </div>
 
-          <div className="text-right hidden md:block">
+          <div className="text-right group">
             <span className="text-[10px] text-slate-500 font-black uppercase tracking-[0.5em] mb-4 block italic">Current Valuation</span>
             <div className="text-6xl md:text-7xl font-bold font-headline tracking-tighter text-white">
               ₹{detail.latest_close?.toFixed(2) ?? "—"}
             </div>
-            <div className={`text-2xl font-black mt-2 tracking-tighter ${changeColor}`}>
-              {detail.change_pct > 0 ? "+" : ""}{detail.change_pct?.toFixed(2)}%
+            
+            <div className="flex flex-wrap justify-end gap-3 mt-8">
+              <button 
+                onClick={handleSyncDaily} 
+                disabled={syncingPrices}
+                className="font-label text-[10px] md:text-[11px] uppercase tracking-widest font-black text-white border border-emerald-500/30 hover:bg-emerald-500/10 transition-all rounded-xl px-4 md:px-5 py-3 flex items-center gap-2 md:gap-3 bg-emerald-500/5 shadow-lg shadow-emerald-500/5 cursor-pointer whitespace-nowrap"
+              >
+                <span className={`material-symbols-outlined text-[16px] md:text-[18px] ${syncingPrices ? 'animate-spin text-emerald-500' : 'text-emerald-500'}`}>sync</span>
+                {syncingPrices ? 'Syncing...' : 'Sync Price & History'}
+              </button>
+              <button 
+                onClick={handleSyncFundamentals} 
+                disabled={syncingFundamentals}
+                className="font-label text-[10px] md:text-[11px] uppercase tracking-widest font-black text-white border border-primary/30 hover:bg-primary/10 transition-all rounded-xl px-4 md:px-5 py-3 flex items-center gap-2 md:gap-3 bg-primary/5 shadow-lg shadow-primary/5 cursor-pointer whitespace-nowrap"
+              >
+                <span className={`material-symbols-outlined text-[16px] md:text-[18px] ${syncingFundamentals ? 'animate-spin text-primary' : 'text-primary'}`}>sync</span>
+                {syncingFundamentals ? 'Syncing...' : 'Sync Fundamentals'}
+              </button>
             </div>
           </div>
         </div>
@@ -134,10 +217,10 @@ export default function StockDetail() {
                   <h3 className="font-headline text-3xl font-bold italic mb-8 tracking-tighter">Capitalization & Multiples</h3>
                   <div className="grid grid-cols-2 md:grid-cols-3 gap-1">
                     <DataCell label="Sector" value={detail.sector} />
-                    <DataCell label="P/E Ratio" value={detail.pe_ratio?.toFixed(1) || '—'} />
-                    <DataCell label="P/B Ratio" value={detail.pb_ratio?.toFixed(1) || '—'} />
-                    <DataCell label="ROE" value={detail.roe ? `${detail.roe.toFixed(1)}%` : '—'} />
-                    <DataCell label="D/E Ratio" value={detail.debt_equity?.toFixed(2) || '—'} />
+                    <DataCell label="P/E Ratio" value={ratios?.pe_ratio?.toFixed(1) || '—'} />
+                    <DataCell label="P/B Ratio" value={ratios?.pb_ratio?.toFixed(1) || '—'} />
+                    <DataCell label="ROE" value={ratios?.roe ? `${ratios.roe.toFixed(1)}%` : '—'} />
+                    <DataCell label="D/E Ratio" value={ratios?.debt_equity?.toFixed(2) || '—'} />
                     <DataCell label="Rating" value={detail.rating_label ? detail.rating_label.replace("_", " ") : '—'} highlight />
                   </div>
                 </section>
@@ -154,10 +237,84 @@ export default function StockDetail() {
 
                 <section>
                   <h3 className="font-headline text-3xl font-bold italic mb-6 tracking-tighter">Market Stance & Profile</h3>
-                  <div className="bg-surface-container-low p-10 rounded-[2rem] border-l-2 border-primary/40 shadow-xl">
+                  <div className="bg-surface-container-low p-10 rounded-[2rem] border-l-2 border-primary/40 shadow-xl mb-12">
                     <p className="text-slate-400 font-medium leading-relaxed italic">
                       {detail.company_name} operates within the highly competitive {detail.sector} sector. As a tier-1 component of the equity matrix, its market dynamics dictate substantial capital flows across institutional portfolios. Current algorithmic models suggest continuous monitoring of its P/E multiple relative to sub-sector peers.
                     </p>
+                  </div>
+                </section>
+                
+                <section>
+                  <div className="flex items-center justify-between mb-6">
+                    <h3 className="font-headline text-3xl font-bold italic tracking-tighter">Price Performance</h3>
+                    <div className="flex bg-surface-container-low rounded-xl p-1 shadow-lg border border-outline-variant/5">
+                      {timeframes.map(tf => (
+                        <button
+                          key={tf.id}
+                          onClick={() => setActiveTimeframe(tf.id)}
+                          className={`px-4 py-2 rounded-lg text-xs font-black tracking-widest transition-all ${
+                            activeTimeframe === tf.id 
+                              ? 'bg-primary text-on-primary shadow shadow-primary/20' 
+                              : 'text-slate-500 hover:text-white hover:bg-white/5'
+                          }`}
+                        >
+                          {tf.id}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                  
+                  <div className="glass-panel p-8 rounded-[2rem] border border-outline-variant/10 h-80 relative overflow-hidden">
+                    <div className="absolute inset-0 bg-gradient-to-br from-primary/5 to-transparent pointer-events-none blur-3xl opacity-30"></div>
+                    {priceHistory.length > 0 ? (
+                      <ResponsiveContainer width="100%" height="100%">
+                        <AreaChart data={priceHistory} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
+                            <defs>
+                              <linearGradient id="colorClose" x1="0" y1="0" x2="0" y2="1">
+                                <stop offset="5%" stopColor="#e9c349" stopOpacity={0.3}/>
+                                <stop offset="95%" stopColor="#e9c349" stopOpacity={0}/>
+                              </linearGradient>
+                            </defs>
+                            <XAxis 
+                              dataKey="time" 
+                              stroke="#64748b" 
+                              fontSize={10} 
+                              tickLine={false}
+                              axisLine={false}
+                              tickFormatter={(val) => {
+                                const d = new Date(val);
+                                return activeTimeframe === '1M' || activeTimeframe === '6M' 
+                                  ? d.toLocaleDateString('en-IN', {day: 'numeric', month:'short'})
+                                  : d.toLocaleDateString('en-IN', {month:'short', year:'2-digit'});
+                              }} 
+                            />
+                            <YAxis 
+                              stroke="#64748b" 
+                              fontSize={10} 
+                              tickLine={false}
+                              axisLine={false}
+                              domain={['auto', 'auto']} 
+                              tickFormatter={(val) => `₹${val}`} 
+                            />
+                            <Tooltip 
+                              contentStyle={{ backgroundColor: 'rgba(27, 32, 37, 0.9)', backdropFilter: 'blur(10px)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '1rem', color: '#fff', fontSize: '12px' }} 
+                              itemStyle={{ color: '#e9c349', fontWeight: 'bold' }}
+                              labelStyle={{ color: '#94a3b8', marginBottom: '4px' }}
+                            />
+                            <Area 
+                              type="monotone" 
+                              dataKey="close" 
+                              stroke="#e9c349" 
+                              strokeWidth={3} 
+                              fillOpacity={1} 
+                              fill="url(#colorClose)" 
+                              animationDuration={1500}
+                            />
+                        </AreaChart>
+                      </ResponsiveContainer>
+                    ) : (
+                      <div className="h-full flex items-center justify-center text-slate-500 font-label text-xs uppercase tracking-widest relative z-10">No Price Data Retained</div>
+                    )}
                   </div>
                 </section>
               </div>

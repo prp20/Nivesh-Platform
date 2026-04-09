@@ -126,7 +126,8 @@ async def get_stock(symbol: str, db: AsyncSession = Depends(get_db)):
             r.technical_score,
             ti.rsi_14,
             ti.macd_hist,
-            ti.sma_200
+            ti.sma_200,
+            ti.sma_50
         FROM stocks s
         LEFT JOIN LATERAL (
             SELECT close, high, low, volume, price_date
@@ -140,7 +141,7 @@ async def get_stock(symbol: str, db: AsyncSession = Depends(get_db)):
             FROM stock_ratings WHERE stock_id = s.id ORDER BY rated_on DESC LIMIT 1
         ) r ON TRUE
         LEFT JOIN LATERAL (
-            SELECT rsi_14, macd_hist, sma_200
+            SELECT rsi_14, macd_hist, sma_200, sma_50
             FROM technical_indicators WHERE stock_id = s.id AND timeframe = '1d' ORDER BY ind_date DESC LIMIT 1
         ) ti ON TRUE
         WHERE s.symbol = :symbol AND s.is_active = TRUE
@@ -169,7 +170,7 @@ async def get_price_history(
 
     if interval == "1d":
         sql = """
-            SELECT price_date AS "time", open, high, low, close, adj_close, volume
+            SELECT price_date AS "time", open, high, low, adj_close AS close, volume
             FROM price_data
             WHERE stock_id = :sid
             ORDER BY price_date DESC
@@ -182,7 +183,7 @@ async def get_price_history(
                 (ARRAY_AGG(open ORDER BY price_date))[1]  AS open,
                 MAX(high)                                  AS high,
                 MIN(low)                                   AS low,
-                (ARRAY_AGG(close ORDER BY price_date DESC))[1] AS close,
+                (ARRAY_AGG(adj_close ORDER BY price_date DESC))[1] AS close,
                 SUM(volume)                                AS volume
             FROM price_data
             WHERE stock_id = :sid
@@ -192,18 +193,18 @@ async def get_price_history(
         """
     else:  # 1mo
         sql = """
-            SELECT
-                date_trunc('month', price_date)::date AS "time",
-                (ARRAY_AGG(open ORDER BY price_date))[1]       AS open,
-                MAX(high)                                       AS high,
-                MIN(low)                                        AS low,
-                (ARRAY_AGG(close ORDER BY price_date DESC))[1] AS close,
-                SUM(volume)                                     AS volume
-            FROM price_data
-            WHERE stock_id = :sid
-            GROUP BY date_trunc('month', price_date)
-            ORDER BY "time" DESC
-            LIMIT :limit
+        SELECT
+            date_trunc('month', price_date)::date AS "time",
+            (ARRAY_AGG(open ORDER BY price_date))[1]       AS open,
+            MAX(high)                                       AS high,
+            MIN(low)                                        AS low,
+            (ARRAY_AGG(adj_close ORDER BY price_date DESC))[1] AS close,
+            SUM(volume)                                     AS volume
+        FROM price_data
+        WHERE stock_id = :sid
+        GROUP BY date_trunc('month', price_date)
+        ORDER BY "time" DESC
+        LIMIT :limit
         """
 
     result = await db.execute(text(sql), {

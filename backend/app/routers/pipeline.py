@@ -71,6 +71,21 @@ async def trigger_price_backfill(
     }
 
 
+@router.post("/prices/refresh/{symbol}", summary="Trigger deep price sync for one stock")
+async def trigger_price_refresh_one(
+    symbol: str,
+    period: str = Query("1y", regex="^(1mo|6mo|1y|2y|5y|max)$"),
+    _: str = Depends(get_current_user),
+):
+    """
+    Synchronously fetches historical price data for a single stock.
+    Useful for correcting historical data errors or filling gaps.
+    """
+    from pipeline.price_ingestion import run_price_sync_one
+    count = await run_price_sync_one(symbol, period)
+    return {"symbol": symbol.upper(), "period": period, "records_upserted": count}
+
+
 # ─── Price-Dependent Metrics ──────────────────────────────────────────────────
 
 @router.post("/metrics/price-refresh/all", summary="Refresh PE/PB/PS for all stocks")
@@ -321,9 +336,9 @@ async def trigger_rating_compute_one(
 
 # ─── Overall Pipeline Status ──────────────────────────────────────────────────
 
-@router.get("/status", summary="Overall pipeline health and last run times")
+@router.get("/status", summary="Overall pipeline health and live progress polling")
 async def get_pipeline_status(_: str = Depends(get_current_user)):
-    """Shows last run time, status, and record counts for all pipeline jobs."""
+    """Shows last run time, status, and live record counts (progress) for all pipeline jobs."""
     from app.database import raw_connection
     sql = """
         SELECT DISTINCT ON (job_name)
@@ -331,12 +346,24 @@ async def get_pipeline_status(_: str = Depends(get_current_user)):
             status,
             started_at,
             ended_at,
+            records_in,
             records_out,
-            EXTRACT(EPOCH FROM (ended_at - started_at))::int AS duration_sec,
+            EXTRACT(EPOCH FROM (COALESCE(ended_at, NOW()) - started_at))::int AS duration_sec,
             error_msg
         FROM pipeline_audit
         ORDER BY job_name, started_at DESC
     """
     async with raw_connection() as conn:
         rows = await conn.fetch(sql)
-    return {"jobs": [dict(r) for r in rows]}
+    
+    jobs = []
+    for r in rows:
+        job = dict(r)
+        # Calculate progress percentage if records_in is known
+        if job["records_in"] and job["records_in"] > 0:
+            job["progress_pct"] = round((job["records_out"] / job["records_in"]) * 100, 1)
+        else:
+            job["progress_pct"] = None if job["status"] == "RUNNING" else 100.0
+        jobs.append(job)
+
+    return {"jobs": jobs}

@@ -6,6 +6,22 @@ export const searchStocks     = createAsyncThunk("stocks/search",      (q) => st
 export const fetchStockDetail = createAsyncThunk("stocks/fetchDetail", (s) => stockService.getStockDetail(s));
 export const fetchScreener    = createAsyncThunk("stocks/screener",    (f) => stockService.getScreener(f));
 
+export const triggerFullStockSync = createAsyncThunk(
+  "stocks/triggerSync",
+  async (symbol, { dispatch, rejectWithValue }) => {
+    try {
+      await stockService.triggerScreenerScrape(symbol, true);
+      await stockService.triggerDeepPriceSync(symbol, "1y");
+      await stockService.triggerTechnicalAnalysis(symbol);
+      await stockService.triggerRatingCompute(symbol);
+      dispatch(fetchStockDetail(symbol));
+      return true;
+    } catch (err) {
+      return rejectWithValue(err.response?.data || "Sync failed");
+    }
+  }
+);
+
 const stocksSlice = createSlice({
   name: "stocks",
   initialState: {

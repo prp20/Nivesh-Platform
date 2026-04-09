@@ -88,16 +88,20 @@ _RATING_LABELS = [
 
 async def run_rating_compute_all() -> dict:
     """Recompute ratings for all stocks with sufficient data. Called by scheduler."""
-    async with audit_job("rating_compute_all") as audit:
-        stocks = await _fetch_ratable_stocks()
+    stocks = await _fetch_ratable_stocks()
+    async with audit_job("rating_compute_all", records_in=len(stocks)) as audit:
         success, skipped = 0, 0
-        for stock in stocks:
+        for i, stock in enumerate(stocks):
             try:
                 await compute_rating_for_stock(stock["id"], stock["symbol"])
                 success += 1
             except Exception as e:
                 logger.error(f"Rating compute failed for {stock['symbol']}: {e}")
                 skipped += 1
+            
+            # Report progress after each stock
+            await audit.update_progress(i + 1)
+
         audit.records_out = success
         logger.info(f"rating_compute_all: {success} rated, {skipped} skipped")
         return {"rated": success, "skipped": skipped}

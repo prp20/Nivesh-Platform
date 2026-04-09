@@ -41,16 +41,21 @@ logger = logging.getLogger(__name__)
 
 async def run_fundamental_scrape_all():
     """Scrape all active stocks that haven't been scraped in 90+ days."""
-    async with audit_job("fundamental_scrape_all") as audit:
-        stocks = await _fetch_stocks_needing_scrape(days_since_last=90)
+    stocks = await _fetch_stocks_needing_scrape(days_since_last=90)
+    async with audit_job("fundamental_scrape_all", records_in=len(stocks)) as audit:
         scraper = ScreenerScraper(delay_seconds=2.5)
         total = 0
-        for stock in stocks:
+        for i, stock in enumerate(stocks):
             success = await _scrape_and_store(scraper, stock)
             if success:
                 total += 1
+            
+            # Report progress after each stock
+            await audit.update_progress(i + 1)
+            
             # Polite delay between stocks
             await asyncio.sleep(random.uniform(2.0, 5.0))
+        
         audit.records_out = total
         logger.info(f"fundamental_scrape_all: {total}/{len(stocks)} stocks scraped")
 
@@ -71,7 +76,7 @@ async def run_fundamental_scrape_one(symbol: str, force: bool = False):
 
 # ─── Core scrape + store logic ────────────────────────────────────────────────
 
-async def _scrape_and_store(scraper: ScreenerScraper, stock: dict) -> bool:
+async def _scrape_and_store(scraper: ScreenerScraper, stock: dict, force_rescrape: bool = False) -> bool:
     ticker = stock.get("screener_slug") or stock["symbol"]
 
     try:
@@ -91,10 +96,11 @@ async def _scrape_and_store(scraper: ScreenerScraper, stock: dict) -> bool:
 
         # Checksum to detect changes
         checksum = hashlib.md5(str(raw).encode()).hexdigest()
-        existing_checksum = await _get_latest_checksum(stock["id"])
-        if checksum == existing_checksum:
-            logger.info(f"{ticker}: no change detected (checksum match), skipping DB write")
-            return True
+        if not force_rescrape:
+            existing_checksum = await _get_latest_checksum(stock["id"])
+            if checksum == existing_checksum:
+                logger.info(f"{ticker}: no change detected (checksum match), skipping DB write")
+                return True
 
         # Normalise and store each statement type
         await _store_pl(stock["id"], raw.get("profit_and_loss", {}), checksum)

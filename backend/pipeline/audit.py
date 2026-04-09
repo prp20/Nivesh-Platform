@@ -6,22 +6,37 @@ from app.config import settings
 
 
 class _AuditRecord:
-    def __init__(self):
+    def __init__(self, audit_id: int, records_in: int = 0):
+        self.audit_id    = audit_id
+        self.records_in  = records_in
         self.records_out = 0
         self.error_msg   = None
         self.status      = "RUNNING"
 
+    async def update_progress(self, records_out: int):
+        """Immediately updates processed records count in the database."""
+        self.records_out = records_out
+        db_url = settings.DATABASE_URL.replace("postgresql+asyncpg://", "postgresql://")
+        conn = await asyncpg.connect(db_url)
+        try:
+            sql = "UPDATE pipeline_audit SET records_out=$1 WHERE id=$2"
+            await conn.execute(sql, self.records_out, self.audit_id)
+        finally:
+            await conn.close()
+
 
 @asynccontextmanager
-async def audit_job(job_name: str, stock_id: int = None):
+async def audit_job(job_name: str, stock_id: int = None, records_in: int = 0):
     """
-    Context manager for audit job tracking.
+    Context manager for audit job tracking with incremental progress support.
     Usage:
-        async with audit_job('price_daily_ingestion', stock_id=123) as audit:
-            audit.records_out = 500
+        async with audit_job('price_daily_ingestion', records_in=500) as audit:
+            for item in items:
+                # ... process ...
+                await audit.update_progress(count)
     """
-    record = _AuditRecord()
-    audit_id = await _insert_audit(job_name, stock_id)
+    audit_id = await _insert_audit(job_name, stock_id, records_in)
+    record = _AuditRecord(audit_id, records_in)
     try:
         yield record
         record.status = "SUCCESS"
@@ -33,17 +48,17 @@ async def audit_job(job_name: str, stock_id: int = None):
         await _close_audit(audit_id, record)
 
 
-async def _insert_audit(job_name: str, stock_id: int = None) -> int:
+async def _insert_audit(job_name: str, stock_id: int = None, records_in: int = 0) -> int:
     """Insert a new audit record and return its ID."""
     db_url = settings.DATABASE_URL.replace("postgresql+asyncpg://", "postgresql://")
     conn = await asyncpg.connect(db_url)
     try:
         sql = """
-            INSERT INTO pipeline_audit (job_name, stock_id, status, started_at)
-            VALUES ($1, $2, 'RUNNING', NOW())
+            INSERT INTO pipeline_audit (job_name, stock_id, status, started_at, records_in)
+            VALUES ($1, $2, 'RUNNING', NOW(), $3)
             RETURNING id
         """
-        row = await conn.fetchrow(sql, job_name, stock_id)
+        row = await conn.fetchrow(sql, job_name, stock_id, records_in)
         return row["id"]
     finally:
         await conn.close()
