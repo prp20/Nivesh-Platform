@@ -64,6 +64,63 @@ The **Index Detail** page allows direct CSV upload for historical NAV data. Pars
 
 ---
 
+## 🗂️ State Management (All Slices)
+
+**Redux slices** own server data:
+- `fundsSlice` — MF listing, detail, filtering, pagination
+- `syncSlice` — job polling (JIT sync)
+- `compareSlice` — up to 4 funds for comparison
+- `indicesSlice` — benchmarks (Nifty indices)
+- `stocksSlice` — stock listing, detail, screener, filters (sector, market_cap, rating, financial ratios)
+
+**Context** owns session state: `AuthContext` (JWT, login/logout), `ThemeContext` (dark mode tokens).
+
+- Axios client (`src/api/`) injects `Authorization: Bearer` from `AuthContext` automatically.
+- The frontend polls `GET /api/v1/metrics/{code}/status` every 3 s until a sync job reaches COMPLETED/FAILED (JIT sync pattern).
+- Stock listing page uses `dispatch(fetchStocks(filters))` with pagination + sector filtering.
+
+---
+
+## 🎨 Design System (Nivesh Elite)
+
+### Color Palette
+
+| Token | Hex | Usage |
+|---|---|---|
+| Primary (Gold) | `#e9c349` | Accents, highlights, hero elements |
+| Secondary (Emerald) | `#66dd8b` | Interactive elements, success states |
+| Background | `#0f1419` | Dark navy main canvas |
+| Surface Container | `#1b2025` | Card backgrounds |
+| On-Surface | `#dee3ea` | Primary text (high contrast) |
+| On-Surface-Variant | `#c6c6cc` | Secondary text, labels |
+| Error | `#ffb4ab` | Losses, destructive actions |
+
+### Effects & Styling
+
+- **Glassmorphism**: `rgba(48, 53, 59, 0.6)` background + `backdrop-filter: blur(20px)` on all cards/panels
+- **Glass borders**: Top/left `1px solid rgba(69, 70, 76, 0.2)` for frosted edge
+- **Hover state**: `translateY(-4px)`, opacity 0.6 → 0.7, transition 300ms
+- **Gold gradient**: `linear-gradient(135deg, #e9c349 0%, #9d7e00 100%)` for hero accents
+- **Emerald glow**: `drop-shadow(0 0 8px rgba(102, 221, 139, 0.1))` for highlights
+
+### Typography
+
+- **Manrope** (600–800 weight): Headlines, body text (`font-headline`, `font-body`)
+- **Inter** (300–600 weight): Labels, small UI text (`font-label`)
+- Scale: `h1` 2.25rem bold, `h3` 1.125rem bold, label 0.75rem uppercase tracked
+
+### Component Patterns
+
+- **Cards**: `rounded-xl bg-surface-container` + hover scale, `border border-white/5`
+- **Glass panels**: `.glass-panel` class — blur(20px) + rgba border
+- **Buttons**: Gold gradient (`gold-gradient`) for primary, outlined for secondary
+- **Chips/Badges**: `rounded-full` with status colors (emerald success, error loss, gold warning)
+- **Tables**: Glass container with `hover:bg-white/5` row highlighting
+- **Nav (active)**: `rounded-r-full bg-primary/10 text-primary px-8`
+- **Sidebar branding**: "The Sovereign Ledger / Private Tier" block at top of `SideNavBar`
+
+---
+
 ## 🛠️ Setup & Development
 ```bash
 cd frontend

@@ -36,7 +36,17 @@ npm run lint     # ESLint
 
 ### Database / Migrations
 
-There is no Alembic — schema is managed via `Base.metadata.create_all` on startup. To reset benchmark data:
+**MF tables** (fund_master, benchmark_master, nav_history, metrics, sync_jobs): managed via `Base.metadata.create_all` on startup — no migration files.
+
+**Stock tables** (stocks, price_data, financial_statements, etc.): managed via Alembic. On first checkout run:
+
+```bash
+cd backend
+source venv/bin/activate
+alembic upgrade head    # creates all 9 stock tables + indexes
+```
+
+To reset MF benchmark data (destructive):
 
 ```bash
 cd backend
@@ -63,6 +73,19 @@ python3 scripts/populate_nav_history.py          # fetch NAV history from mftool
 python3 scripts/etl_populate_data.py             # full ETL: benchmark + fund sync, metrics compute
 python3 scripts/recompute_funds_metrics.py       # retrigger metrics for all funds via API
                                                   # (requires ADMIN_PASSWORD env var when ENABLE_AUTH=true)
+```
+
+### Required Environment Variables
+
+```bash
+# backend/.env  (create this file — not committed)
+DATABASE_URL=postgresql+asyncpg://user:pass@localhost:5432/nivesh
+SECRET_KEY=any-secret           # only required when ENABLE_AUTH=true
+ENABLE_AUTH=false               # set true to enforce JWT on write endpoints
+ADMIN_PASSWORD=secret           # required by recompute_funds_metrics.py when auth on
+
+# frontend/.env.development  (already committed — no action needed for local dev)
+VITE_API_URL=http://localhost:8000/api/v1
 ```
 
 ### Stock Market Data (Phase 1–3)
@@ -149,55 +172,9 @@ stock_nivesh_platform/
 - Metrics requests are async: returns immediately with existing data, triggers background sync, frontend polls status
 - Authentication: frontend stores JWT in AuthContext, Axios injects it on every request
 
-### Database tables
+Full database schema, table definitions, coding conventions, and storage patterns: see [`docs/DATABASE.md`](docs/DATABASE.md).
 
-**Mutual Fund Tables (7):**
-
-| Table | Purpose |
-|---|---|
-| `fund_master` | Scheme metadata (AMFI code, category, AMC, ISIN, benchmark ref) |
-| `benchmark_master` | Index metadata (code, ticker, asset class) |
-| `fund_nav_history` | Daily NAV time-series; composite PK `(scheme_code, nav_date)` |
-| `benchmark_nav_history` | Daily index value time-series; same PK pattern |
-| `fund_metrics` | Computed risk/return metrics; upserted after every sync |
-| `benchmark_metrics` | Computed benchmark metrics |
-| `sync_jobs` | Background job tracker; partial unique index prevents duplicate RUNNING jobs per scheme |
-
-**Stock Market Tables (9):**
-
-| Table | Purpose |
-|---|---|
-| `stocks` | NSE/BSE symbol master (company_name, sector, market_cap_cat, is_index) |
-| `price_data` | OHLCV time-series from yfinance; composite PK `(stock_id, price_date)` |
-| `financial_statements` | P&L, Balance Sheet, Cash Flow (normalized JSON in data column) |
-| `shareholding_pattern` | Promoter, FII, DII, Public ownership percentages |
-| `financial_ratios` | 27 computed ratios (PE, PB, ROE, debt_equity, etc.) |
-| `technical_indicators` | SMA, EMA, RSI, MACD, Bollinger Bands, ATR, ADX, Stochastic |
-| `detected_patterns` | Chart patterns (Head & Shoulders, Breakout, Reversal, etc.) |
-| `stock_ratings` | Composite scoring (fundamental 30%, valuation 20%, technical 20%, etc.) |
-| `pipeline_audit` | Job tracking for stock ingestion pipelines (separate from sync_jobs) |
-
-### Stock API Endpoints (Phase 2)
-
-**GET /api/v1/stocks** — Paginated listing with filters
-- Query params: `sector`, `market_cap_cat`, `page` (1), `limit` (25, max 100), `sort_by` (symbol|company_name|sector), `order` (asc|desc)
-- Returns: Array of stocks with latest price + rating (LATERAL JOIN for efficiency)
-- Example: `GET /stocks?sector=Banking&page=1&limit=10`
-
-**GET /api/v1/stocks/search** — Full-text search
-- Query param: `q` (1-50 chars) — searched against symbol (exact match priority) + company_name (tsvector)
-- Returns: Array of matching stocks (max 20)
-- Example: `GET /stocks/search?q=reliance`
-
-**GET /api/v1/stocks/{symbol}** — Full stock snapshot
-- Returns: Symbol, company metadata, latest OHLCV, 1-day change %, rating, technical indicators
-- Example: `GET /stocks/RELIANCE`
-
-**GET /api/v1/stocks/{symbol}/price** — OHLCV time-series
-- Query params: `interval` (1d|1w|1mo), `from_date`, `to_date` (optional), `limit` (365, max 2000)
-- Aggregation: Weekly/monthly use date_trunc() + ARRAY_AGG to compute OHLCV
-- Returns: Time-series in chronological order (ascending dates)
-- Example: `GET /stocks/RELIANCE/price?interval=1d&limit=90`
+Full API endpoint reference (all phases): see [`docs/API_REFERENCE.md`](docs/API_REFERENCE.md).
 
 ### Request → response flow (MF)
 
@@ -219,196 +196,19 @@ stock_nivesh_platform/
 - **CAGR columns** named `cagr_3year` / `cagr_5year` (not "rolling_return" — those are point-to-point CAGRs)
 - Metrics return `None` if data covers < 90% of the requested period (e.g. < 3.24 years for 3Y CAGR)
 
-### Key conventions
+Frontend state management and design system: see [`docs/FRONTEND.md`](docs/FRONTEND.md).
 
-**Mutual Funds & Benchmarks:**
-- All blocking I/O inside async functions must use `asyncio.to_thread()` — mftool and `requests` are synchronous.
-- `session_factory()` (not `get_db`) is used when opening a session outside of a request context (background tasks, `sync_all_funds`).
-- `metrics_calculated_at` is always stored with `datetime.now(timezone.utc)` — never naive.
-- NAV values ≤ 0 are rejected at the CRUD layer before insert.
-- `_apply_fund_filters()` in `crud.py` is the single source of truth for FundMaster filter predicates — always use it in both count and list queries.
-- GIN trigram indexes on `amc_name` and `scheme_category` require `CREATE EXTENSION IF NOT EXISTS pg_trgm` to be run once on the PostgreSQL instance.
+### Fundamental Scraper Scheduler
 
-**Stock Market Data:**
-- OHLCV price data sourced via yfinance; batch processing in chunks of 50 to avoid API timeouts.
-- Price ingestion jobs use `asyncio.to_thread()` for yfinance calls (synchronous blocking I/O).
-- `price_data` upserted with ON CONFLICT DO NOTHING to allow safe re-runs of backfill.
-- LATERAL JOINs used in stock queries for latest price/rating to avoid N+1 queries.
-- Full-text search on company_name uses PostgreSQL tsvector + plainto_tsquery (GIN trigram index).
-- Stock master registry has no foreign keys to MF tables (complete schema separation).
-
-### Frontend state management
-
-- **Redux slices** own server data:
-  - `fundsSlice` — MF listing, detail, filtering, pagination
-  - `syncSlice` — job polling (JIT sync)
-  - `compareSlice` — up to 4 funds for comparison
-  - `indicesSlice` — benchmarks (Nifty indices)
-  - `stocksSlice` — stock listing, detail, screener, filters (sector, market_cap, rating, financial ratios)
-- **Context** owns session state: `AuthContext` (JWT, login/logout), `ThemeContext` (dark mode tokens).
-- Axios client (`src/api/`) injects `Authorization: Bearer` from `AuthContext` automatically.
-- The frontend polls `GET /api/v1/metrics/{code}/status` every 3 s until a sync job reaches COMPLETED/FAILED (JIT sync pattern).
-- Stock listing page uses dispatch(fetchStocks(filters)) with pagination + sector filtering.
-
-### Stock API Endpoints (Phase 3 — Fundamentals & Shareholding)
-
-**GET /api/v1/stocks/{symbol}/fundamentals** — Financial statements
-- Query params: `statement_type` (PL|BS|CF), `period_type` (annual|quarterly), `limit` (5, max 20)
-- Returns: Periods with normalized financial data as JSON (revenue, net_profit, borrowings, etc.)
-- Example: `GET /stocks/BHARTIARTL/fundamentals?statement_type=PL&limit=5`
-
-**GET /api/v1/stocks/{symbol}/shareholding** — Ownership by period
-- Query params: `limit` (8, max 20)
-- Returns: Shareholding records with promoter%, FII%, DII%, public%, pledged% by period
-- Example: `GET /stocks/BHARTIARTL/shareholding?limit=8`
-
-### Stock API Endpoints (Phase 4 — Ratio Engine & Screener)
-
-**GET /api/v1/screener** — Dynamic stock screener with 15+ filters
-- Query params: 
-  - **Valuation**: `min_pe`, `max_pe`, `min_pb`, `max_pb`
-  - **Profitability**: `min_roe`, `min_roce`, `min_pat_margin`, `min_ebitda_margin`
-  - **Growth**: `min_revenue_growth`, `min_pat_growth`
-  - **Leverage**: `max_debt_equity`, `min_interest_cov`
-  - **Quality**: `min_cfo_to_pat`
-  - **Stock filters**: `sector`, `market_cap_cat`, `rating_label`
-  - **Pagination**: `page` (1), `limit` (25, max 100), `sort_by` (total_score|roe|pe_ratio|revenue_growth|pat_margin|symbol), `order` (asc|desc)
-- Returns: Paginated results with latest price, ratios, and rating + total count
-- Dynamic WHERE clause builder avoids SQL injection; filters only applied for non-None values
-- LATERAL JOINs for efficiency: latest financial_ratios, price_data, stock_ratings
-- Example: `GET /screener?min_roe=15&max_pe=25&sector=Banking&limit=10`
-
-**GET /api/v1/stocks/{symbol}/ratios** — Financial ratio history
-- Query params: `period_type` (annual|ttm), `limit` (5, max 20)
-- Returns: 17-column ratio time-series: PE, PB, PS, ROE, ROCE, ROA, margins, growth rates, leverage, quality metrics
-- Example: `GET /stocks/RELIANCE/ratios?period_type=annual&limit=5`
-
-**GET /api/v1/compare** — Compare up to 5 stocks side-by-side
-- Query param: `symbols` (comma-separated, max 5)
-- Returns: Array of stocks with latest price, ratios, fundamental score, technical score
-- Example: `GET /compare?symbols=RELIANCE,INFY,TCS,WIPRO,HCLTECH`
-
-### Financial Ratio Engine (Phase 4)
-
-**Ratios Computed (`pipeline/ratio_engine.py`):**
-
-17 ratios calculated from normalized financial statements + price data:
-- **Valuation**: PE (price/EPS), PB (price/book_value), PS (price/sales)
-- **Profitability**: ROE (net_profit/equity), ROCE (EBIT/capital_employed), ROA (net_profit/assets)
-- **Margins**: PAT margin (net_profit/revenue), EBITDA margin, Operating margin
-- **Growth**: Revenue growth (YoY %), PAT growth (YoY %), EPS growth (YoY %)
-- **Leverage**: Debt/Equity, Current ratio, Interest coverage (EBIT/interest)
-- **Quality**: CFO-to-PAT (operating_cash_flow/net_profit), Book value per share
-
-**Safe Division Pattern:**
-- All ratios use `safe_div()` helper: returns None if denominator is 0 or None
-- Prevents division-by-zero crashes; invalid ratios omitted from results
-- Alternative column names handled: "sales" vs "revenue", "net_worth" vs "equity"
-
-**YoY Growth Calculation:**
-- `(current_period - previous_period) / abs(previous_period) * 100`
-- Handles negative-to-positive transitions (e.g., loss to profit)
-- Returns None if previous_period is missing or zero
-
-**Storage & Compute:**
-- `financial_ratios` table: upserted after every fundamental scrape
-- One row per stock per period (annual only)
-- Ratios recomputed on-demand via `/stocks/{symbol}/ratios` endpoint
-- Cache via latest period query: `ORDER BY period_end DESC LIMIT 1`
-
-### Screener Filtering Strategy (Phase 4)
-
-**Dynamic WHERE Clause Builder:**
-```python
-filters = ["s.is_active = TRUE", "s.is_index = FALSE"]
-params = {"limit": limit, "offset": offset}
-
-def add_filter(col, op, val, key):
-    if val is not None:
-        filters.append(f"{col} {op} :{key}")
-        params[key] = val
-
-# Build filters only for non-None params
-add_filter("r.pe_ratio", ">=", min_pe, "min_pe")
-add_filter("r.roe", ">=", min_roe, "min_roe")
-# ... etc ...
-
-where = " AND ".join(filters)
-sql = f"... WHERE {where} ..."
-```
-
-**Key Benefits:**
-- No string concatenation of user input → SQL injection safe
-- Parametrized queries (`:key` placeholders)
-- Optional filters: only added to WHERE if value is not None
-- Clear audit trail: `filters_applied` in response shows which filters were active
-
-**LATERAL JOIN Optimization:**
-```sql
-LEFT JOIN LATERAL (
-    SELECT roe, roce, pat_margin, pe_ratio, ...
-    FROM financial_ratios
-    WHERE stock_id = s.id AND period_type = 'annual'
-    ORDER BY period_end DESC LIMIT 1
-) r ON TRUE
-```
-- Avoids N+1 queries (single query gets latest ratio per stock)
-- Efficient: PostgreSQL materializes subquery only for matching stocks
-- Fallback to NULL for stocks with no ratio data (LEFT JOIN)
-
-### Design System (Nivesh Elite — Phase 3)
-
-**Color Palette:**
-- **Primary (Gold)**: #e9c349 — Accents, highlights, hero elements
-- **Secondary (Emerald)**: #66dd8b — Interactive elements, success states
-- **Background**: #0f1419 — Dark navy main canvas
-- **Surface Container**: #1b2025 — Card backgrounds
-- **On-Surface**: #dee3ea — Primary text (high contrast)
-- **On-Surface-Variant**: #c6c6cc — Secondary text, labels
-- **Error**: #ffb4ab — Losses, destructive actions
-
-**Effects & Styling:**
-- **Glassmorphism**: `rgba(48, 53, 59, 0.6)` background + `backdrop-filter: blur(20px)` on all cards/panels
-- **Glass borders**: Top/left 1px `rgba(69, 70, 76, 0.2)` for frosted effect
-- **Hover state**: Scale 105%, opacity 0.6 → 0.7
-- **Gold gradient**: `linear-gradient(135deg, #e9c349 0%, #9d7e00 100%)` for hero accents
-- **Emerald glow**: `drop-shadow(0 0 8px rgba(102, 221, 139, 0.1))` for highlights
-
-**Typography:**
-- **Manrope** (600–800 weight): Headlines, body text
-- **Inter** (300–600 weight): Labels, small UI text
-- **Scale**: h1 (2.25rem bold), h3 (1.125rem bold), p (1rem), label (0.75rem uppercase)
-
-**Components:**
-- **Cards**: Rounded-xl (0.75rem) glass background + hover scale effect
-- **Buttons**: Emerald `secondary` background, variant text on hover
-- **Chips**: Rounded-full with proper padding and color per type
-- **Tables**: Glass container with subtle hover row highlighting
-- **Tabs**: Gold underline on active tab, emerald text accent
-- **Badges**: Status-colored (emerald success, error loss, gold warning)
-
-### Fundamental Scraper (Phase 3)
-
-**Indian Number Parsing (`pipeline/normalizer.py`):**
-- Handles: "87,939", "(12,345)" (negative), "1,23,456" (lakh), "12.34%", empty strings, "N/A"
-- Converts to typed Python float or None
-- Test coverage: 15 unit tests, 100% pass
-
-**Financial Statement Storage:**
-- Period-wise P&L, Balance Sheet, Cash Flow in `financial_statements` table
-- Normalized JSON in `data` column: `{"revenue": 87939.0, "net_profit": 5048.0, ...}`
-- Checksum deduplication prevents duplicate writes on re-run
-- Raw ScreenerScraper output stored for audit trail
-
-**Shareholding Tracking:**
-- `shareholding_pattern` table: promoter/FII/DII/public/pledged percentages by period
-- One record per quarter/month extracted from screener.in
-- Upserted with ON CONFLICT to handle re-runs
-
-**Scheduler:**
-- Sunday 02:00 IST: `run_fundamental_scrape_all()` via APScheduler
+- Sunday 02:00 IST: `run_fundamental_scrape_all()` via APScheduler (`backend/pipeline/scheduler.py`)
 - Rate-limited: 2–5 second delays between stocks (polite scraping)
 - Full error logging via `audit_job` context manager
+- Storage patterns and number parsing: see [`docs/DATABASE.md`](docs/DATABASE.md)
+
+### Frontend Build Gotchas
+
+- **Vite 8 / Rolldown**: `manualChunks` in `vite.config.js` must be a **function** (`manualChunks(id) { ... }`), not an object literal (`{ 'vendor-react': [...] }`). The object form is silently ignored by Rolldown and produces no vendor splitting.
+- **ESLint `motion` errors**: Pre-existing lint errors for `motion` (from `framer-motion`) are **not regressions** — `eslint-plugin-react` is not installed so the linter can't resolve JSX namespace usage (`motion.div`, `motion.section`). `npm run build` still succeeds. Do not remove `motion` imports to fix these.
 
 ### Mandatory Task: Maintain Changelog
 - Ensure a file exists at memory/changelog.md. Create it if it does not exist.

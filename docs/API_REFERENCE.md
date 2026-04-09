@@ -154,3 +154,58 @@ The system provides robust CSV injection for integrating index historical data (
 - All ratios use `safe_div()` helper: returns `None` if denominator is 0 or None
 - Prevents division-by-zero crashes; invalid ratios omitted from results
 - Handles alternative column names: "sales" vs "revenue", "net_worth" vs "equity"
+
+### YoY Growth Calculation
+- `(current_period - previous_period) / abs(previous_period) * 100`
+- Handles negative-to-positive transitions (e.g., loss to profit)
+- Returns None if previous_period is missing or zero
+
+### Storage & Compute
+- `financial_ratios` table: upserted after every fundamental scrape
+- One row per stock per period (annual only)
+- Ratios recomputed on-demand via `/stocks/{symbol}/ratios` endpoint
+- Cache via latest period query: `ORDER BY period_end DESC LIMIT 1`
+
+---
+
+## 🔍 Screener Implementation Details
+
+### Dynamic WHERE Clause Builder
+
+```python
+filters = ["s.is_active = TRUE", "s.is_index = FALSE"]
+params = {"limit": limit, "offset": offset}
+
+def add_filter(col, op, val, key):
+    if val is not None:
+        filters.append(f"{col} {op} :{key}")
+        params[key] = val
+
+add_filter("r.pe_ratio", ">=", min_pe, "min_pe")
+add_filter("r.roe", ">=", min_roe, "min_roe")
+# ... etc ...
+
+where = " AND ".join(filters)
+sql = f"... WHERE {where} ..."
+```
+
+**Key properties:**
+- No string concatenation of user input → SQL injection safe
+- Parametrized queries (`:key` placeholders)
+- Optional filters: only added to WHERE if value is not None
+- Clear audit trail: `filters_applied` in response shows which filters were active
+
+### LATERAL JOIN Optimization
+
+```sql
+LEFT JOIN LATERAL (
+    SELECT roe, roce, pat_margin, pe_ratio, ...
+    FROM financial_ratios
+    WHERE stock_id = s.id AND period_type = 'annual'
+    ORDER BY period_end DESC LIMIT 1
+) r ON TRUE
+```
+
+- Avoids N+1 queries (single query gets latest ratio per stock)
+- PostgreSQL materializes subquery only for matching stocks
+- Fallback to NULL for stocks with no ratio data (LEFT JOIN)

@@ -120,6 +120,46 @@ The stock market module maintains a separate schema for NSE/BSE equities and ind
 
 ---
 
+## ⚙️ Coding Conventions
+
+### Mutual Funds & Benchmarks
+- All blocking I/O inside async functions must use `asyncio.to_thread()` — mftool and `requests` are synchronous.
+- `session_factory()` (not `get_db`) is used when opening a session outside of a request context (background tasks, `sync_all_funds`).
+- `metrics_calculated_at` is always stored with `datetime.now(timezone.utc)` — never naive.
+- NAV values ≤ 0 are rejected at the CRUD layer before insert.
+- `_apply_fund_filters()` in `crud.py` is the single source of truth for FundMaster filter predicates — always use it in both count and list queries.
+- GIN trigram indexes on `amc_name` and `scheme_category` require `CREATE EXTENSION IF NOT EXISTS pg_trgm` to be run once on the PostgreSQL instance.
+
+### Stock Market Data
+- OHLCV price data sourced via yfinance; batch processing in chunks of 50 to avoid API timeouts.
+- Price ingestion jobs use `asyncio.to_thread()` for yfinance calls (synchronous blocking I/O).
+- `price_data` upserted with `ON CONFLICT DO NOTHING` to allow safe re-runs of backfill.
+- LATERAL JOINs used in stock queries for latest price/rating to avoid N+1 queries.
+- Full-text search on `company_name` uses PostgreSQL tsvector + `plainto_tsquery` (GIN trigram index).
+- Stock master registry has no foreign keys to MF tables (complete schema separation).
+
+---
+
+## 🔢 Fundamental Scraper — Storage Patterns
+
+### Indian Number Parsing (`pipeline/normalizer.py`)
+- Handles: `"87,939"`, `"(12,345)"` (negative), `"1,23,456"` (lakh format), `"12.34%"`, empty strings, `"N/A"`
+- Converts to typed Python `float` or `None`
+- Test coverage: 15 unit tests, 100% pass
+
+### Financial Statement Storage
+- Period-wise P&L, Balance Sheet, Cash Flow stored in `financial_statements` table
+- Normalized JSON in `data` column: `{"revenue": 87939.0, "net_profit": 5048.0, ...}`
+- `raw_checksum` (MD5 of raw scraped data) prevents duplicate writes on re-run
+- Raw ScreenerScraper output preserved in `raw_data` column for audit trail
+
+### Shareholding Tracking
+- `shareholding_pattern` table: promoter/FII/DII/public/pledged percentages by period
+- One record per quarter/month extracted from screener.in
+- Upserted with `ON CONFLICT` to handle re-runs safely
+
+---
+
 ## 📊 Complete Table Summary
 
 | Table | Purpose | Phase | Rows |
