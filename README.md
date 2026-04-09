@@ -4,9 +4,10 @@ A premium, high-performance financial analytics and mutual fund management ecosy
 
 ## 💎 Key Features
 - **Professional Analytics**: Sharpe, Sortino, and Volatility metrics computed on-the-fly.
+- **Stock Market Ecosystem**: Real-time NSE/BSE data, fundamental screener, and technical analysis.
 - **CALIFINO Design**: Luxe, permanent dark-mode interface with glassmorphic UI.
 - **Just-In-Time Sync**: Automated historical data fetching for previously unsynced assets.
-- **Market Intelligence**: Dedicated dashboard for tracking global market benchmarks.
+- **Market Intelligence**: Dedicated dashboard for tracking global market benchmarks and indices.
 - **Administrative CRUD**: Complete lifecycle management for financial assets.
 
 ---
@@ -18,7 +19,7 @@ Explore our detailed guides in the [docs/](./docs/) directory:
 - 🎨 [**Frontend Architecture**](./docs/FRONTEND.md): Design philosophy and project structure.
 - 🚀 [**Backend & Analytics**](./docs/BACKEND.md): Data engine and security.
 - 🗄️ [**Database Schema**](./docs/DATABASE.md): Models and database schema.
-- 🔌 [**API Reference**](./docs/API.md): Endpoint usage and authentication.
+- 🔌 [**API Reference**](./docs/API_REFERENCE.md): Endpoint usage and authentication.
 - 🐋 [**Infrastructure Setup**](./docs/INFRASTRUCTURE.md): Docker and environment config.
 - 🔄 [**Development Workflow**](./docs/WORKFLOW.md): Migrations and dev procedures.
 

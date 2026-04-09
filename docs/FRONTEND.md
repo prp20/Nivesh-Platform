@@ -34,50 +34,40 @@ frontend/
 ## ⚡ Key Features
 
 ### 1. Just-In-Time (JIT) Sync
-Triggered via Redux thunks. When a metric request (404) occurs, the UI feedback loop initiates a computation request on the backend and polls for status every 3 seconds. Supported for **both fund** (`syncSlice.jobs`) and **index** (`syncSlice.indexJobs`) entities.
+Triggered via Redux thunks. When a metric request (404) occurs, the UI feedback loop initiates a computation request on the backend and polls for status every 3 seconds. Supported for **both fund** and **index** entities.
 
-### 2. State Management
-| Slice | Pages That Use It | Purpose |
-|---|---|---|
-| `syncSlice` | Dashboard, MFDetail, IndexDetail | Background sync job tracking |
-| `compareSlice` | MFListing, MFCompare | Cross-page compare dock (max 4 funds) |
-| `fundsSlice` | MFListing | Fund list, pagination, category/AMC filters |
-| `indicesSlice` | IndicesListing | Index list, pagination, search |
-| `AuthContext` | All | User sessions, JWT storage |
-| `ThemeContext` | App-level | Global dark mode token switching |
+### 2. Equity Intelligence Suite
+The frontend provides a comprehensive stock analysis toolkit:
+- **Screener**: Dynamic filtering across 17+ fundamental ratios with real-time server-side pagination.
+- **Stock Detail**: Professional level snapshots containing technical indicators (RSI, MACD), OHLCV charts, and normalized financial statements.
+- **Stock Compare**: Side-by-side fundamental matrix for up to 5 equities.
 
-### 3. Routing
-Custom hash-based router in `App.jsx` using a `hashchange` event listener. No `react-router-dom` dependency.
+### 3. State Management
+| Slice | Purpose |
+|---|---|
+| `syncSlice` | Background sync job tracking (MFs & Indices) |
+| `compareSlice` | Cross-page fund compare dock (max 4 funds) |
+| `fundsSlice` | MF listing, pagination, and multi-category filters |
+| `indicesSlice` | Benchmark data and historical NAV searching |
+| `stocksSlice` | Stock master list, sector filtering, and paginated screener results |
 
-### 4. Navigation
-- **Top Navbar**: Desktop — brand logo + page links.
-- **Bottom NavBar**: Mobile/tablet — active tab reflects current hash, reactively updated via `hashchange` listener.
-
-### 5. Benchmark CSV Ingestion
-The **Index Detail** page allows direct CSV upload for historical NAV data. Parses and submits records to the backend with immediate chart refresh.
+### 4. Routing
+Custom hash-based router in `App.jsx` using a `hashchange` event listener. This lightweight implementation ensures maximum performance and zero dependency overhead.
 
 ---
 
-## ⚠️ Known Limitations / Pending Integration
-- **Portfolio page**: Placeholder only. Holdings backend API not yet integrated.
-- **Stocks pages** (StockListing, StockDetail): Placeholder only. NSE/BSE live feed integration pending.
+## 🏗️ Technical Details
+
+### State Flow
+- **Axios Interceptors**: Automatically inject `Authorization: Bearer` from `AuthContext` and handle 401 token expirations.
+- **Polling Logic**: The frontend polls `GET /api/v1/metrics/{code}/status` every 3s until a sync job reaches COMPLETED/FAILED.
+- **Screener Filters**: The `Screener.jsx` page dispatches `fetchScreenerResults(filters)` which constructs a complex query string for the backend's dynamic WHERE clause.
 
 ---
 
-## 🗂️ State Management (All Slices)
-
-**Redux slices** own server data:
-- `fundsSlice` — MF listing, detail, filtering, pagination
-- `syncSlice` — job polling (JIT sync)
-- `compareSlice` — up to 4 funds for comparison
-- `indicesSlice` — benchmarks (Nifty indices)
-- `stocksSlice` — stock listing, detail, screener, filters (sector, market_cap, rating, financial ratios)
-
-**Context** owns session state: `AuthContext` (JWT, login/logout), `ThemeContext` (dark mode tokens).
-
-- Axios client (`src/api/`) injects `Authorization: Bearer` from `AuthContext` automatically.
-- The frontend polls `GET /api/v1/metrics/{code}/status` every 3 s until a sync job reaches COMPLETED/FAILED (JIT sync pattern).
-- Stock listing page uses `dispatch(fetchStocks(filters))` with pagination + sector filtering.
+## ⚠️ Known Limitations / Road Map
+- **Portfolio page**: Manual entry integrated; holdings backend API integration pending.
+- **Live WebSocket Feed**: Real-time price updates planned for Phase 5.
 
 ---
 
