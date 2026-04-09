@@ -59,27 +59,62 @@ const Admin = () => {
         }
     };
 
-    const [stocks, setStocks] = useState([]);
-    const [loadingStocks, setLoadingStocks] = useState(false);
+    const [assetType, setAssetType] = useState('stocks'); // 'stocks' or 'mf'
+    const [assetsData, setAssetsData] = useState([]);
+    const [loadingAssets, setLoadingAssets] = useState(false);
     const [searchQuery, setSearchQuery] = useState('');
+    const [assetModal, setAssetModal] = useState({ isOpen: false, data: null, mode: 'create' });
 
-    const fetchStocks = async () => {
-      setLoadingStocks(true);
+    const fetchAssets = async () => {
+      setLoadingAssets(true);
       try {
-        const res = await stockService.getStocks({ limit: 50, q: searchQuery });
-        setStocks(res.records || []);
+        if (assetType === 'stocks') {
+          const res = await stockService.getStocks({ limit: 50, q: searchQuery });
+          setAssetsData(res.records || []);
+        } else {
+          const res = await fundService.getFunds(0, 50, null, null, null, null, null, searchQuery);
+          setAssetsData(res.items || []);
+        }
       } catch (err) {
-        console.error("Failed to fetch stocks:", err);
+        console.error("Failed to fetch assets:", err);
       } finally {
-        setLoadingStocks(false);
+        setLoadingAssets(false);
       }
     };
 
     useEffect(() => {
       if (activeTab === 'assets') {
-        fetchStocks();
+        fetchAssets();
       }
-    }, [activeTab, searchQuery]);
+    }, [activeTab, searchQuery, assetType]);
+
+    const handleSaveAsset = async (formData) => {
+        try {
+            addLog(`Saving ${assetType}...`, 'SYSTEM');
+            if (assetType === 'stocks') {
+                if (assetModal.mode === 'create') await stockService.createStock(formData);
+                else await stockService.updateStock(assetModal.data.symbol, formData);
+            } else {
+                if (assetModal.mode === 'create') await fundService.createFund(formData);
+                else await fundService.updateFund(assetModal.data.scheme_code, formData);
+            }
+            setAssetModal({ isOpen: false, data: null, mode: 'create' });
+            fetchAssets();
+        } catch(err) {
+            addLog(`Error saving: ${err.message}`, 'ERROR');
+        }
+    };
+
+    const handleDeleteAsset = async (id) => {
+        try {
+            addLog(`Deleting asset ${id}...`, 'SYSTEM');
+            if (assetType === 'stocks') await stockService.deleteStock(id);
+            else await fundService.deleteFund(id);
+            fetchAssets();
+        } catch(err) {
+            addLog(`Error deleting: ${err.message}`, 'ERROR');
+        }
+    };
 
     const handleBulkAction = async (actionFn, label) => {
       try {
@@ -224,45 +259,110 @@ const Admin = () => {
                       initial={{ opacity: 0, x: 20 }}
                       animate={{ opacity: 1, x: 0 }}
                       exit={{ opacity: 0, x: -20 }}
-                      className="flex flex-col gap-12"
                     >
-                      {/* 4-Item Desktop Grid for Health */}
-                      <div className="grid grid-cols-1 lg:grid-cols-4 gap-8">
-                        {[
-                          { label: 'Network Latency', value: '42ms', sub: 'Optimal State', icon: 'speed', color: 'secondary' },
-                          { label: 'System Uptime', value: '100.0%', sub: '23d 14h 2m', icon: 'timer', color: 'secondary' },
-                          { label: 'Main Ledger', value: 'Active', sub: 'Synchronized', icon: 'database', color: 'secondary' },
-                          { label: 'Security Core', value: 'AES-256', sub: 'Layer 7 Protected', icon: 'gpp_good', color: 'primary' },
-                        ].map((card, i) => (
-                          <div key={i} className="glass-panel p-10 rounded-[3rem] border border-white/5 bg-white/[0.01] flex flex-col items-center text-center gap-4 group hover:bg-white/[0.03] transition-all">
-                            <span className={`material-symbols-outlined text-4xl text-${card.color} group-hover:scale-110 transition-transform`}>{card.icon}</span>
-                            <div>
-                              <h4 className="text-3xl font-headline font-black tracking-tighter">{card.value}</h4>
-                              <p className="text-[10px] text-slate-500 font-black tracking-widest uppercase">{card.label}</p>
-                            </div>
-                            <span className="text-[9px] font-black text-secondary tracking-widest uppercase opacity-60">{card.sub}</span>
+                      <header className="mb-12 flex items-center justify-between">
+                        <div className="space-y-1">
+                          <p className="font-label text-xs font-semibold uppercase tracking-[0.3em] text-primary">Sovereign Performance</p>
+                          <h2 className="font-headline text-4xl font-light tracking-tight">System <span className="font-extrabold italic text-primary">Health</span> Dashboard</h2>
+                        </div>
+                        <div className="flex items-center gap-4">
+                          <div className="bg-surface-container-low border border-outline-variant/20 px-4 py-2 rounded-lg flex items-center gap-3">
+                            <span className="w-2 h-2 rounded-full bg-secondary animate-pulse"></span>
+                            <span className="text-xs font-bold uppercase tracking-widest text-secondary">All Systems Nominal</span>
                           </div>
-                        ))}
+                          <button className="bg-primary/10 border border-primary/20 text-primary p-2 rounded-lg hover:bg-primary/20 transition-all">
+                            <span className="material-symbols-outlined">refresh</span>
+                          </button>
+                        </div>
+                      </header>
+
+                      {/* High-Density Status Grid */}
+                      <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
+                        {/* Network Latency Card */}
+                        <div className="glass-panel p-6 rounded-xl relative overflow-hidden">
+                          <div className="flex justify-between items-start mb-4">
+                            <p className="font-label text-[10px] uppercase tracking-widest text-outline">Network Latency</p>
+                            <span className="material-symbols-outlined text-primary text-lg">router</span>
+                          </div>
+                          <div className="flex items-end gap-2">
+                            <p className="font-headline text-4xl font-extrabold text-secondary">42<span className="text-xl font-light opacity-60 ml-1">ms</span></p>
+                            <div className="flex flex-col mb-1">
+                              <span className="text-[9px] text-secondary font-bold">OPTIMAL</span>
+                              <span className="text-[8px] text-outline">12 Nodes Sync</span>
+                            </div>
+                          </div>
+                          <div className="absolute bottom-0 left-0 w-full h-1 bg-secondary/20">
+                            <div className="h-full bg-secondary w-full"></div>
+                          </div>
+                        </div>
+
+                        {/* API Status Card */}
+                        <div className="glass-panel p-6 rounded-xl relative overflow-hidden">
+                          <div className="flex justify-between items-start mb-4">
+                            <p className="font-label text-[10px] uppercase tracking-widest text-outline">System API</p>
+                            <span className="material-symbols-outlined text-primary text-lg">api</span>
+                          </div>
+                          <div className="flex items-end gap-2">
+                            <p className="font-headline text-4xl font-extrabold text-white">100<span className="text-xl font-light opacity-60 ml-1">%</span></p>
+                            <div className="flex flex-col mb-1">
+                              <span className="text-[9px] text-secondary font-bold">OPERATIONAL</span>
+                              <span className="text-[8px] text-outline">v2.4.1 Production</span>
+                            </div>
+                          </div>
+                          <div className="absolute bottom-0 left-0 w-full h-1 bg-secondary/20">
+                            <div className="h-full bg-secondary w-full"></div>
+                          </div>
+                        </div>
+
+                        {/* Ledger Status Card */}
+                        <div className="glass-panel p-6 rounded-xl relative overflow-hidden">
+                          <div className="flex justify-between items-start mb-4">
+                            <p className="font-label text-[10px] uppercase tracking-widest text-outline">Main Ledger</p>
+                            <span className="material-symbols-outlined text-primary text-lg">database</span>
+                          </div>
+                          <div className="flex items-end gap-2">
+                            <p className="font-headline text-4xl font-extrabold text-white">Active</p>
+                            <div className="flex flex-col mb-1">
+                              <span className="text-[9px] text-secondary font-bold">SYNCHRONIZED</span>
+                              <span className="text-[8px] text-outline">PG Master Instance</span>
+                            </div>
+                          </div>
+                          <div className="absolute bottom-0 left-0 w-full h-1 bg-secondary/20">
+                            <div className="h-full bg-secondary w-full"></div>
+                          </div>
+                        </div>
+
+                        {/* Security Card */}
+                        <div className="glass-panel p-6 rounded-xl relative overflow-hidden border-l-4 border-l-secondary">
+                          <div className="flex justify-between items-start mb-4">
+                            <p className="font-label text-[10px] uppercase tracking-widest text-outline">Security Core</p>
+                            <span className="material-symbols-outlined text-secondary text-lg" style={{fontVariationSettings: "'FILL' 1"}}>verified_user</span>
+                          </div>
+                          <div className="flex items-end gap-2">
+                            <p className="font-headline text-4xl font-extrabold text-white">AES</p>
+                            <div className="flex flex-col mb-1">
+                              <span className="text-[9px] text-secondary font-bold">LOCKED</span>
+                              <span className="text-[8px] text-outline">Zero Breaches</span>
+                            </div>
+                          </div>
+                        </div>
                       </div>
 
-                      {/* Resource Analytics - Wide aspect side-by-side */}
-                      <div className="grid grid-cols-1 xl:grid-cols-2 gap-12">
-                        <div className="glass-panel p-12 rounded-[3.5rem] border border-white/5 bg-white/[0.01] h-[500px] flex flex-col gap-8">
-                          <header className="flex justify-between items-center px-4">
+                      {/* Metrics Visualizer (Side-by-Side Large Charts) */}
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-8 mb-8 h-[250px]">
+                        {/* CPU Utilization Chart */}
+                        <div className="glass-panel p-8 rounded-2xl flex flex-col">
+                          <div className="flex justify-between items-center mb-6">
                             <div>
-                              <h5 className="text-2xl font-headline font-black uppercase tracking-tighter italic">CPU Utilization</h5>
-                              <p className="text-[10px] text-slate-500 font-bold uppercase tracking-widest">Real-time compute nodes</p>
+                              <h3 className="font-label text-xs font-bold uppercase tracking-widest text-outline">CPU Utilization</h3>
+                              <p className="font-headline text-3xl font-extrabold mt-1 text-primary">24.8<span className="text-sm font-light opacity-50 ml-1">%</span></p>
                             </div>
-                            <div className="text-right">
-                              <span className="text-2xl font-black text-primary">24.8%</span>
-                              <div className="flex gap-1 justify-end">
-                                <span className="w-1 h-4 bg-primary rounded-full animate-bounce"></span>
-                                <span className="w-1 h-4 bg-primary/40 rounded-full animate-bounce [animation-delay:0.2s]"></span>
-                                <span className="w-1 h-4 bg-primary/20 rounded-full animate-bounce [animation-delay:0.4s]"></span>
-                              </div>
+                            <div className="flex items-center gap-4 text-xs font-bold uppercase tracking-tighter">
+                              <span className="text-secondary flex items-center gap-1"><span className="w-1.5 h-1.5 rounded-full bg-secondary"></span> User</span>
+                              <span className="text-primary flex items-center gap-1"><span className="w-1.5 h-1.5 rounded-full bg-primary"></span> Kernel</span>
                             </div>
-                          </header>
-                          <div className="flex-1 w-full">
+                          </div>
+                          <div className="flex-1 w-full -mx-4 -mb-4">
                             <ResponsiveContainer width="100%" height="100%">
                               <AreaChart data={[
                                 { t: '00:00', v: 20 }, { t: '04:00', v: 45 }, { t: '08:00', v: 30 }, 
@@ -274,35 +374,35 @@ const Admin = () => {
                                     <stop offset="95%" stopColor="#e9c349" stopOpacity={0}/>
                                   </linearGradient>
                                 </defs>
-                                <XAxis dataKey="t" axisLine={false} tickLine={false} tick={{fill: '#475569', fontSize: 10}} />
-                                <YAxis hide />
-                                <Tooltip contentStyle={{backgroundColor: '#1b2025', border: '1px solid #30353b', borderRadius: '12px', fontSize: '10px'}} />
-                                <Area type="monotone" dataKey="v" stroke="#e9c349" fillOpacity={1} fill="url(#colorCpu)" strokeWidth={3} />
+                                <XAxis dataKey="t" axisLine={false} tickLine={false} tick={{fill: '#45464c', fontSize: 10}} />
+                                <Tooltip contentStyle={{backgroundColor: '#1b2025', border: '1px solid rgba(233, 195, 73, 0.2)', borderRadius: '0.5rem', fontSize: '10px'}} />
+                                <Area type="monotone" dataKey="v" stroke="#e9c349" fillOpacity={1} fill="url(#colorCpu)" strokeWidth={2} />
                               </AreaChart>
                             </ResponsiveContainer>
                           </div>
                         </div>
 
-                        <div className="glass-panel p-12 rounded-[3.5rem] border border-white/5 bg-white/[0.01] h-[500px] flex flex-col gap-8">
-                          <header className="flex justify-between items-center px-4">
+                        {/* Memory Usage Chart */}
+                        <div className="glass-panel p-8 rounded-2xl flex flex-col">
+                          <div className="flex justify-between items-center mb-6">
                             <div>
-                              <h5 className="text-2xl font-headline font-black uppercase tracking-tighter italic">Memory Consumption</h5>
-                              <p className="text-[10px] text-slate-500 font-bold uppercase tracking-widest">Active session storage</p>
+                              <h3 className="font-label text-xs font-bold uppercase tracking-widest text-outline">Memory Consumption</h3>
+                              <p className="font-headline text-3xl font-extrabold mt-1 text-secondary">12.2<span className="text-sm font-light opacity-50 ml-1">GB</span></p>
                             </div>
-                            <div className="text-right">
-                              <span className="text-2xl font-black text-secondary">12.2 GB</span>
-                              <p className="text-[10px] text-slate-500 font-black tracking-widest">OF 64.0 GB</p>
+                            <div className="flex items-center gap-4 text-xs font-bold uppercase tracking-tighter">
+                              <span className="text-secondary">Used: 12.2 GB</span>
+                              <span className="text-outline">Total: 64.0 GB</span>
                             </div>
-                          </header>
-                          <div className="flex-1 w-full">
+                          </div>
+                          <div className="flex-1 w-full -mx-4 -mb-4">
                             <ResponsiveContainer width="100%" height="100%">
                               <BarChart data={[
                                 { t: 'Mon', v: 8 }, { t: 'Tue', v: 10 }, { t: 'Wed', v: 12 }, 
                                 { t: 'Thu', v: 9 }, { t: 'Fri', v: 14 }, { t: 'Sat', v: 7 }, { t: 'Sun', v: 6 }
                               ]}>
-                                <XAxis dataKey="t" axisLine={false} tickLine={false} tick={{fill: '#475569', fontSize: 10}} />
-                                <Tooltip contentStyle={{backgroundColor: '#1b2025', border: '1px solid #30353b', borderRadius: '12px', fontSize: '10px'}} />
-                                <Bar dataKey="v" fill="#66dd8b" radius={[10, 10, 0, 0]} />
+                                <XAxis dataKey="t" axisLine={false} tickLine={false} tick={{fill: '#45464c', fontSize: 10}} />
+                                <Tooltip contentStyle={{backgroundColor: '#1b2025', border: '1px solid rgba(102, 221, 139, 0.2)', borderRadius: '0.5rem', fontSize: '10px'}} />
+                                <Bar dataKey="v" fill="#66dd8b" radius={[4, 4, 0, 0]} />
                               </BarChart>
                             </ResponsiveContainer>
                           </div>
@@ -434,11 +534,11 @@ const Admin = () => {
                             />
                          </div>
                          <div className="flex gap-4">
-                            <button className="px-8 py-4 bg-white/5 border border-white/5 rounded-2xl text-[10px] font-black uppercase tracking-widest hover:bg-white/10 transition-all flex items-center gap-3">
-                              <span className="material-symbols-outlined text-lg">filter_alt</span>
-                              Filters
-                            </button>
-                            <button className="px-8 py-4 bg-primary text-black rounded-2xl text-[10px] font-black uppercase tracking-widest hover:brightness-110 active:scale-95 transition-all flex items-center gap-3">
+                            <div className="bg-white/5 p-1 flex rounded-xl border border-white/5">
+                                <button onClick={() => setAssetType('stocks')} className={`px-6 py-3 rounded-lg text-[10px] uppercase font-black tracking-widest transition-all ${assetType === 'stocks' ? 'bg-primary text-black shadow-[0_0_15px_rgba(233,195,73,0.3)]' : 'text-slate-500 hover:text-white hover:bg-white/5'}`}>Stocks</button>
+                                <button onClick={() => setAssetType('mf')} className={`px-6 py-3 rounded-lg text-[10px] uppercase font-black tracking-widest transition-all ${assetType === 'mf' ? 'bg-primary text-black shadow-[0_0_15px_rgba(233,195,73,0.3)]' : 'text-slate-500 hover:text-white hover:bg-white/5'}`}>Mutual Funds</button>
+                            </div>
+                            <button onClick={() => setAssetModal({ isOpen: true, data: null, mode: 'create' })} className="px-8 py-4 bg-primary text-black rounded-xl text-[10px] font-black uppercase tracking-widest hover:brightness-110 active:scale-95 transition-all flex items-center gap-3 shadow-[0_0_20px_rgba(233,195,73,0.2)]">
                               <span className="material-symbols-outlined text-lg">add</span>
                               Add Asset
                             </button>
@@ -450,58 +550,77 @@ const Admin = () => {
                           <thead>
                             <tr className="bg-white/5">
                               <th className="px-10 py-6 text-[10px] font-black uppercase tracking-[0.3em] text-slate-500">Asset</th>
-                              <th className="px-10 py-6 text-[10px] font-black uppercase tracking-[0.3em] text-slate-500 text-right">Price Nodes</th>
-                              <th className="px-10 py-6 text-[10px] font-black uppercase tracking-[0.3em] text-slate-500 text-right">Fundamental Sync</th>
+                              <th className="px-10 py-6 text-[10px] font-black uppercase tracking-[0.3em] text-slate-500 text-right">Identifier</th>
+                              <th className="px-10 py-6 text-[10px] font-black uppercase tracking-[0.3em] text-slate-500 text-right">Status</th>
                               <th className="px-10 py-6 text-[10px] font-black uppercase tracking-[0.3em] text-slate-500 text-center">Actions</th>
                             </tr>
                           </thead>
                           <tbody className="divide-y divide-white/5">
-                            {loadingStocks ? (
+                            {loadingAssets ? (
                               <tr>
                                 <td colSpan="4" className="px-10 py-20 text-center opacity-40 italic uppercase tracking-widest font-black animate-pulse">Accessing Encrypted Database...</td>
                               </tr>
-                            ) : stocks.length > 0 ? stocks.map((stock, i) => (
+                            ) : assetsData.length > 0 ? assetsData.map((asset, i) => {
+                              const isStock = assetType === 'stocks';
+                              const id = isStock ? asset.symbol : asset.scheme_code;
+                              const name = isStock ? asset.name : asset.scheme_name;
+                              return (
                               <tr key={i} className="hover:bg-white/5 transition-all group">
                                 <td className="px-10 py-6">
                                   <div className="flex items-center gap-6">
                                     <div className="w-12 h-12 bg-white/5 rounded-xl flex items-center justify-center text-primary font-black group-hover:bg-primary group-hover:text-black transition-all">
-                                      {stock.symbol.substring(0, 1)}
+                                      {id.toString().substring(0, 1)}
                                     </div>
                                     <div>
-                                      <h6 className="text-sm font-black uppercase tracking-tighter">{stock.symbol}</h6>
-                                      <p className="text-[10px] text-slate-500 font-bold uppercase truncate max-w-[200px]">{stock.name}</p>
+                                      <h6 className="text-sm font-black uppercase tracking-tighter">{id}</h6>
+                                      <p className="text-[10px] text-slate-500 font-bold uppercase truncate max-w-[200px]">{name}</p>
                                     </div>
                                   </div>
                                 </td>
                                 <td className="px-10 py-6 text-right font-mono text-xs text-secondary">
-                                  {new Date().toLocaleDateString()}
+                                  {isStock ? 'EQ' : 'MF'}
                                 </td>
                                 <td className="px-10 py-6 text-right">
                                   <span className="px-4 py-1 rounded-lg bg-secondary/10 text-secondary text-[9px] font-black uppercase tracking-widest border border-secondary/20">Synced</span>
                                 </td>
                                 <td className="px-10 py-6">
                                   <div className="flex justify-center gap-4">
+                                    {isStock && (
+                                     <>
+                                      <button 
+                                        onClick={() => handleSingleStockSync(id, stockService.triggerDeepPriceSync, 'Price history')}
+                                        className="p-3 bg-white/5 rounded-xl hover:bg-primary hover:text-black transition-all group/btn flex items-center gap-2"
+                                        title="Sync Prices"
+                                      >
+                                        <span className="material-symbols-outlined text-lg">trending_up</span>
+                                      </button>
+                                      <button 
+                                        onClick={() => handleSingleStockSync(id, stockService.triggerScreenerScrape, 'Fundamentals')}
+                                        className="p-3 bg-white/5 rounded-xl hover:bg-primary hover:text-black transition-all group/btn"
+                                        title="Sync Fundamentals"
+                                      >
+                                        <span className="material-symbols-outlined text-lg">analytics</span>
+                                      </button>
+                                     </>
+                                    )}
                                     <button 
-                                      onClick={() => handleSingleStockSync(stock.symbol, stockService.triggerDeepPriceSync, 'Price history')}
-                                      className="p-3 bg-white/5 rounded-xl hover:bg-primary hover:text-black transition-all group/btn flex items-center gap-2"
-                                      title="Sync Prices"
+                                      onClick={() => setAssetModal({ isOpen: true, data: asset, mode: 'edit' })} 
+                                      className="p-3 bg-white/5 rounded-xl hover:bg-primary hover:text-black transition-all"
+                                      title="Edit Record"
                                     >
-                                      <span className="material-symbols-outlined text-lg">trending_up</span>
+                                      <span className="material-symbols-outlined text-lg">edit</span>
                                     </button>
                                     <button 
-                                      onClick={() => handleSingleStockSync(stock.symbol, stockService.triggerScreenerScrape, 'Fundamentals')}
-                                      className="p-3 bg-white/5 rounded-xl hover:bg-primary hover:text-black transition-all group/btn"
-                                      title="Sync Fundamentals"
+                                      onClick={() => handleDeleteAsset(id)}
+                                      className="p-3 bg-white/5 rounded-xl hover:bg-red-500 hover:text-white transition-all"
+                                      title="Purge Record"
                                     >
-                                      <span className="material-symbols-outlined text-lg">analytics</span>
-                                    </button>
-                                    <button className="p-3 bg-white/5 rounded-xl hover:bg-red-500 hover:text-white transition-all">
                                       <span className="material-symbols-outlined text-lg">delete</span>
                                     </button>
                                   </div>
                                 </td>
                               </tr>
-                            )) : (
+                            )}) : (
                               <tr>
                                 <td colSpan="4" className="px-10 py-20 text-center opacity-40 italic uppercase tracking-widest font-black italic">No Matching Artifacts in the Ledger</td>
                               </tr>
@@ -544,6 +663,70 @@ const Admin = () => {
                   )}
                 </AnimatePresence>
               </div>
+
+              {/* Asset CRUD Modal */}
+              <AnimatePresence>
+                {assetModal.isOpen && (
+                  <div className="fixed inset-0 z-[100] flex items-center justify-center bg-[#0a0f12]/90 backdrop-blur-md">
+                    <motion.div 
+                      initial={{ opacity: 0, scale: 0.9, y: 20 }} 
+                      animate={{ opacity: 1, scale: 1, y: 0 }} 
+                      exit={{ opacity: 0, scale: 0.9, y: 20 }}
+                      className="w-full max-w-lg glass-panel rounded-[2rem] border border-white/10 p-10 relative overflow-hidden bg-white/[0.02]"
+                    >
+                      <button onClick={() => setAssetModal({ isOpen: false, data: null, mode: 'create' })} className="absolute top-8 right-8 text-slate-500 hover:text-white transition-colors">
+                        <span className="material-symbols-outlined text-3xl font-thin">close</span>
+                      </button>
+                      <div className="mb-10">
+                        <h2 className="text-2xl font-headline font-black uppercase tracking-tighter mb-2">
+                          {assetModal.mode === 'create' ? 'Provision' : 'Mutate'} {assetType === 'stocks' ? 'Equity Node' : 'Vault Protocol'}
+                        </h2>
+                        <p className="text-[10px] text-slate-500 font-bold uppercase tracking-[0.3em]">
+                          Enter required cryptographic identifiers
+                        </p>
+                      </div>
+                      <form onSubmit={(e) => {
+                        e.preventDefault();
+                        const target = e.target;
+                        let formData = {};
+                        if (assetType === 'stocks') {
+                          formData = { symbol: target.symbol.value, name: target.name.value };
+                        } else {
+                          formData = { scheme_code: target.scheme_code.value, scheme_name: target.name.value };
+                        }
+                        handleSaveAsset(formData);
+                      }} className="flex flex-col gap-6">
+                        <div className="flex flex-col gap-2">
+                          <label className="text-[9px] font-black uppercase tracking-[0.4em] text-slate-500">
+                            {assetType === 'stocks' ? 'Ticker Symbol' : 'Scheme Code'}
+                          </label>
+                          <input 
+                            name={assetType === 'stocks' ? 'symbol' : 'scheme_code'} 
+                            defaultValue={assetModal.data ? (assetType === 'stocks' ? assetModal.data.symbol : assetModal.data.scheme_code) : ''} 
+                            required 
+                            disabled={assetModal.mode === 'edit'}
+                            className="w-full px-6 py-4 bg-white/5 border border-white/5 rounded-2xl text-sm font-black uppercase tracking-widest focus:outline-none focus:border-primary focus:bg-white/10 transition-all font-mono disabled:opacity-50"
+                          />
+                        </div>
+                        <div className="flex flex-col gap-2">
+                          <label className="text-[9px] font-black uppercase tracking-[0.4em] text-slate-500">
+                            {assetType === 'stocks' ? 'Corporation Name' : 'Fund Designation'}
+                          </label>
+                          <input 
+                            name="name" 
+                            defaultValue={assetModal.data ? (assetType === 'stocks' ? assetModal.data.name : assetModal.data.scheme_name) : ''} 
+                            required 
+                            className="w-full px-6 py-4 bg-white/5 border border-white/5 rounded-2xl text-sm font-black uppercase tracking-widest focus:outline-none focus:border-primary focus:bg-white/10 transition-all"
+                          />
+                        </div>
+                        <button type="submit" className="mt-6 px-8 py-5 bg-primary text-black rounded-2xl text-xs font-black uppercase tracking-[0.3em] hover:brightness-110 active:scale-95 transition-all shadow-[0_0_30px_rgba(233,195,73,0.3)]">
+                          {assetModal.mode === 'create' ? 'Initialize' : 'Commit Overlay'}
+                        </button>
+                      </form>
+                    </motion.div>
+                  </div>
+                )}
+              </AnimatePresence>
 
               <footer className="px-16 py-12 border-t border-white/5 bg-black/20 flex justify-between items-center">
                 <div className="text-[10px] text-slate-500 font-bold uppercase tracking-[0.4em]">

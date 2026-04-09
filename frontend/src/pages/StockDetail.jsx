@@ -182,8 +182,7 @@ export default function StockDetail() {
         <div className="flex gap-8 mb-16 border-b border-outline-variant/20 overflow-x-auto no-scrollbar">
           {[
             { id: "oracle", label: "Intelligence" },
-            { id: "fundamentals", label: "Fundamental Lattice" },
-            { id: "shareholding", label: "Ownership Topology" }
+            { id: "fundamentals", label: "Fundamental Lattice" }
           ].map(tab => (
             <button
               key={tab.id}
@@ -367,13 +366,14 @@ export default function StockDetail() {
 
           {activeTab === "fundamentals" && (
             <motion.div key="fundamentals" initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }}>
-              <FundamentalsTab data={fundamentals} stmtType={stmtType} onStmtChange={setStmtType} loading={loadingFundamentals} />
-            </motion.div>
-          )}
-
-          {activeTab === "shareholding" && (
-            <motion.div key="shareholding" initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }}>
-              <ShareholdingTab data={shareholding} loading={loadingShareholding} />
+              <FundamentalsTab 
+                data={fundamentals} 
+                stmtType={stmtType} 
+                onStmtChange={setStmtType} 
+                loading={loadingFundamentals} 
+                shareholdingData={shareholding}
+                shareholdingLoading={loadingShareholding}
+              />
             </motion.div>
           )}
         </AnimatePresence>
@@ -392,63 +392,84 @@ function DataCell({ label, value, highlight }) {
   );
 }
 
-function FundamentalsTab({ data, stmtType, onStmtChange, loading }) {
-  if (loading) {
-    return <div className="h-64 bg-surface-container-lowest border border-outline-variant/10 rounded-[3rem] animate-pulse" />;
-  }
-
-  if (!data?.records?.length) {
-    return <div className="text-center py-20 text-[10px] uppercase font-black tracking-widest text-slate-500">No Intelligence Recovered</div>;
-  }
-
-  const labels = { PL: "Profit & Loss", BS: "Balance Sheet", CF: "Cash Flow" };
-  const stmtOptions = ["PL", "BS", "CF"];
+function FundamentalsTab({ data, stmtType, onStmtChange, loading, shareholdingData, shareholdingLoading }) {
+  const labels = { PL: "Profit & Loss", BS: "Balance Sheet", CF: "Cash Flow", Ownership: "Ownership Topology" };
+  const stmtOptions = ["PL", "BS", "CF", "Ownership"];
 
   return (
     <div className="space-y-12 animate-fadeIn">
-      <div className="flex gap-4">
+      {/* High-Fidelity Statement Toggles */}
+      <div className="flex bg-surface-container-low/40 p-2 rounded-2xl border border-white/5 w-fit">
         {stmtOptions.map(t => (
           <button
             key={t}
             onClick={() => onStmtChange(t)}
-            className={`px-8 py-4 rounded-xl font-black text-[10px] tracking-[0.3em] uppercase transition-all ${stmtType === t
-              ? "bg-primary text-on-primary shadow-lg"
-              : "bg-surface-container-low text-slate-500 hover:text-white border border-outline-variant/10"
-              }`}
+            className={`px-8 py-3 rounded-xl font-black text-[10px] tracking-[0.2em] uppercase transition-all ${
+              stmtType === t
+                ? "bg-primary text-black shadow-lg shadow-primary/20"
+                : "text-slate-500 hover:text-white hover:bg-white/5"
+            }`}
           >
             {labels[t]}
           </button>
         ))}
       </div>
 
-      <div className="glass-panel overflow-x-auto rounded-[3rem] border border-outline-variant/10 shadow-2xl">
-        <table className="w-full text-left">
-          <thead>
-            <tr className="border-b border-outline-variant/20 bg-surface-container/30">
-              <th className="p-8 text-[10px] text-slate-500 font-black uppercase tracking-[0.5em]">Metric Descriptor</th>
-              {data.records.map(r => (
-                <th key={r.period_end} className="p-8 text-[10px] text-slate-500 font-black uppercase tracking-[0.5em] text-right whitespace-nowrap">
-                  {r.period_end}
-                </th>
-              ))}
-            </tr>
-          </thead>
-          <tbody>
-            {data.records[0]?.data && Object.entries(data.records[0].data).map(([key]) => (
-              <tr key={key} className="border-b border-outline-variant/10 hover:bg-white/[0.03] transition-colors group">
-                <td className="p-8 font-label text-sm text-white/90 group-hover:text-primary transition-colors capitalize tracking-wide">
-                  {key.replace(/_/g, " ")}
-                </td>
-                {data.records.map(r => (
-                  <td key={r.period_end} className="p-8 text-right font-headline text-lg font-semibold text-white">
-                    {r.data[key] != null ? r.data[key].toLocaleString("en-IN") : "—"}
-                  </td>
+      {stmtType === 'Ownership' ? (
+        <ShareholdingTab data={shareholdingData} loading={shareholdingLoading} />
+      ) : loading ? (
+        <div className="space-y-8">
+          <div className="flex gap-4 animate-pulse">
+            {[1, 2, 3].map(i => <div key={i} className="h-10 w-32 bg-white/5 rounded-xl"></div>)}
+          </div>
+          <div className="h-96 bg-surface-container-low/30 border border-white/5 rounded-[2.5rem] animate-pulse" />
+        </div>
+      ) : !data?.records?.length ? (
+        <div className="glass-panel p-20 text-center rounded-[3rem] border border-white/5">
+          <span className="material-symbols-outlined text-4xl text-slate-800 mb-4 block">database_off</span>
+          <p className="text-[10px] uppercase font-black tracking-widest text-slate-600">No Intelligence Recovered</p>
+        </div>
+      ) : (
+        <div className="glass-panel overflow-hidden rounded-[2.5rem] border border-white/5 shadow-2xl bg-surface-container-lowest/20">
+          <div className="overflow-x-auto">
+            <table className="w-full text-left border-collapse">
+              <thead>
+                <tr className="border-b border-white/5 bg-white/[0.02]">
+                  <th className="p-8 text-[10px] text-slate-500 font-black uppercase tracking-[0.4em]">Metric Architecture</th>
+                  {data.records.map(r => (
+                    <th key={r.period_end} className="p-8 text-[10px] text-slate-500 font-black uppercase tracking-[0.4em] text-right whitespace-nowrap">
+                      {r.period_end}
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {data.records[0]?.data && Object.entries(data.records[0].data).map(([key]) => (
+                  <tr key={key} className="border-b border-white/[0.03] hover:bg-white/[0.02] transition-all group">
+                    <td className="p-8">
+                      <div className="flex flex-col gap-1">
+                        <span className="text-sm font-bold text-white/90 group-hover:text-primary transition-colors uppercase tracking-tight font-headline">
+                          {key.replace(/_/g, " ")}
+                        </span>
+                        <span className="text-[9px] text-slate-600 font-medium uppercase tracking-widest group-hover:text-slate-400 transition-colors">
+                          Soverign Verified Metric
+                        </span>
+                      </div>
+                    </td>
+                    {data.records.map(r => (
+                      <td key={r.period_end} className="p-8 text-right align-middle">
+                        <span className="font-headline text-lg font-semibold text-white tracking-tighter">
+                          {r.data[key] != null ? r.data[key].toLocaleString("en-IN") : "—"}
+                        </span>
+                      </td>
+                    ))}
+                  </tr>
                 ))}
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

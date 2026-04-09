@@ -171,152 +171,133 @@ const SideNavBar = () => {
     const { logout } = useAuth();
     const navigate = useNavigate();
     const location = useLocation();
-    const [isOpsOpen, setIsOpsOpen] = useState(true);
-    const [isAdminOpen, setIsAdminOpen] = useState(location.pathname.startsWith('/admin'));
 
-    const navItems = [
-        { name: 'Sovereign Hub', icon: 'home', path: '/dashboard' },
-        { name: 'Equity Pulse', icon: 'monitoring', path: '/stocks' },
-        { name: 'Vault Assets', icon: 'account_balance', path: '/mf' },
-        { name: 'Analysis Lab', icon: 'compare_arrows', path: '/compare', badge: compareList.length },
-        { name: 'Private Portfolio', icon: 'account_balance_wallet', path: '/portfolio' },
-    ];
+    // Determine default open states based on current URL
+    const searchParams = new URLSearchParams(location.search);
+    const tab = searchParams.get('tab');
+    const isAdminActive = location.pathname.startsWith('/admin') && (!tab || tab === 'dashboard' || tab === 'assets' || tab === 'logs');
+    const isSystemActive = location.pathname.startsWith('/admin') && (tab === 'health' || tab === 'pipeline');
 
-    const adminSubItems = [
-      { id: 'dashboard', label: 'Command Center', icon: 'dashboard' },
-      { id: 'health', label: 'System Health', icon: 'monitor_heart' },
-      { id: 'pipeline', label: 'Pipeline Hub', icon: 'cyclone' },
-      { id: 'assets', label: 'Asset Ledger', icon: 'account_balance_wallet' },
-      { id: 'logs', label: 'Security Logs', icon: 'security' },
-    ];
+    const [isAdminOpen, setIsAdminOpen] = useState(isAdminActive);
+    const [isSystemOpen, setIsSystemOpen] = useState(isSystemActive);
 
     const isActive = (path) => location.pathname === path;
-    const isParentActive = (pathPrefix) => location.pathname.startsWith(pathPrefix);
 
+    const navItemBaseClass = "flex items-center justify-between px-8 py-4 text-slate-500 hover:text-slate-200 hover:bg-[#45464c]/10 transition-all duration-200 group";
+    const navItemActiveClass = "flex items-center justify-between px-8 py-4 text-[#e9c349] border-r-2 border-[#e9c349] bg-gradient-to-r from-[#e9c349]/10 to-transparent group";
+    
     return (
-        <aside className="h-screen w-72 left-0 top-0 fixed bg-[#0f1419] border-r border-white/5 flex flex-col py-8 z-40 hidden lg:flex shadow-2xl overflow-y-auto no-scrollbar">
+        <aside className="h-screen w-72 left-0 top-0 fixed bg-[#0f1419] border-r border-[#45464c]/15 flex flex-col py-8 z-40 hidden lg:flex shadow-2xl overflow-y-auto no-scrollbar pt-24">
             {/* Branding block */}
-            <div className="px-8 mb-12">
-                <div className="flex items-center gap-3 mb-2">
-                    <div className="w-8 h-8 rounded bg-primary flex items-center justify-center">
-                        <span className="material-symbols-outlined text-black text-lg font-black">shield</span>
-                    </div>
-                    <div className="text-[12px] font-headline font-black uppercase tracking-[0.2em] text-white">The Sovereign</div>
+            <div className="px-8 mb-10 flex items-center gap-3">
+                <div className="w-10 h-10 rounded-full border-2 border-primary overflow-hidden flex items-center justify-center bg-primary/10">
+                    <span className="material-symbols-outlined text-primary text-xl">security</span>
                 </div>
-                <div className="text-[9px] font-label font-black uppercase tracking-[0.4em] text-slate-500/80">Private Tier v1.1.0</div>
+                <div>
+                    <h2 className="text-lg font-black text-[#e9c349] tracking-tight whitespace-nowrap">The Sovereign</h2>
+                    <p className="text-[10px] font-label uppercase tracking-[0.2em] text-slate-500">Private Wealth Tier</p>
+                </div>
             </div>
 
-            <nav className="flex-1 px-2 space-y-2">
-                {/* Operations Section */}
+            <nav className="flex-1 flex flex-col gap-1">
+                {/* Portfolio */}
                 <div>
-                    <button
-                        onClick={() => setIsOpsOpen(!isOpsOpen)}
-                        className={`w-full flex items-center justify-between py-4 px-6 rounded-xl transition-all duration-300 group ${
-                          !isParentActive('/admin') ? 'text-primary bg-primary/5 border-r-2 border-primary' : 'text-slate-500 hover:text-slate-200'
-                        }`}
-                    >
+                    <NavLink to="/portfolio" className={({ isActive }) => isActive ? navItemActiveClass : navItemBaseClass}>
                         <div className="flex items-center gap-4">
-                            <span className="material-symbols-outlined text-xl">grid_view</span>
-                            <span className="text-[11px] font-black uppercase tracking-[0.2em]">Operations</span>
+                            <span className="material-symbols-outlined transition-transform group-hover:translate-x-1">account_balance_wallet</span>
+                            <span className="font-medium text-sm">Portfolio</span>
                         </div>
-                        <span className={`material-symbols-outlined transition-transform duration-300 text-sm ${isOpsOpen ? 'rotate-180' : ''}`}>expand_more</span>
+                    </NavLink>
+                </div>
+                {/* Markets -> Stocks */}
+                <div>
+                    <NavLink to="/stocks" className={({ isActive }) => isActive ? navItemActiveClass : navItemBaseClass}>
+                        <div className="flex items-center gap-4">
+                            <span className="material-symbols-outlined transition-transform group-hover:translate-x-1">insights</span>
+                            <span className="font-medium text-sm">Stocks</span>
+                        </div>
+                    </NavLink>
+                </div>
+                {/* Mutual Funds */}
+                <div>
+                    <NavLink to="/mf" className={({ isActive }) => isActive ? navItemActiveClass : navItemBaseClass}>
+                        <div className="flex items-center gap-4">
+                            <span className="material-symbols-outlined transition-transform group-hover:translate-x-1">lock</span>
+                            <span className="font-medium text-sm">Mutual Funds</span>
+                        </div>
+                    </NavLink>
+                </div>
+                {/* Research */}
+                <div>
+                    <NavLink to="/compare" className={({ isActive }) => isActive ? navItemActiveClass : navItemBaseClass}>
+                        <div className="flex items-center gap-4">
+                            <span className="material-symbols-outlined transition-transform group-hover:translate-x-1">menu_book</span>
+                            <span className="font-medium text-sm flex items-center justify-between gap-4">Research {compareList?.length > 0 && <span className="bg-primary text-black rounded-full px-1.5 text-[8px] font-bold leading-tight">{compareList.length}</span>}</span>
+                        </div>
+                    </NavLink>
+                </div>
+                {/* System */}
+                <div className="mb-1">
+                    <button onClick={() => setIsSystemOpen(!isSystemOpen)} className={isSystemActive ? navItemActiveClass : navItemBaseClass + " w-full"}>
+                        <div className="flex items-center gap-4">
+                            <span className="material-symbols-outlined transition-transform group-hover:translate-x-1">dns</span>
+                            <span className="font-medium text-sm">System</span>
+                        </div>
+                        <span className={`material-symbols-outlined text-sm transition-transform ${isSystemOpen ? 'rotate-180' : ''}`}>expand_more</span>
                     </button>
-
                     <AnimatePresence>
-                        {isOpsOpen && (
-                            <motion.div
-                                initial={{ height: 0, opacity: 0 }}
-                                animate={{ height: 'auto', opacity: 1 }}
-                                exit={{ height: 0, opacity: 0 }}
-                                className="overflow-hidden space-y-1 mt-1"
-                            >
-                                {navItems.map((item) => {
-                                    const active = isActive(item.path);
-                                    return (
-                                        <NavLink
-                                            key={item.path}
-                                            to={item.path}
-                                            className={`
-                                                flex items-center justify-between py-3.5 pl-12 pr-6 font-body text-[10px] tracking-[0.2em] uppercase font-bold transition-all duration-300 group
-                                                ${active
-                                                    ? 'text-primary border-l-2 border-primary'
-                                                    : 'text-slate-600 hover:text-slate-200 hover:pl-14'}
-                                            `}
-                                        >
-                                            <div className="flex items-center gap-4">
-                                                <span className={`material-symbols-outlined text-lg transition-transform duration-300 group-hover:scale-110 ${active ? 'scale-110' : ''}`}>{item.icon}</span>
-                                                <span>{item.name}</span>
-                                            </div>
-                                            {item.badge > 0 && (
-                                                <span className="bg-primary text-on-primary text-[9px] px-2 py-0.5 rounded-full font-black">
-                                                    {item.badge}
-                                                </span>
-                                            )}
-                                        </NavLink>
-                                    );
-                                })}
+                        {isSystemOpen && (
+                            <motion.div initial={{ height: 0, opacity: 0 }} animate={{ height: 'auto', opacity: 1 }} exit={{ height: 0, opacity: 0 }} className="flex flex-col mt-1 mb-2 bg-[#1b2025]/30 overflow-hidden">
+                                <Link to="/admin?tab=health" className={`flex items-center gap-4 pl-16 py-3 transition-colors border-l-2 ${tab === 'health' ? 'text-[#e9c349] font-bold border-[#e9c349]' : 'text-slate-400 hover:text-primary border-transparent hover:border-primary/30'}`}>
+                                    <span className="font-medium text-xs">Health Dashboard</span>
+                                </Link>
+                                <Link to="/admin?tab=pipeline" className={`flex items-center gap-4 pl-16 py-3 transition-colors border-l-2 ${tab === 'pipeline' ? 'text-[#e9c349] font-bold border-[#e9c349]' : 'text-slate-400 hover:text-primary border-transparent hover:border-primary/30'}`}>
+                                    <span className="font-medium text-xs">Node Manager</span>
+                                </Link>
                             </motion.div>
                         )}
                     </AnimatePresence>
                 </div>
-
-                {/* Management / Admin Section */}
-                <div className="pt-4">
-                    <button
-                        onClick={() => setIsAdminOpen(!isAdminOpen)}
-                        className={`w-full flex items-center justify-between py-4 px-6 rounded-xl transition-all duration-300 group ${
-                            isParentActive('/admin') ? 'text-primary bg-primary/5 border-r-2 border-primary' : 'text-slate-500 hover:text-slate-200'
-                        }`}
-                    >
+                {/* Admin */}
+                <div className="mb-1">
+                    <button onClick={() => setIsAdminOpen(!isAdminOpen)} className={isAdminActive ? navItemActiveClass : navItemBaseClass + " w-full"}>
                         <div className="flex items-center gap-4">
-                            <span className="material-symbols-outlined text-xl">admin_panel_settings</span>
-                            <span className="text-[11px] font-black uppercase tracking-[0.2em]">Management</span>
+                            <span className="material-symbols-outlined transition-transform group-hover:translate-x-1">admin_panel_settings</span>
+                            <span className="font-medium text-sm">Admin</span>
                         </div>
-                        <span className={`material-symbols-outlined transition-transform duration-300 text-sm ${isAdminOpen ? 'rotate-180' : ''}`}>expand_more</span>
+                        <span className={`material-symbols-outlined text-sm transition-transform ${isAdminOpen ? 'rotate-180' : ''}`}>expand_more</span>
                     </button>
-
                     <AnimatePresence>
                         {isAdminOpen && (
-                            <motion.div
-                                initial={{ height: 0, opacity: 0 }}
-                                animate={{ height: 'auto', opacity: 1 }}
-                                exit={{ height: 0, opacity: 0 }}
-                                className="overflow-hidden space-y-1 mt-1"
-                            >
-                                {adminSubItems.map((subItem) => {
-                                    const searchParams = new URLSearchParams(location.search);
-                                    const active = location.pathname === '/admin' && (searchParams.get('tab') === subItem.id || (!searchParams.get('tab') && subItem.id === 'dashboard'));
-                                    
-                                    return (
-                                        <Link
-                                            key={subItem.id}
-                                            to={`/admin?tab=${subItem.id}`}
-                                            className={`flex items-center gap-4 py-3.5 pl-12 pr-6 font-body text-[10px] tracking-[0.2em] uppercase font-bold transition-all duration-300 group ${
-                                                active ? 'text-primary border-l-2 border-primary font-black' : 'text-slate-600 hover:text-slate-200 hover:pl-14'
-                                            }`}
-                                        >
-                                            <span className={`material-symbols-outlined text-lg ${active ? 'text-primary' : 'text-slate-700 group-hover:text-slate-400'}`}>{subItem.icon}</span>
-                                            <span>{subItem.label}</span>
-                                        </Link>
-                                    );
-                                })}
+                            <motion.div initial={{ height: 0, opacity: 0 }} animate={{ height: 'auto', opacity: 1 }} exit={{ height: 0, opacity: 0 }} className="flex flex-col mt-1 mb-2 bg-[#1b2025]/30 overflow-hidden">
+                                <Link to="/admin?tab=dashboard" className={`flex items-center gap-4 pl-16 py-3 transition-colors border-l-2 ${tab === 'dashboard' || (!tab && location.pathname === '/admin') ? 'text-[#e9c349] font-bold border-[#e9c349]' : 'text-slate-400 hover:text-primary border-transparent hover:border-primary/30'}`}>
+                                    <span className="font-medium text-xs">Command Center</span>
+                                </Link>
+                                <Link to="/admin?tab=assets" className={`flex items-center gap-4 pl-16 py-3 transition-colors border-l-2 ${tab === 'assets' ? 'text-[#e9c349] font-bold border-[#e9c349]' : 'text-slate-400 hover:text-primary border-transparent hover:border-primary/30'}`}>
+                                    <span className="font-medium text-xs">Asset Management</span>
+                                </Link>
+                                <Link to="/admin?tab=logs" className={`flex items-center gap-4 pl-16 py-3 transition-colors border-l-2 ${tab === 'logs' ? 'text-[#e9c349] font-bold border-[#e9c349]' : 'text-slate-400 hover:text-primary border-transparent hover:border-primary/30'}`}>
+                                    <span className="font-medium text-xs">Audit Logs</span>
+                                </Link>
                             </motion.div>
                         )}
                     </AnimatePresence>
                 </div>
             </nav>
 
-            <div className="px-6 mt-auto pt-8 border-t border-white/5 space-y-4">
-                <button className="w-full gold-gradient text-on-primary py-4 rounded-xl font-bold text-[10px] tracking-widest uppercase shadow-xl shadow-primary/20 transition-all hover:brightness-110 active:scale-95">
-                    Concierge Protocol
-                </button>
-                <div className="pb-6">
-                    <button
-                        className="w-full flex items-center gap-4 px-6 py-4 text-slate-500 hover:text-error transition-all duration-300 rounded-xl hover:bg-white/5 group"
-                        onClick={() => { logout(); navigate('/login'); }}
-                    >
-                        <span className="material-symbols-outlined text-xl group-hover:translate-x-1 transition-transform">logout</span>
-                        <span className="text-[10px] font-black tracking-widest uppercase">Terminal Exit</span>
+            <div className="px-8 mt-auto flex flex-col gap-2 pt-6">
+                <div className="flex flex-col gap-1">
+                    <button className="flex items-center justify-between py-3 text-slate-500 hover:text-slate-200 transition-colors w-full group">
+                        <div className="flex items-center gap-4">
+                            <span className="material-symbols-outlined text-xl">settings</span>
+                            <span className="font-medium text-sm">Preferences</span>
+                        </div>
+                    </button>
+                    <button onClick={() => { logout(); navigate('/login'); }} className="flex items-center justify-between py-3 text-slate-500 hover:text-error transition-colors w-full group">
+                        <div className="flex items-center gap-4">
+                            <span className="material-symbols-outlined text-xl group-hover:translate-x-1 transition-transform">logout</span>
+                            <span className="font-medium text-sm">Terminal Exit</span>
+                        </div>
                     </button>
                 </div>
             </div>

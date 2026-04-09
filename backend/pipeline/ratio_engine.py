@@ -55,11 +55,13 @@ async def compute_ratios_for_stock(stock_id: int, latest_close: Optional[float])
 
     def latest(series_key, data_dict=d):
         vals = data_dict.get(series_key, [])
-        return next((v for v in reversed(vals) if v is not None), None)
+        # Treat "n/a" strings as None
+        return next((v for v in reversed(vals) if v is not None and str(v).lower() != "n/a"), None)
 
     def yoy_growth(series_key, data_dict=d):
         """Year-over-year growth %: (latest - prev) / abs(prev) * 100"""
-        vals = [v for v in data_dict.get(series_key, []) if v is not None]
+        # Filter out None and "n/a" strings
+        vals = [v for v in data_dict.get(series_key, []) if v is not None and str(v).lower() != "n/a"]
         if len(vals) < 2:
             return None
         curr, prev = vals[-1], vals[-2]
@@ -171,7 +173,11 @@ async def _get_statement(stock_id: int, stmt_type: str) -> Optional[dict]:
         periods = []
         merged  = {}
         for row in reversed(rows):  # oldest first
-            period_data = dict(row["data"])  # JSONB -> dict
+            raw_val = row["data"]
+            if isinstance(raw_val, str):
+                period_data = json.loads(raw_val)
+            else:
+                period_data = dict(raw_val)  # JSONB -> dict
             periods.append(str(row["period_end"]))
             for key, val in period_data.items():
                 if key not in merged:

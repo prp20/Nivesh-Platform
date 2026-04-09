@@ -30,6 +30,9 @@ from pipeline.normalizer import (
     validate_pl,
     validate_bs,
     _slugify,
+    REQUIRED_PL_KEYS,
+    REQUIRED_BS_KEYS,
+    REQUIRED_CF_KEYS,
 )
 from pipeline.audit import audit_job
 from app.database import raw_connection
@@ -136,6 +139,11 @@ async def _store_pl(stock_id: int, raw_pl: dict, checksum: str):
             continue
         period_data = {k: (v[i] if i < len(v) else None) for k, v in normalised["data"].items()}
 
+        # Ensure all required keys are present, else set to "n/a"
+        for req_key in REQUIRED_PL_KEYS:
+            if req_key not in period_data or period_data[req_key] is None:
+                period_data[req_key] = "n/a"
+
         sql = """
             INSERT INTO financial_statements
                 (stock_id, statement_type, period_type, period_end, data, raw_data, raw_checksum)
@@ -161,6 +169,11 @@ async def _store_bs(stock_id: int, raw_bs: dict, checksum: str):
         if not period_end:
             continue
         period_data = {k: (v[i] if i < len(v) else None) for k, v in normalised["data"].items()}
+
+        # Ensure all required keys are present, else set to "n/a"
+        for req_key in REQUIRED_BS_KEYS:
+            if req_key not in period_data or period_data[req_key] is None:
+                period_data[req_key] = "n/a"
         import json
         sql = """
             INSERT INTO financial_statements
@@ -183,6 +196,11 @@ async def _store_cf(stock_id: int, raw_cf: dict, checksum: str):
         if not period_end:
             continue
         period_data = {k: (v[i] if i < len(v) else None) for k, v in normalised["data"].items()}
+
+        # Ensure all required keys are present, else set to "n/a"
+        for req_key in REQUIRED_CF_KEYS:
+            if req_key not in period_data or period_data[req_key] is None:
+                period_data[req_key] = "n/a"
         import json
         sql = """
             INSERT INTO financial_statements

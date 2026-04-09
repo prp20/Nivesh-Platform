@@ -105,6 +105,22 @@ const stockService = {
     const response = await apiClient.post('/pipeline/ratings/all');
     return response.data;
   },
+
+  // Mock CRUD operations
+  createStock: async (data) => {
+    console.log("Mock createStock called with:", data);
+    return Promise.resolve({ success: true, message: "Mock: Stock created successfully.", data });
+  },
+
+  updateStock: async (symbol, data) => {
+    console.log(`Mock updateStock for ${symbol} called with:`, data);
+    return Promise.resolve({ success: true, message: `Mock: Stock ${symbol} updated.`, data });
+  },
+
+  deleteStock: async (symbol) => {
+    console.log(`Mock deleteStock called for ${symbol}`);
+    return Promise.resolve({ success: true, message: `Mock: Stock ${symbol} deleted.` });
+  }
 };
 
 export default stockService;
