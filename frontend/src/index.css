@@ -16,9 +16,9 @@
     /* Aurelian Night - Glass & Gold Rule */
     .glass-panel {
         background: rgba(48, 53, 59, 0.6);
-        backdrop-filter: blur(12px);
-        border-top: 1px solid rgba(69, 70, 76, 0.15);
-        border-left: 1px solid rgba(69, 70, 76, 0.15);
+        backdrop-filter: blur(20px);
+        border-top: 1px solid rgba(69, 70, 76, 0.2);
+        border-left: 1px solid rgba(69, 70, 76, 0.2);
     }
     
     .gold-gradient, .gold-leaf-gradient {
