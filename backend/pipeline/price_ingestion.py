@@ -3,10 +3,10 @@ import asyncio
 import logging
 import yfinance as yf
 import pandas as pd
-import asyncpg
 from datetime import date, timedelta
 from pipeline.audit import audit_job
 from app.config import settings
+from app.database import raw_connection
 
 logger = logging.getLogger(__name__)
 
@@ -136,12 +136,8 @@ async def _upsert_price_rows(stock_id: int, df: pd.DataFrame) -> int:
             adj_close = EXCLUDED.adj_close,
             volume    = EXCLUDED.volume
     """
-    db_url = settings.DATABASE_URL.replace("postgresql+asyncpg://", "postgresql://")
-    conn = await asyncpg.connect(db_url)
-    try:
+    async with raw_connection() as conn:
         await conn.executemany(sql, rows)
-    finally:
-        await conn.close()
 
     return len(rows)
 
@@ -156,13 +152,9 @@ async def _fetch_active_stocks(indices_only: bool = False) -> list:
           AND is_index = $1
         ORDER BY id
     """
-    db_url = settings.DATABASE_URL.replace("postgresql+asyncpg://", "postgresql://")
-    conn = await asyncpg.connect(db_url)
-    try:
+    async with raw_connection() as conn:
         rows = await conn.fetch(sql, indices_only)
         return [dict(r) for r in rows]
-    finally:
-        await conn.close()
 
 
 def _safe_float(v) -> float | None:

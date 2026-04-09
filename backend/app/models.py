@@ -1,4 +1,4 @@
-from sqlalchemy import Column, String, Numeric, TIMESTAMP, Date, Boolean, ForeignKey, text, Index, Integer, BigInteger, Text
+from sqlalchemy import Column, String, Numeric, TIMESTAMP, Date, Boolean, ForeignKey, text, Index, Integer, BigInteger, Text, UniqueConstraint
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.sql import func
 from sqlalchemy.orm import relationship
@@ -314,6 +314,9 @@ class DetectedPattern(Base):
 
 class StockRating(Base):
     __tablename__ = "stock_ratings"
+    __table_args__ = (
+        UniqueConstraint("stock_id", "rated_on", name="uq_stock_rating_stock_date"),
+    )
 
     id                 = Column(Integer, primary_key=True)
     stock_id           = Column(Integer, ForeignKey("stocks.id", ondelete="CASCADE"), nullable=False)
@@ -324,7 +327,7 @@ class StockRating(Base):
     valuation_score    = Column(Numeric(6, 3))
     technical_score    = Column(Numeric(6, 3))
     momentum_score     = Column(Numeric(6, 3))
-    quality_score      = Column(Numeric(6, 3))
+    quality_score      = Column(Numeric(6, 3))   # reserved for future quality metrics
     shareholding_score = Column(Numeric(6, 3))
     score_breakdown_   = Column("score_breakdown", JSONB)
 

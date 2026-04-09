@@ -1,0 +1,342 @@
+"""
+backend/app/routers/pipeline.py
+
+Admin trigger endpoints for the stock data pipeline.
+All endpoints require JWT authentication (same as /sync router).
+
+Trigger categories:
+  /pipeline/prices/*    — OHLCV price ingestion (yfinance)
+  /pipeline/metrics/*   — Price-dependent ratio refresh (PE/PB/PS)
+  /pipeline/screener/*  — Screener.in fundamental scraping
+  /pipeline/technical/* — Technical analysis (ta-lib)
+  /pipeline/ratings/*   — Stock rating computation
+  /pipeline/status      — Overall pipeline health
+"""
+
+import logging
+from typing import Optional
+from fastapi import APIRouter, HTTPException, Depends, BackgroundTasks, Query
+
+from app.security import get_current_user
+
+logger = logging.getLogger(__name__)
+
+router = APIRouter(prefix="/pipeline", tags=["Pipeline Triggers"])
+
+
+# ─── Price Ingestion ──────────────────────────────────────────────────────────
+
+@router.post("/prices/all", summary="Trigger daily price ingestion for all stocks")
+async def trigger_price_ingestion(
+    background_tasks: BackgroundTasks,
+    _: str = Depends(get_current_user),
+):
+    """
+    Fetches the last 5 trading days of OHLCV data for all active non-index stocks.
+    Runs as a background task. Safe to re-run (uses ON CONFLICT DO UPDATE).
+    """
+    from pipeline.price_ingestion import run_daily_price_ingestion
+    background_tasks.add_task(run_daily_price_ingestion)
+    return {"message": "Price ingestion started in background", "job": "price_daily_ingestion"}
+
+
+@router.post("/prices/indices", summary="Trigger price ingestion for indices only")
+async def trigger_index_ingestion(
+    background_tasks: BackgroundTasks,
+    _: str = Depends(get_current_user),
+):
+    """Fetches the last 5 trading days for all active index instruments (is_index=TRUE)."""
+    from pipeline.price_ingestion import run_index_ingestion
+    background_tasks.add_task(run_index_ingestion)
+    return {"message": "Index ingestion started in background", "job": "index_daily_ingestion"}
+
+
+@router.post("/prices/backfill", summary="Trigger 5-year price history backfill")
+async def trigger_price_backfill(
+    background_tasks: BackgroundTasks,
+    period: str = Query("5y", regex="^(1y|2y|3y|5y)$"),
+    _: str = Depends(get_current_user),
+):
+    """
+    Backfills full price history for all active stocks.
+    Use only for initial setup or after adding new stocks.
+    This is a long-running operation (~10–30 minutes for 500 stocks).
+    """
+    from pipeline.price_ingestion import run_backfill
+    background_tasks.add_task(run_backfill, period)
+    return {
+        "message": f"Price backfill ({period}) started in background",
+        "job": "price_backfill",
+        "warning": "This is a long-running operation. Monitor pipeline_audit table for status.",
+    }
+
+
+# ─── Price-Dependent Metrics ──────────────────────────────────────────────────
+
+@router.post("/metrics/price-refresh/all", summary="Refresh PE/PB/PS for all stocks")
+async def trigger_price_ratio_refresh_all(
+    background_tasks: BackgroundTasks,
+    _: str = Depends(get_current_user),
+):
+    """
+    Recomputes price-dependent ratios (PE, PB, PS, dividend yield) for all active stocks.
+    Reads latest close from price_data; reads EPS/book_value from stored financial_ratios.
+    Does NOT touch quarterly metrics (ROE, ROCE, margins, etc.).
+    """
+    from pipeline.metric_recompute import recompute_price_dependent_ratios_all
+    background_tasks.add_task(recompute_price_dependent_ratios_all)
+    return {"message": "Price ratio refresh started in background", "job": "price_ratio_refresh_all"}
+
+
+@router.post("/metrics/price-refresh/{symbol}", summary="Refresh PE/PB/PS for one stock")
+async def trigger_price_ratio_refresh_one(
+    symbol: str,
+    _: str = Depends(get_current_user),
+):
+    """Synchronously refresh price-dependent ratios for a single stock. Returns updated values."""
+    from pipeline.metric_recompute import recompute_price_dependent_ratios, _get_latest_close, _fetch_stocks_with_ratios
+    from app.database import raw_connection
+
+    sym = symbol.upper()
+    async with raw_connection() as conn:
+        row = await conn.fetchrow(
+            "SELECT id FROM stocks WHERE symbol=$1 AND is_active=TRUE", sym
+        )
+    if not row:
+        raise HTTPException(status_code=404, detail=f"Stock '{sym}' not found or inactive")
+
+    stock_id = row["id"]
+    close = await _get_latest_close(stock_id)
+    if close is None:
+        raise HTTPException(status_code=422, detail=f"No price data found for '{sym}'")
+
+    result = await recompute_price_dependent_ratios(stock_id, close)
+    return {"symbol": sym, "latest_close": close, "updated_ratios": result}
+
+
+# ─── Screener.in Fundamental Scraping ─────────────────────────────────────────
+
+@router.post("/screener/all", summary="Trigger screener.in scrape for all overdue stocks")
+async def trigger_screener_scrape_all(
+    background_tasks: BackgroundTasks,
+    days_since_last: int = Query(90, ge=1, le=365),
+    _: str = Depends(get_current_user),
+):
+    """
+    Scrapes screener.in fundamentals for all stocks not updated in `days_since_last` days.
+    Default: 90 days. Uses checksum deduplication — skips unchanged data.
+    This is a slow operation (2–5 sec delay per stock to be polite to screener.in).
+    After completion, triggers financial ratio recompute automatically.
+    """
+    from pipeline.fundamental_scraper import run_fundamental_scrape_all
+
+    async def _scrape_then_ratios():
+        await run_fundamental_scrape_all()
+        from pipeline.ratio_engine import run_ratio_compute_all
+        await run_ratio_compute_all()
+
+    background_tasks.add_task(_scrape_then_ratios)
+    return {
+        "message": f"Screener scrape started (threshold: {days_since_last}d). Ratio recompute will follow automatically.",
+        "job": "fundamental_scrape_all",
+    }
+
+
+@router.post("/screener/{symbol}", summary="Trigger screener.in scrape for a single stock")
+async def trigger_screener_scrape_one(
+    symbol: str,
+    force: bool = Query(False, description="Bypass checksum and force re-scrape"),
+    _: str = Depends(get_current_user),
+):
+    """
+    Scrapes screener.in for a single stock synchronously.
+    Set force=true to bypass the checksum deduplication check.
+    After a successful scrape, ratio recompute is triggered automatically.
+    """
+    from pipeline.fundamental_scraper import run_fundamental_scrape_one
+    from pipeline.ratio_engine import compute_ratios_for_stock
+    from pipeline.metric_recompute import _get_latest_close
+    from app.database import raw_connection
+
+    sym = symbol.upper()
+    async with raw_connection() as conn:
+        row = await conn.fetchrow(
+            "SELECT id FROM stocks WHERE symbol=$1 AND is_active=TRUE", sym
+        )
+    if not row:
+        raise HTTPException(status_code=404, detail=f"Stock '{sym}' not found or inactive")
+
+    try:
+        await run_fundamental_scrape_one(sym, force=force)
+        # Chain: ratio recompute for this stock
+        stock_id = row["id"]
+        close = await _get_latest_close(stock_id)
+        await compute_ratios_for_stock(stock_id, close)
+        return {
+            "symbol": sym,
+            "message": "Scrape and ratio recompute completed successfully",
+            "force_rescrape": force,
+        }
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    except Exception as e:
+        logger.error(f"Screener scrape failed for {sym}: {e}")
+        raise HTTPException(status_code=500, detail=f"Scrape failed: {e}")
+
+
+@router.get("/screener/status", summary="Show last scrape date and overdue stocks")
+async def get_screener_status(
+    overdue_days: int = Query(90, ge=1),
+    _: str = Depends(get_current_user),
+):
+    """Returns last scrape date per stock and flags stocks overdue for scraping."""
+    from app.database import raw_connection
+    sql = """
+        SELECT
+            s.symbol,
+            s.company_name,
+            MAX(fs.scraped_at)::date AS last_scraped,
+            CASE
+                WHEN MAX(fs.scraped_at) IS NULL THEN 'NEVER'
+                WHEN MAX(fs.scraped_at) < NOW() - ($1 || ' days')::INTERVAL THEN 'OVERDUE'
+                ELSE 'OK'
+            END AS scrape_status
+        FROM stocks s
+        LEFT JOIN financial_statements fs ON fs.stock_id = s.id
+        WHERE s.is_active = TRUE AND s.is_index = FALSE
+        GROUP BY s.id, s.symbol, s.company_name
+        ORDER BY last_scraped ASC NULLS FIRST
+    """
+    async with raw_connection() as conn:
+        rows = await conn.fetch(sql, str(overdue_days))
+    data = [dict(r) for r in rows]
+    overdue = [r for r in data if r["scrape_status"] in ("OVERDUE", "NEVER")]
+    return {
+        "total_stocks": len(data),
+        "overdue_count": len(overdue),
+        "threshold_days": overdue_days,
+        "stocks": data,
+    }
+
+
+# ─── Technical Analysis ───────────────────────────────────────────────────────
+
+@router.post("/technical/all", summary="Run technical analysis for all stocks")
+async def trigger_technical_analysis_all(
+    background_tasks: BackgroundTasks,
+    _: str = Depends(get_current_user),
+):
+    """
+    Computes all TA indicators (SMA, EMA, RSI, MACD, Bollinger, ATR, ADX, Stochastic)
+    for all active stocks from price_data and stores in technical_indicators.
+    Runs as a background task. Safe to re-run.
+    """
+    from pipeline.technical_analysis import run_technical_analysis_all
+    background_tasks.add_task(run_technical_analysis_all)
+    return {"message": "Technical analysis started for all stocks", "job": "technical_analysis_all"}
+
+
+@router.post("/technical/{symbol}", summary="Run technical analysis for a single stock")
+async def trigger_technical_analysis_one(
+    symbol: str,
+    _: str = Depends(get_current_user),
+):
+    """
+    Synchronously computes TA indicators for a single stock.
+    Returns the computed indicator values on success.
+    Requires at least 20 rows in price_data (200 recommended for full SMA-200).
+    """
+    from pipeline.technical_analysis import run_technical_analysis_one
+    sym = symbol.upper()
+    try:
+        result = await run_technical_analysis_one(sym)
+        if not result:
+            raise HTTPException(
+                status_code=422,
+                detail=f"Insufficient price data for '{sym}'. Run a price backfill first."
+            )
+        return {"symbol": sym, "indicators": result}
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    except Exception as e:
+        logger.error(f"TA failed for {sym}: {e}")
+        raise HTTPException(status_code=500, detail=f"Technical analysis failed: {e}")
+
+
+@router.get("/technical/status", summary="Show TA computation status per stock")
+async def get_technical_status(_: str = Depends(get_current_user)):
+    """Returns last TA computation date per stock; flags MISSING or STALE (>2 days old)."""
+    from pipeline.technical_analysis import get_ta_status
+    data = await get_ta_status()
+    missing = [r for r in data if r["status"] == "MISSING"]
+    stale   = [r for r in data if r["status"] == "STALE"]
+    return {
+        "total_stocks": len(data),
+        "missing_count": len(missing),
+        "stale_count": len(stale),
+        "stocks": data,
+    }
+
+
+# ─── Ratings ─────────────────────────────────────────────────────────────────
+
+@router.post("/ratings/all", summary="Recompute stock ratings for all stocks")
+async def trigger_rating_compute_all(
+    background_tasks: BackgroundTasks,
+    _: str = Depends(get_current_user),
+):
+    """
+    Recomputes composite stock ratings (fundamental + valuation + technical + momentum + shareholding).
+    Runs as a background task. Requires financial_ratios and/or technical_indicators to be populated.
+    """
+    from pipeline.rating_engine import run_rating_compute_all
+    background_tasks.add_task(run_rating_compute_all)
+    return {"message": "Rating computation started for all stocks", "job": "rating_compute_all"}
+
+
+@router.post("/ratings/{symbol}", summary="Recompute rating for a single stock")
+async def trigger_rating_compute_one(
+    symbol: str,
+    _: str = Depends(get_current_user),
+):
+    """Synchronously recomputes the composite rating for one stock. Returns score breakdown."""
+    from pipeline.rating_engine import compute_rating_for_stock
+    from app.database import raw_connection
+
+    sym = symbol.upper()
+    async with raw_connection() as conn:
+        row = await conn.fetchrow(
+            "SELECT id FROM stocks WHERE symbol=$1 AND is_active=TRUE", sym
+        )
+    if not row:
+        raise HTTPException(status_code=404, detail=f"Stock '{sym}' not found or inactive")
+
+    try:
+        result = await compute_rating_for_stock(row["id"], sym)
+        return result
+    except Exception as e:
+        logger.error(f"Rating compute failed for {sym}: {e}")
+        raise HTTPException(status_code=500, detail=f"Rating compute failed: {e}")
+
+
+# ─── Overall Pipeline Status ──────────────────────────────────────────────────
+
+@router.get("/status", summary="Overall pipeline health and last run times")
+async def get_pipeline_status(_: str = Depends(get_current_user)):
+    """Shows last run time, status, and record counts for all pipeline jobs."""
+    from app.database import raw_connection
+    sql = """
+        SELECT DISTINCT ON (job_name)
+            job_name,
+            status,
+            started_at,
+            ended_at,
+            records_out,
+            EXTRACT(EPOCH FROM (ended_at - started_at))::int AS duration_sec,
+            error_msg
+        FROM pipeline_audit
+        ORDER BY job_name, started_at DESC
+    """
+    async with raw_connection() as conn:
+        rows = await conn.fetch(sql)
+    return {"jobs": [dict(r) for r in rows]}

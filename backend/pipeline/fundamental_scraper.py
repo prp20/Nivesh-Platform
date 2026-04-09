@@ -55,14 +55,17 @@ async def run_fundamental_scrape_all():
         logger.info(f"fundamental_scrape_all: {total}/{len(stocks)} stocks scraped")
 
 
-async def run_fundamental_scrape_one(symbol: str):
-    """Scrape a single stock (for manual admin triggers)."""
+async def run_fundamental_scrape_one(symbol: str, force: bool = False):
+    """
+    Scrape a single stock (for manual admin triggers).
+    force=True bypasses checksum deduplication and always re-scrapes.
+    """
     async with audit_job("fundamental_scrape_single") as audit:
         stock = await _fetch_stock_by_symbol(symbol)
         if not stock:
             raise ValueError(f"Stock {symbol} not found")
         scraper = ScreenerScraper(delay_seconds=1.5)
-        success = await _scrape_and_store(scraper, stock)
+        success = await _scrape_and_store(scraper, stock, force_rescrape=force)
         audit.records_out = 1 if success else 0
 
 

@@ -6,7 +6,7 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
 
 from .config import settings
-from .routers import funds, benchmarks, navs, benchmark_navs, metrics, sync, auth, stocks, screener
+from .routers import funds, benchmarks, navs, benchmark_navs, metrics, sync, auth, stocks, screener, pipeline
 from .database import engine, Base
 from pipeline.scheduler import configure_scheduler, scheduler
 
@@ -50,6 +50,7 @@ app.include_router(metrics.router, prefix=settings.API_V1_STR)
 app.include_router(sync.router, prefix=settings.API_V1_STR)
 app.include_router(stocks.router, prefix=settings.API_V1_STR)
 app.include_router(screener.router, prefix=settings.API_V1_STR)
+app.include_router(pipeline.router, prefix=settings.API_V1_STR)
 
 @app.get("/api/health", tags=["root"])
 async def root():

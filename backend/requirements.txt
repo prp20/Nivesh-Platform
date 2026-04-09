@@ -16,3 +16,5 @@ bcrypt==3.2.0
 passlib[bcrypt]==1.7.4
 python-multipart==0.0.9
 mftool==2.6
+TA-Lib>=0.6.8
+APScheduler>=3.10.0
