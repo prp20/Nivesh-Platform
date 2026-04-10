@@ -37,8 +37,10 @@ step()    { echo -e "\n${BOLD}${CYAN}══ $* ══${NC}"; }
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
 BACKEND_DIR="${PROJECT_ROOT}/backend"
+FRONTEND_DIR="${PROJECT_ROOT}/frontend"
 VENV_DIR="${BACKEND_DIR}/venv"
-ENV_FILE="${BACKEND_DIR}/.env"
+BACKEND_ENV_FILE="${BACKEND_DIR}/.env"
+FRONTEND_ENV_FILE="${FRONTEND_DIR}/.env"
 TALIB_SRC_DIR="${PROJECT_ROOT}/ta-lib"
 
 echo -e "${BOLD}"
@@ -64,13 +66,44 @@ else
   error "Python ${PY_VERSION} is too old. Python 3.10+ is required."
 fi
 
-# Node.js (optional — warn only)
+# Node.js / nvm
 if command -v node &>/dev/null; then
   NODE_VERSION=$(node --version)
-  success "Node.js ${NODE_VERSION} detected."
+  NODE_MAJOR=$(echo "$NODE_VERSION" | cut -d'v' -f2 | cut -d'.' -f1)
+  if [[ $NODE_MAJOR -lt 18 ]]; then
+    warn "Node.js ${NODE_VERSION} is older than 18. Frontend may have issues."
+  else
+    success "Node.js ${NODE_VERSION} detected."
+  fi
+  NPM_VERSION=$(npm --version)
+  success "npm ${NPM_VERSION} detected."
 else
-  warn "Node.js not found. You will not be able to run the frontend dev server."
-  warn "Install Node.js 18+ from https://nodejs.org if you need the frontend."
+  warn "Node.js not found. Installing nvm and Node.js 20..."
+  if [[ "$OS" == "Darwin" ]]; then
+    # macOS
+    if command -v brew &>/dev/null; then
+      brew install nvm
+      NVM_DIR="$HOME/.nvm"
+      # shellcheck disable=SC1091
+      [ -s "$NVM_DIR/nvm.sh" ] && . "$NVM_DIR/nvm.sh"
+    else
+      curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.39.0/install.sh | bash
+      NVM_DIR="$HOME/.nvm"
+      # shellcheck disable=SC1091
+      [ -s "$NVM_DIR/nvm.sh" ] && . "$NVM_DIR/nvm.sh"
+    fi
+  else
+    # Linux
+    curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.39.0/install.sh | bash
+    NVM_DIR="$HOME/.nvm"
+    # shellcheck disable=SC1091
+    [ -s "$NVM_DIR/nvm.sh" ] && . "$NVM_DIR/nvm.sh"
+  fi
+
+  # Install Node.js 20
+  nvm install 20
+  nvm use 20
+  success "Node.js 20 installed and activated."
 fi
 
 # =============================================================================
@@ -223,22 +256,25 @@ fi
 # =============================================================================
 step "Step 5: Environment Configuration"
 
-if [[ -f "${ENV_FILE}" ]]; then
-  warn ".env already exists at ${ENV_FILE}"
-  read -rp "  Overwrite it with the new DATABASE_URL? (y/N): " OVERWRITE
+# Generate a random SECRET_KEY if needed
+SECRET_KEY=$(python3 -c "import secrets; print(secrets.token_urlsafe(32))" 2>/dev/null || echo "change-me-to-a-random-string")
+
+# Backend .env
+WRITE_BACKEND_ENV=true
+if [[ -f "${BACKEND_ENV_FILE}" ]]; then
+  warn "backend/.env already exists at ${BACKEND_ENV_FILE}"
+  read -rp "  Overwrite it with the new configuration? (y/N): " OVERWRITE
   OVERWRITE="${OVERWRITE:-n}"
   if [[ "$OVERWRITE" =~ ^[Yy]$ ]]; then
-    WRITE_ENV=true
+    WRITE_BACKEND_ENV=true
   else
-    info "Keeping existing .env. Verify DATABASE_URL inside it matches your setup."
-    WRITE_ENV=false
+    info "Keeping existing backend/.env."
+    WRITE_BACKEND_ENV=false
   fi
-else
-  WRITE_ENV=true
 fi
 
-if [[ "$WRITE_ENV" == true ]]; then
-  cat > "${ENV_FILE}" <<EOF
+if [[ "$WRITE_BACKEND_ENV" == true ]]; then
+  cat > "${BACKEND_ENV_FILE}" <<EOF
 # ── Database ──────────────────────────────────────────────────────────────────
 DATABASE_URL=${DATABASE_URL}
 
@@ -248,13 +284,41 @@ PROJECT_NAME=Nivesh API
 
 # ── Security — CHANGE IN PRODUCTION ──────────────────────────────────────────
 ENABLE_AUTH=false
-SECRET_KEY=change-this-to-a-long-random-string-in-production
+SECRET_KEY=${SECRET_KEY}
 ACCESS_TOKEN_EXPIRE_MINUTES=30
+
+# ── Third-party APIs (if needed) ──────────────────────────────────────────────
+# ALPHA_VANTAGE_APIKEY=your_key_here
+# SUPABASE_PASSWORD=your_password_here
 EOF
-  success ".env written to ${ENV_FILE}"
+  success "backend/.env written with generated SECRET_KEY"
 fi
 
-if grep -q 'ENABLE_AUTH=false' "${ENV_FILE}" 2>/dev/null; then
+# Frontend .env
+WRITE_FRONTEND_ENV=true
+if [[ -f "${FRONTEND_ENV_FILE}" ]]; then
+  warn "frontend/.env already exists at ${FRONTEND_ENV_FILE}"
+  read -rp "  Overwrite it? (y/N): " OVERWRITE
+  OVERWRITE="${OVERWRITE:-n}"
+  if [[ "$OVERWRITE" =~ ^[Yy]$ ]]; then
+    WRITE_FRONTEND_ENV=true
+  else
+    info "Keeping existing frontend/.env."
+    WRITE_FRONTEND_ENV=false
+  fi
+fi
+
+if [[ "$WRITE_FRONTEND_ENV" == true ]]; then
+  cat > "${FRONTEND_ENV_FILE}" <<EOF
+# ── API URL ──────────────────────────────────────────────────────────────────
+# For development: http://localhost:8000/api/v1
+# For production: /api/v1 (same origin — backend serves frontend)
+VITE_API_URL=/api/v1
+EOF
+  success "frontend/.env written"
+fi
+
+if grep -q 'ENABLE_AUTH=false' "${BACKEND_ENV_FILE}" 2>/dev/null; then
   warn "ENABLE_AUTH=false — write endpoints are unprotected. Set to true for production."
 fi
 
@@ -338,17 +402,34 @@ if [[ "$SEED_STOCKS" =~ ^[Yy]$ ]]; then
 fi
 
 # =============================================================================
-# STEP 9 — Start API server
+# STEP 9 — Build frontend
 # =============================================================================
-step "Step 9: Starting FastAPI Server"
+step "Step 9: Building Frontend"
+
+cd "${FRONTEND_DIR}"
+
+info "Installing frontend dependencies (npm install)..."
+npm install --legacy-peer-deps
+success "Frontend dependencies installed."
+
+info "Building frontend for production (npm run build)..."
+npm run build
+if [[ ! -d "${FRONTEND_DIR}/dist" ]]; then
+  error "Frontend build failed. Check npm run build output above."
+fi
+success "Frontend built and ready at ${FRONTEND_DIR}/dist/"
+
+# =============================================================================
+# STEP 10 — Start API server
+# =============================================================================
+step "Step 10: Starting FastAPI Server"
 
 echo ""
 echo -e "${GREEN}${BOLD}  Setup complete! Starting Nivesh API...${NC}"
 echo ""
-echo -e "${GREEN}  API docs  :  http://localhost:8000/docs${NC}"
-echo -e "${GREEN}  Health    :  http://localhost:8000/api/health${NC}"
-echo -e "${CYAN}  Frontend  :  Open a NEW terminal and run:${NC}"
-echo -e "${CYAN}              cd frontend && npm install && npm run dev${NC}"
+echo -e "${GREEN}  Frontend + API  :  http://localhost:8000${NC}"
+echo -e "${GREEN}  API docs        :  http://localhost:8000/docs${NC}"
+echo -e "${GREEN}  Health          :  http://localhost:8000/api/health${NC}"
 echo ""
 
 cd "${BACKEND_DIR}"

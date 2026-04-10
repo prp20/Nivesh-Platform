@@ -33,11 +33,13 @@ function Write-Fatal   {
 }
 
 # ─── Resolve paths ───────────────────────────────────────────────────────────
-$ScriptDir   = Split-Path -Parent $MyInvocation.MyCommand.Path
-$ProjectRoot = Split-Path -Parent $ScriptDir
-$BackendDir  = Join-Path $ProjectRoot "backend"
-$VenvDir     = Join-Path $BackendDir "venv"
-$EnvFile     = Join-Path $BackendDir ".env"
+$ScriptDir      = Split-Path -Parent $MyInvocation.MyCommand.Path
+$ProjectRoot    = Split-Path -Parent $ScriptDir
+$BackendDir     = Join-Path $ProjectRoot "backend"
+$FrontendDir    = Join-Path $ProjectRoot "frontend"
+$VenvDir        = Join-Path $BackendDir "venv"
+$BackendEnvFile = Join-Path $BackendDir ".env"
+$FrontendEnvFile= Join-Path $FrontendDir ".env"
 
 Write-Host ""
 Write-Host "  ╔═══════════════════════════════════════╗" -ForegroundColor Cyan
@@ -71,13 +73,18 @@ if (-not $PythonCmd) {
   Write-Fatal "Python 3.10+ not found. Download from https://python.org and ensure it is in PATH."
 }
 
-# Node.js (optional)
+# Node.js
 if (Get-Command node -ErrorAction SilentlyContinue) {
   $nodeVer = & node --version
   Write-Success "Node.js $nodeVer detected."
+  $npmVer = & npm --version
+  Write-Success "npm $npmVer detected."
 } else {
-  Write-Warn "Node.js not found. Frontend dev server will not be available."
-  Write-Warn "Install Node.js 18+ from https://nodejs.org if needed."
+  Write-Warn "Node.js not found."
+  Write-Warn "Install Node.js 18+ LTS from https://nodejs.org"
+  Write-Warn "Or use Windows Package Manager: winget install OpenJS.NodeJS"
+  Write-Warn "After installing Node.js, please restart this script."
+  Write-Fatal "Node.js is required for frontend setup."
 }
 
 # =============================================================================
@@ -190,18 +197,22 @@ try {
 # =============================================================================
 Write-Step "Step 5: Environment Configuration"
 
-$WriteEnv = $true
-if (Test-Path $EnvFile) {
-  Write-Warn ".env already exists at $EnvFile"
-  $Overwrite = Read-Host "  Overwrite it with the new DATABASE_URL? (y/N)"
+# Generate random SECRET_KEY
+$SecretKey = [Convert]::ToBase64String([System.Text.Encoding]::UTF8.GetBytes((Get-Random -Minimum 100000000 -Maximum 999999999).ToString() + (Get-Date).Ticks))
+
+# Backend .env
+$WriteBackendEnv = $true
+if (Test-Path $BackendEnvFile) {
+  Write-Warn "backend\.env already exists at $BackendEnvFile"
+  $Overwrite = Read-Host "  Overwrite it with the new configuration? (y/N)"
   if ($Overwrite -notmatch "^[Yy]$") {
-    Write-Info "Keeping existing .env. Verify DATABASE_URL inside it matches your setup."
-    $WriteEnv = $false
+    Write-Info "Keeping existing backend\.env."
+    $WriteBackendEnv = $false
   }
 }
 
-if ($WriteEnv) {
-  $EnvContent = @"
+if ($WriteBackendEnv) {
+  $BackendEnvContent = @"
 # ── Database ──────────────────────────────────────────────────────────────────
 DATABASE_URL=$DatabaseUrl
 
@@ -211,15 +222,41 @@ PROJECT_NAME=Nivesh API
 
 # ── Security — CHANGE IN PRODUCTION ──────────────────────────────────────────
 ENABLE_AUTH=false
-SECRET_KEY=change-this-to-a-long-random-string-in-production
+SECRET_KEY=$SecretKey
 ACCESS_TOKEN_EXPIRE_MINUTES=30
+
+# ── Third-party APIs (if needed) ──────────────────────────────────────────────
+# ALPHA_VANTAGE_APIKEY=your_key_here
+# SUPABASE_PASSWORD=your_password_here
 "@
-  Set-Content -Path $EnvFile -Value $EnvContent -Encoding UTF8
-  Write-Success ".env written to $EnvFile"
+  Set-Content -Path $BackendEnvFile -Value $BackendEnvContent -Encoding UTF8
+  Write-Success "backend\.env written with generated SECRET_KEY"
 }
 
-$EnvContents = Get-Content $EnvFile -Raw
-if ($EnvContents -match "ENABLE_AUTH=false") {
+# Frontend .env
+$WriteFrontendEnv = $true
+if (Test-Path $FrontendEnvFile) {
+  Write-Warn "frontend\.env already exists at $FrontendEnvFile"
+  $Overwrite = Read-Host "  Overwrite it? (y/N)"
+  if ($Overwrite -notmatch "^[Yy]$") {
+    Write-Info "Keeping existing frontend\.env."
+    $WriteFrontendEnv = $false
+  }
+}
+
+if ($WriteFrontendEnv) {
+  $FrontendEnvContent = @"
+# ── API URL ──────────────────────────────────────────────────────────────────
+# For development: http://localhost:8000/api/v1
+# For production: /api/v1 (same origin — backend serves frontend)
+VITE_API_URL=/api/v1
+"@
+  Set-Content -Path $FrontendEnvFile -Value $FrontendEnvContent -Encoding UTF8
+  Write-Success "frontend\.env written"
+}
+
+$BackendEnvContents = Get-Content $BackendEnvFile -Raw
+if ($BackendEnvContents -match "ENABLE_AUTH=false") {
   Write-Warn "ENABLE_AUTH=false — write endpoints are unprotected. Set to true for production."
 }
 
@@ -305,17 +342,41 @@ if ($SeedStocks -match "^[Yy]$") {
 }
 
 # =============================================================================
-# STEP 9 — Start API server
+# STEP 9 — Build frontend
 # =============================================================================
-Write-Step "Step 9: Starting FastAPI Server"
+Write-Step "Step 9: Building Frontend"
+
+Set-Location $FrontendDir
+
+Write-Info "Installing frontend dependencies (npm install)..."
+& npm install --legacy-peer-deps
+if ($LASTEXITCODE -ne 0) {
+  Write-Fatal "npm install failed. Check the error output above."
+}
+Write-Success "Frontend dependencies installed."
+
+Write-Info "Building frontend for production (npm run build)..."
+& npm run build
+if ($LASTEXITCODE -ne 0) {
+  Write-Fatal "npm run build failed. Check the error output above."
+}
+$DistDir = Join-Path $FrontendDir "dist"
+if (-not (Test-Path $DistDir)) {
+  Write-Fatal "Frontend build directory not found at $DistDir"
+}
+Write-Success "Frontend built and ready at $DistDir"
+
+# =============================================================================
+# STEP 10 — Start API server
+# =============================================================================
+Write-Step "Step 10: Starting FastAPI Server"
 
 Write-Host ""
 Write-Host "  Setup complete! Starting Nivesh API..." -ForegroundColor Green
 Write-Host ""
-Write-Host "  API docs  :  http://localhost:8000/docs" -ForegroundColor Green
-Write-Host "  Health    :  http://localhost:8000/api/health" -ForegroundColor Green
-Write-Host "  Frontend  :  Open a NEW terminal and run:" -ForegroundColor Cyan
-Write-Host "               cd frontend; npm install; npm run dev" -ForegroundColor Cyan
+Write-Host "  Frontend + API  :  http://localhost:8000" -ForegroundColor Green
+Write-Host "  API docs        :  http://localhost:8000/docs" -ForegroundColor Green
+Write-Host "  Health          :  http://localhost:8000/api/health" -ForegroundColor Green
 Write-Host ""
 
 Set-Location $BackendDir

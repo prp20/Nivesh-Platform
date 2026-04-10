@@ -21,8 +21,10 @@ set "PROJECT_ROOT=%SCRIPT_DIR%.."
 :: Normalise the path (remove trailing backslash quirks)
 for %%i in ("%PROJECT_ROOT%") do set "PROJECT_ROOT=%%~fi"
 set "BACKEND_DIR=%PROJECT_ROOT%\backend"
+set "FRONTEND_DIR=%PROJECT_ROOT%\frontend"
 set "VENV_DIR=%BACKEND_DIR%\venv"
-set "ENV_FILE=%BACKEND_DIR%\.env"
+set "BACKEND_ENV_FILE=%BACKEND_DIR%\.env"
+set "FRONTEND_ENV_FILE=%FRONTEND_DIR%\.env"
 set "COMPOSE_FILE=%BACKEND_DIR%\docker-compose.yml"
 
 echo.
@@ -61,13 +63,18 @@ if errorlevel 1 (
   exit /b 1
 )
 
-:: Node.js (optional)
+:: Node.js
 node --version >nul 2>&1
 if errorlevel 1 (
-  echo [WARN]  Node.js not found. Frontend dev server will not be available.
-  echo         Install Node.js 18+ from https://nodejs.org if needed.
+  echo [ERROR] Node.js not found. This is required for building the frontend.
+  echo         Install Node.js 18+ LTS from https://nodejs.org
+  echo         Or use Windows Package Manager: winget install OpenJS.NodeJS
+  echo         After installing, restart this script.
+  pause
+  exit /b 1
 ) else (
   for /f %%v in ('node --version 2^>^&1') do echo [OK]    Node.js %%v detected.
+  for /f %%v in ('npm --version 2^>^&1') do echo [OK]    npm %%v detected.
 )
 
 :: =============================================================================
@@ -175,17 +182,23 @@ echo.
 echo [STEP 5] Environment Configuration
 echo.
 
-set WRITE_ENV=1
-if exist "%ENV_FILE%" (
-  echo [WARN]  .env already exists at %ENV_FILE%
-  set /p OVERWRITE="  Overwrite it with the new DATABASE_URL? (y/N): "
+:: Generate random SECRET_KEY (using timestamp + random number)
+for /f "tokens=2-4 delims=/ " %%a in ('date /t') do (set mydate=%%c%%a%%b)
+for /f "tokens=1-2 delims=/:" %%a in ('time /t') do (set mytime=%%a%%b)
+set "SECRET_KEY=dev-secret-%mydate%-%mytime%"
+
+:: Backend .env
+set WRITE_BACKEND_ENV=1
+if exist "%BACKEND_ENV_FILE%" (
+  echo [WARN]  backend\.env already exists at %BACKEND_ENV_FILE%
+  set /p OVERWRITE="  Overwrite it with the new configuration? (y/N): "
   if /i not "!OVERWRITE!"=="y" (
-    echo [INFO]  Keeping existing .env.
-    set WRITE_ENV=0
+    echo [INFO]  Keeping existing backend\.env.
+    set WRITE_BACKEND_ENV=0
   )
 )
 
-if "%WRITE_ENV%"=="1" (
+if "%WRITE_BACKEND_ENV%"=="1" (
   (
     echo # -- Database -----------------------------------------------------------------
     echo DATABASE_URL=!DATABASE_URL!
@@ -196,11 +209,36 @@ if "%WRITE_ENV%"=="1" (
     echo.
     echo # -- Security - CHANGE IN PRODUCTION ------------------------------------------
     echo ENABLE_AUTH=false
-    echo SECRET_KEY=change-this-to-a-long-random-string-in-production
+    echo SECRET_KEY=%SECRET_KEY%
     echo ACCESS_TOKEN_EXPIRE_MINUTES=30
-  ) > "%ENV_FILE%"
-  echo [OK]    .env written to %ENV_FILE%
+    echo.
+    echo # -- Third-party APIs (if needed) --------------------------------------------
+    echo # ALPHA_VANTAGE_APIKEY=your_key_here
+    echo # SUPABASE_PASSWORD=your_password_here
+  ) > "%BACKEND_ENV_FILE%"
+  echo [OK]    backend\.env written to %BACKEND_ENV_FILE%
   echo [WARN]  ENABLE_AUTH=false -- write endpoints are unprotected. Set to true for production.
+)
+
+:: Frontend .env
+set WRITE_FRONTEND_ENV=1
+if exist "%FRONTEND_ENV_FILE%" (
+  echo [WARN]  frontend\.env already exists at %FRONTEND_ENV_FILE%
+  set /p OVERWRITE="  Overwrite it? (y/N): "
+  if /i not "!OVERWRITE!"=="y" (
+    echo [INFO]  Keeping existing frontend\.env.
+    set WRITE_FRONTEND_ENV=0
+  )
+)
+
+if "%WRITE_FRONTEND_ENV%"=="1" (
+  (
+    echo # -- API URL ------------------------------------------------------------------
+    echo # For development: http://localhost:8000/api/v1
+    echo # For production: /api/v1 (same origin -- backend serves frontend)
+    echo VITE_API_URL=/api/v1
+  ) > "%FRONTEND_ENV_FILE%"
+  echo [OK]    frontend\.env written to %FRONTEND_ENV_FILE%
 )
 
 :: =============================================================================
@@ -307,17 +345,48 @@ if /i "%SEED_STOCKS%"=="y" (
 )
 
 :: =============================================================================
-:: STEP 9 — Start API server
+:: STEP 9 — Build frontend
 :: =============================================================================
 echo.
-echo [STEP 9] Starting FastAPI Server
+echo [STEP 9] Building Frontend
+echo.
+
+cd /d "%FRONTEND_DIR%"
+
+echo [INFO]  Installing frontend dependencies ^(npm install^)...
+call npm install --legacy-peer-deps
+if errorlevel 1 (
+  echo [ERROR] npm install failed. Check the error output above.
+  pause
+  exit /b 1
+)
+echo [OK]    Frontend dependencies installed.
+
+echo [INFO]  Building frontend for production ^(npm run build^)...
+call npm run build
+if errorlevel 1 (
+  echo [ERROR] npm run build failed. Check the error output above.
+  pause
+  exit /b 1
+)
+if not exist "%FRONTEND_DIR%\dist" (
+  echo [ERROR] Frontend build directory not found at %FRONTEND_DIR%\dist
+  pause
+  exit /b 1
+)
+echo [OK]    Frontend built and ready at %FRONTEND_DIR%\dist
+
+:: =============================================================================
+:: STEP 10 — Start API server
+:: =============================================================================
+echo.
+echo [STEP 10] Starting FastAPI Server
 echo.
 echo   Setup complete! Starting Nivesh API...
 echo.
-echo   API docs  :  http://localhost:8000/docs
-echo   Health    :  http://localhost:8000/api/health
-echo   Frontend  :  Open a NEW terminal and run:
-echo                cd frontend ^&^& npm install ^&^& npm run dev
+echo   Frontend + API  :  http://localhost:8000
+echo   API docs        :  http://localhost:8000/docs
+echo   Health          :  http://localhost:8000/api/health
 echo.
 
 cd /d "%BACKEND_DIR%"
