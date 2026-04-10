@@ -3,6 +3,7 @@ import { BrowserRouter as Router, Routes, Route, Navigate, useParams } from 'rea
 import Dashboard from './pages/Dashboard';
 import Portfolio from './pages/Portfolio';
 import StockListing from './pages/StockListing';
+import Screener from './pages/Screener';
 import MFListing from './pages/MFListing';
 import MFCompare from './pages/MFCompare';
 import IndicesListing from './pages/IndicesListing';
@@ -14,6 +15,7 @@ import StockDetail from './pages/StockDetail';
 import MFDetail from './pages/MFDetail';
 import IndexDetail from './pages/IndexDetail';
 import Admin from './pages/Admin';
+import StockCompare from './pages/StockCompare';
 
 const StockDetailRoute = () => {
   const { symbol } = useParams();
@@ -54,6 +56,8 @@ const AppContent = () => {
         <Route path="/portfolio" element={<Portfolio />} />
         <Route path="/stocks" element={<StockListing />} />
         <Route path="/stocks/:symbol" element={<StockDetailRoute />} />
+        <Route path="/stock-compare" element={<StockCompare />} />
+        <Route path="/screener" element={<Screener />} />
         <Route path="/mf" element={<MFListing />} />
         <Route path="/mf/:schemeCode" element={<MFDetailRoute />} />
         <Route path="/compare" element={<MFCompare />} />

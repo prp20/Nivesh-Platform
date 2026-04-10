@@ -1,127 +1,514 @@
-import React, { useEffect, useState } from 'react';
-import { useParams, Link } from 'react-router-dom';
-import fundService from '../api/services/fundService';
-import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
-import { motion } from 'framer-motion';
+import React, { useEffect, useState } from "react";
+import { useParams, Link, useNavigate } from "react-router-dom";
+import { useDispatch, useSelector } from "react-redux";
+import { fetchStockDetail, triggerFullStockSync } from "../store/slices/stocksSlice";
+import stockService from "../api/services/stockService";
+import { motion, AnimatePresence } from 'framer-motion';
+import { AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer } from 'recharts';
 
-const StockDetail = () => {
-    const { stockCode } = useParams();
-    const [stockData, setStockData] = useState(null);
-    const [navHistory, setNavHistory] = useState([]);
-    const [loading, setLoading] = useState(true);
-    const [error, setError] = useState(null);
+export default function StockDetail() {
+  const { symbol } = useParams();
+  const dispatch = useDispatch();
+  const navigate = useNavigate();
+  const { detail, status } = useSelector(s => s.stocks);
+  const [activeTab, setActiveTab] = useState("oracle");
+  const [fundamentals, setFundamentals] = useState(null);
+  const [shareholding, setShareholding] = useState(null);
+  const [stmtType, setStmtType] = useState("PL");
+  const [loadingFundamentals, setLoadingFundamentals] = useState(false);
+  const [loadingShareholding, setLoadingShareholding] = useState(false);
 
-    useEffect(() => {
-        const fetchStockData = async () => {
-            setLoading(true);
-            try {
-                // If the backend has a specific stock detail, use it. 
-                // For now, many stocks are mapped to 'funds' in the Nivesh schema.
-                const [detail, history] = await Promise.all([
-                    fundService.getFundDetail(stockCode).catch(() => fundService.getBenchmarkDetail(stockCode)),
-                    fundService.getFundNavHistory(stockCode, 2000).catch(() => fundService.getBenchmarkNavHistory(stockCode, 2000))
-                ]);
-                setStockData(detail);
-                setNavHistory(history.map(pt => ({
-                    date: pt.nav_date,
-                    nav: parseFloat(pt.nav_value || pt.index_value)
-                })).reverse());
-            } catch (err) {
-                setError(err.message || 'Equity synchronization failed.');
-            } finally {
-                setLoading(false);
-            }
-        };
+  const [ratios, setRatios] = useState(null);
+  const [priceHistory, setPriceHistory] = useState([]);
+  const [syncingPrices, setSyncingPrices] = useState(false);
+  const [syncingFundamentals, setSyncingFundamentals] = useState(false);
 
-        if (stockCode) {
-            fetchStockData();
-        }
-    }, [stockCode]);
+  const timeframes = [
+    { id: '1M', interval: '1d', limit: 20 },
+    { id: '6M', interval: '1d', limit: 120 },
+    { id: '1Y', interval: '1d', limit: 260 },
+    { id: '5Y', interval: '1w', limit: 260 },
+    { id: '10Y', interval: '1mo', limit: 120 },
+    { id: 'MAX', interval: '1mo', limit: 300 }
+  ];
+  const [activeTimeframe, setActiveTimeframe] = useState('1Y');
 
-    if (loading) {
-        return (
-            <div className="min-h-screen w-full flex flex-col items-center justify-center bg-[#0a0f12]">
-                <div className="w-24 h-24 border-4 border-primary border-t-transparent rounded-full animate-spin mb-8 shadow-[0_0_30px_rgba(233,195,73,0.2)]"></div>
-                <p className="text-primary font-black uppercase tracking-[0.5em] animate-pulse">Decrypting Equity Artifact...</p>
-            </div>
-        );
+  useEffect(() => {
+    if (symbol) {
+      dispatch(fetchStockDetail(symbol));
     }
-
-    if (error) {
-        return (
-            <div className="min-h-screen w-full flex flex-col items-center justify-center bg-[#0a0f12] p-20">
-                <span className="material-symbols-outlined text-error text-9xl mb-8">security_update_warning</span>
-                <h2 className="text-4xl font-headline font-bold text-white mb-4 uppercase tracking-widest">Protocol Breach</h2>
-                <p className="text-slate-500 text-xl font-bold tracking-tight mb-12">{error}</p>
-                <Link to="/stocks" className="px-12 py-5 gold-gradient rounded-2xl text-on-primary font-black uppercase tracking-widest shadow-2xl transition-all active:scale-95">
-                    Return to Navigator
-                </Link>
-            </div>
-        );
+  }, [symbol, dispatch]);
+  
+  useEffect(() => {
+    if (symbol && detail?.symbol === symbol) {
+      const tf = timeframes.find(t => t.id === activeTimeframe) || timeframes[2];
+      stockService.getPriceHistory(symbol, { interval: tf.interval, limit: tf.limit })
+        .then(res => setPriceHistory(res.data))
+        .catch(err => console.error("Failed to fetch price history:", err));
+      
+      stockService.getRatios(symbol)
+        .then(res => {
+          if (res.records && res.records.length > 0) {
+            setRatios(res.records[0]);
+          }
+        })
+        .catch(err => console.error("Failed to fetch ratios:", err));
     }
+  }, [symbol, detail?.symbol, activeTimeframe]);
 
-    if (!stockData) return null;
+  const handleSyncDaily = async () => {
+    setSyncingPrices(true);
+    try {
+      await stockService.triggerDeepPriceSync(symbol, "1y");
+      await stockService.triggerTechnicalAnalysis(symbol);
+      await stockService.triggerRatingCompute(symbol);
+      const hist = await stockService.getPriceHistory(symbol, { interval: timeframes.find(t => t.id === activeTimeframe).interval, limit: timeframes.find(t => t.id === activeTimeframe).limit });
+      setPriceHistory(hist.data);
+      dispatch(fetchStockDetail(symbol));
+    } catch (e) {
+      console.error(e);
+    } finally {
+      setSyncingPrices(false);
+    }
+  };
 
+  const handleSyncFundamentals = async () => {
+    setSyncingFundamentals(true);
+    try {
+      await stockService.triggerScreenerScrape(symbol, true);
+      const [rat, fund] = await Promise.all([
+        stockService.getRatios(symbol),
+        stockService.getFundamentals(symbol, { statement_type: stmtType, limit: 5 })
+      ]);
+      if (rat.records?.length > 0) setRatios(rat.records[0]);
+      setFundamentals(fund);
+      dispatch(fetchStockDetail(symbol));
+    } catch (e) {
+      console.error(e);
+    } finally {
+      setSyncingFundamentals(false);
+    }
+  };
+
+  useEffect(() => {
+    if (symbol && activeTab === "fundamentals") {
+      setLoadingFundamentals(true);
+      stockService
+        .getFundamentals(symbol, { statement_type: stmtType, limit: 5 })
+        .then(setFundamentals)
+        .catch(err => console.error("Failed to fetch fundamentals:", err))
+        .finally(() => setLoadingFundamentals(false));
+    }
+  }, [symbol, activeTab, stmtType]);
+
+  useEffect(() => {
+    if (symbol && activeTab === "shareholding" && !shareholding) {
+      setLoadingShareholding(true);
+      stockService
+        .getShareholding(symbol, { limit: 8 })
+        .then(setShareholding)
+        .catch(err => console.error("Failed to fetch shareholding:", err))
+        .finally(() => setLoadingShareholding(false));
+    }
+  }, [symbol, activeTab, shareholding]);
+
+  if (status === "loading" || !detail) {
     return (
-        <div className="p-6 md:p-12 lg:p-16 xl:p-24 2xl:p-32 w-full animate-fadeIn flex flex-col gap-16 transition-all duration-500">
-             {/* Header - Ultra Scale */}
-             <header className="flex flex-col 2xl:flex-row 2xl:items-end justify-between gap-16 mb-8">
-                <div className="flex-1">
-                    <div className="flex items-center gap-6 mb-10">
-                        <span className="bg-primary/10 text-primary border border-primary/20 px-6 py-3 rounded-2xl text-[10px] font-black uppercase tracking-[0.4em] leading-none"> {stockData.scheme_category || 'Elite Equity'} </span>
-                        <span className="text-secondary text-sm font-black uppercase tracking-[0.4em] flex items-center gap-3">
-                            <span className="material-symbols-outlined text-2xl animate-pulse">verified</span>
-                            SECURED ARTIFACT
-                        </span>
-                    </div>
-                    <h1 className="text-6xl sm:text-7xl md:text-8xl lg:text-9xl 3xl:text-[13rem] font-headline font-bold text-white tracking-tighter leading-none mb-10 group uppercase">
-                        {stockData.scheme_name || stockData.benchmark_name}
-                    </h1>
-                    <p className="text-xl md:text-2xl text-slate-500 font-black max-w-6xl leading-tight uppercase tracking-[0.2em] opacity-60"> ISIN: {stockData.isin || 'NIV-X'} • SECTOR: TECHNOLOGY </p>
-                </div>
-
-                <div className="flex flex-col items-end gap-4 bg-surface-container-high/60 p-12 md:p-16 rounded-[4rem] border border-white/5 shadow-[0_64px_128px_rgba(0,0,0,0.6)] backdrop-blur-3xl min-w-[400px]">
-                    <span className="text-sm font-black text-slate-500 uppercase tracking-[0.5em] leading-none mb-2 opacity-60">Market Identity Price</span>
-                    <div className="text-7xl sm:text-8xl md:text-9xl font-headline font-black text-white tracking-tighter leading-none mt-2">₹{navHistory[0]?.nav?.toFixed(2) || 'N/A'}</div>
-                    <div className="flex items-center gap-4 text-secondary text-3xl font-black uppercase tracking-[0.3em] mt-8 px-10 py-5 bg-secondary/10 rounded-[2.5rem] border border-secondary/20 shadow-2xl">
-                        <span className="material-symbols-outlined text-4xl">trending_up</span>
-                        +2.45% T-1
-                    </div>
-                </div>
-            </header>
-
-            {/* Performance Chart */}
-            <section className="glass-panel p-12 md:p-16 2xl:p-24 rounded-[4rem] border border-white/5 shadow-[0_64px_128px_rgba(0,0,0,0.7)] relative overflow-hidden backdrop-blur-3xl min-h-[600px] bg-white/[0.01]">
-                <div className="mb-20 relative z-10">
-                    <h3 className="text-4xl font-headline font-bold tracking-tight mb-4 uppercase tracking-[0.2em] leading-none">Price Action Matrix</h3>
-                    <p className="text-base text-slate-500 font-black tracking-[0.3em] flex items-center gap-4 uppercase opacity-60"> Continuous surveillance of equity momentum <span className="inline-block w-3 h-3 rounded-full bg-secondary animate-pulse"></span> </p>
-                </div>
-                
-                <div className="w-full h-[500px] 2xl:h-[600px]">
-                    <ResponsiveContainer width="100%" height="100%">
-                        <AreaChart data={navHistory}>
-                            <defs>
-                                <linearGradient id="colorStock" x1="0" y1="0" x2="0" y2="1">
-                                    <stop offset="5%" stopColor="#e9c349" stopOpacity={0.6}/>
-                                    <stop offset="95%" stopColor="#e9c349" stopOpacity={0}/>
-                                </linearGradient>
-                            </defs>
-                            <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.03)" vertical={false} />
-                            <XAxis dataKey="date" hide />
-                            <YAxis domain={['auto', 'auto']} hide />
-                            <Tooltip contentStyle={{ backgroundColor: '#1b2025', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '24px', backdropFilter: 'blur(16px)', padding: '24px' }} itemStyle={{ fontSize: '18px', fontWeight: 'black', color: '#e9c349' }} />
-                            <Area type="monotone" dataKey="nav" stroke="#e9c349" strokeWidth={6} fillOpacity={1} fill="url(#colorStock)" />
-                        </AreaChart>
-                    </ResponsiveContainer>
-                </div>
-            </section>
-
-             {/* Footer */}
-             <footer className="mt-20 py-16 border-t border-white/5 opacity-30 italic text-[11px] tracking-[0.6em] uppercase font-black text-center leading-relaxed">
-                Equity Consumption Protocol Active • Decentralized Surveillance • Epoch {new Date().getFullYear()}
-            </footer>
-        </div>
+      <div className="min-h-screen bg-surface flex flex-col items-center justify-center p-6">
+        <div className="w-24 h-24 border-4 border-primary border-t-transparent rounded-full animate-spin mb-8 shadow-[0_0_30px_rgba(233,195,73,0.2)]"></div>
+        <p className="text-primary font-black uppercase tracking-[0.5em] animate-pulse">Decrypting Asset Vector...</p>
+      </div>
     );
-};
+  }
 
-export default StockDetail;
+  const changeColor = detail.change_pct >= 0 ? "text-secondary" : "text-error";
+  const glowClass = detail.change_pct >= 0 ? "shadow-[0_0_40px_rgba(102,221,139,0.1)]" : "shadow-[0_0_40px_rgba(255,180,171,0.1)]";
+
+  return (
+    <div className="min-h-screen bg-surface text-on-surface overflow-hidden relative pb-32">
+      {/* Editorial Watermark */}
+      <div className="absolute top-40 -right-20 pointer-events-none opacity-[0.02] select-none origin-top-right">
+        <span className="text-[25vw] font-headline font-black uppercase tracking-tighter leading-none">{detail.symbol}</span>
+      </div>
+
+      <div className="max-w-[1400px] mx-auto px-6 lg:px-16 pt-12 relative z-10">
+
+        {/* Breadcrumb & Tier Header */}
+        <div className="flex justify-between items-end mb-16">
+          <div>
+            <button onClick={() => navigate(-1)} className="flex items-center gap-3 text-slate-500 hover:text-white transition-colors mb-8 group">
+              <span className="material-symbols-outlined group-hover:-translate-x-1 transition-transform">arrow_back</span>
+              <span className="font-label text-xs uppercase tracking-widest font-black">Return to Vault</span>
+            </button>
+            <div className="flex items-center gap-4 mb-4">
+              <span className="text-[10px] text-primary font-black uppercase tracking-[0.5em] italic">The Sovereign</span>
+              <div className="w-1 h-1 rounded-full bg-primary/50"></div>
+              <span className="text-[10px] text-slate-500 font-bold uppercase tracking-[0.5em]">Private Wealth Tier</span>
+            </div>
+            <h1 className="text-6xl sm:text-8xl md:text-9xl font-headline font-bold text-white uppercase tracking-tighter leading-none mb-2">
+              {detail.company_name}
+            </h1>
+            <p className="text-xl md:text-2xl font-headline text-slate-400 capitalize tracking-tight">Ticker:  {detail.symbol}</p>
+          </div>
+
+          <div className="text-right group">
+            <span className="text-[10px] text-slate-500 font-black uppercase tracking-[0.5em] mb-4 block italic">Current Valuation</span>
+            <div className="text-6xl md:text-7xl font-bold font-headline tracking-tighter text-white">
+              ₹{detail.latest_close?.toFixed(2) ?? "—"}
+            </div>
+            
+            <div className="flex flex-wrap justify-end gap-3 mt-8">
+              <button 
+                onClick={handleSyncDaily} 
+                disabled={syncingPrices}
+                className="font-label text-[10px] md:text-[11px] uppercase tracking-widest font-black text-white border border-emerald-500/30 hover:bg-emerald-500/10 transition-all rounded-xl px-4 md:px-5 py-3 flex items-center gap-2 md:gap-3 bg-emerald-500/5 shadow-lg shadow-emerald-500/5 cursor-pointer whitespace-nowrap"
+              >
+                <span className={`material-symbols-outlined text-[16px] md:text-[18px] ${syncingPrices ? 'animate-spin text-emerald-500' : 'text-emerald-500'}`}>sync</span>
+                {syncingPrices ? 'Syncing...' : 'Sync Price & History'}
+              </button>
+              <button 
+                onClick={handleSyncFundamentals} 
+                disabled={syncingFundamentals}
+                className="font-label text-[10px] md:text-[11px] uppercase tracking-widest font-black text-white border border-primary/30 hover:bg-primary/10 transition-all rounded-xl px-4 md:px-5 py-3 flex items-center gap-2 md:gap-3 bg-primary/5 shadow-lg shadow-primary/5 cursor-pointer whitespace-nowrap"
+              >
+                <span className={`material-symbols-outlined text-[16px] md:text-[18px] ${syncingFundamentals ? 'animate-spin text-primary' : 'text-primary'}`}>sync</span>
+                {syncingFundamentals ? 'Syncing...' : 'Sync Fundamentals'}
+              </button>
+            </div>
+          </div>
+        </div>
+
+        {/* Global Tabs */}
+        <div className="flex gap-8 mb-16 border-b border-outline-variant/20 overflow-x-auto no-scrollbar">
+          {[
+            { id: "oracle", label: "Intelligence" },
+            { id: "fundamentals", label: "Fundamental Lattice" }
+          ].map(tab => (
+            <button
+              key={tab.id}
+              onClick={() => setActiveTab(tab.id)}
+              className={`pb-4 font-label text-[11px] font-black uppercase tracking-[0.4em] transition-all whitespace-nowrap ${activeTab === tab.id
+                ? "text-primary border-b-2 border-primary"
+                : "text-slate-500 hover:text-white"
+                }`}
+            >
+              {tab.label}
+            </button>
+          ))}
+        </div>
+
+        {/* Dynamic Content */}
+        <AnimatePresence mode="wait">
+          {activeTab === "oracle" && (
+            <motion.div key="oracle" initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }} className="flex flex-col xl:flex-row gap-16">
+
+              {/* Left Column: Data Grid & Profile */}
+              <div className="flex-1 flex flex-col gap-12">
+
+                {/* Mobile Price View */}
+                <div className="md:hidden glass-panel p-8 rounded-[2rem] border border-outline-variant/10">
+                  <span className="text-[10px] text-slate-500 font-black uppercase tracking-widest block mb-2">Valuation</span>
+                  <div className="text-5xl font-bold font-headline tracking-tighter text-white">₹{detail.latest_close?.toFixed(2)}</div>
+                  <div className={`text-xl font-black mt-2 tracking-tighter ${changeColor}`}>{detail.change_pct > 0 ? "+" : ""}{detail.change_pct?.toFixed(2)}%</div>
+                </div>
+
+                <section>
+                  <h3 className="font-headline text-3xl font-bold italic mb-8 tracking-tighter">Capitalization & Multiples</h3>
+                  <div className="grid grid-cols-2 md:grid-cols-3 gap-1">
+                    <DataCell label="Sector" value={detail.sector} />
+                    <DataCell label="P/E Ratio" value={ratios?.pe_ratio?.toFixed(1) || '—'} />
+                    <DataCell label="P/B Ratio" value={ratios?.pb_ratio?.toFixed(1) || '—'} />
+                    <DataCell label="ROE" value={ratios?.roe ? `${ratios.roe.toFixed(1)}%` : '—'} />
+                    <DataCell label="D/E Ratio" value={ratios?.debt_equity?.toFixed(2) || '—'} />
+                    <DataCell label="Rating" value={detail.rating_label ? detail.rating_label.replace("_", " ") : '—'} highlight />
+                  </div>
+                </section>
+
+                <section>
+                  <h3 className="font-headline text-3xl font-bold italic mb-8 tracking-tighter">Technical Gauge</h3>
+                  <div className="grid grid-cols-2 gap-1">
+                    <DataCell label="RSI (14)" value={detail.rsi_14?.toFixed(1) || '—'} />
+                    <DataCell label="MACD Hist" value={detail.macd_hist?.toFixed(3) || '—'} />
+                    <DataCell label="Close vs 50 SMA" value={detail.latest_close && detail.sma_50 ? `${((detail.latest_close / detail.sma_50 - 1) * 100).toFixed(1)}%` : '—'} />
+                    <DataCell label="Close vs 200 SMA" value={detail.latest_close && detail.sma_200 ? `${((detail.latest_close / detail.sma_200 - 1) * 100).toFixed(1)}%` : '—'} />
+                  </div>
+                </section>
+
+                <section>
+                  <h3 className="font-headline text-3xl font-bold italic mb-6 tracking-tighter">Market Stance & Profile</h3>
+                  <div className="bg-surface-container-low p-10 rounded-[2rem] border-l-2 border-primary/40 shadow-xl mb-12">
+                    <p className="text-slate-400 font-medium leading-relaxed italic">
+                      {detail.company_name} operates within the highly competitive {detail.sector} sector. As a tier-1 component of the equity matrix, its market dynamics dictate substantial capital flows across institutional portfolios. Current algorithmic models suggest continuous monitoring of its P/E multiple relative to sub-sector peers.
+                    </p>
+                  </div>
+                </section>
+                
+                <section>
+                  <div className="flex items-center justify-between mb-6">
+                    <h3 className="font-headline text-3xl font-bold italic tracking-tighter">Price Performance</h3>
+                    <div className="flex bg-surface-container-low rounded-xl p-1 shadow-lg border border-outline-variant/5">
+                      {timeframes.map(tf => (
+                        <button
+                          key={tf.id}
+                          onClick={() => setActiveTimeframe(tf.id)}
+                          className={`px-4 py-2 rounded-lg text-xs font-black tracking-widest transition-all ${
+                            activeTimeframe === tf.id 
+                              ? 'bg-primary text-on-primary shadow shadow-primary/20' 
+                              : 'text-slate-500 hover:text-white hover:bg-white/5'
+                          }`}
+                        >
+                          {tf.id}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                  
+                  <div className="glass-panel p-8 rounded-[2rem] border border-outline-variant/10 h-80 relative overflow-hidden">
+                    <div className="absolute inset-0 bg-gradient-to-br from-primary/5 to-transparent pointer-events-none blur-3xl opacity-30"></div>
+                    {priceHistory.length > 0 ? (
+                      <ResponsiveContainer width="100%" height="100%">
+                        <AreaChart data={priceHistory} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
+                            <defs>
+                              <linearGradient id="colorClose" x1="0" y1="0" x2="0" y2="1">
+                                <stop offset="5%" stopColor="#e9c349" stopOpacity={0.3}/>
+                                <stop offset="95%" stopColor="#e9c349" stopOpacity={0}/>
+                              </linearGradient>
+                            </defs>
+                            <XAxis 
+                              dataKey="time" 
+                              stroke="#64748b" 
+                              fontSize={10} 
+                              tickLine={false}
+                              axisLine={false}
+                              tickFormatter={(val) => {
+                                const d = new Date(val);
+                                return activeTimeframe === '1M' || activeTimeframe === '6M' 
+                                  ? d.toLocaleDateString('en-IN', {day: 'numeric', month:'short'})
+                                  : d.toLocaleDateString('en-IN', {month:'short', year:'2-digit'});
+                              }} 
+                            />
+                            <YAxis 
+                              stroke="#64748b" 
+                              fontSize={10} 
+                              tickLine={false}
+                              axisLine={false}
+                              domain={['auto', 'auto']} 
+                              tickFormatter={(val) => `₹${val}`} 
+                            />
+                            <Tooltip 
+                              contentStyle={{ backgroundColor: 'rgba(27, 32, 37, 0.9)', backdropFilter: 'blur(10px)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '1rem', color: '#fff', fontSize: '12px' }} 
+                              itemStyle={{ color: '#e9c349', fontWeight: 'bold' }}
+                              labelStyle={{ color: '#94a3b8', marginBottom: '4px' }}
+                            />
+                            <Area 
+                              type="monotone" 
+                              dataKey="close" 
+                              stroke="#e9c349" 
+                              strokeWidth={3} 
+                              fillOpacity={1} 
+                              fill="url(#colorClose)" 
+                              animationDuration={1500}
+                            />
+                        </AreaChart>
+                      </ResponsiveContainer>
+                    ) : (
+                      <div className="h-full flex items-center justify-center text-slate-500 font-label text-xs uppercase tracking-widest relative z-10">No Price Data Retained</div>
+                    )}
+                  </div>
+                </section>
+              </div>
+
+              {/* Right Column: Sovereign's Oracle */}
+              <div className="xl:w-[450px] shrink-0">
+                <div className={`sticky top-32 glass-panel rounded-[3rem] p-10 border border-outline-variant/10 ${glowClass} relative overflow-hidden`}>
+                  {/* Glass Sheen */}
+                  <div className="absolute inset-x-0 -top-10 h-32 bg-gradient-to-b from-white/5 to-transparent blur-2xl"></div>
+
+                  <div className="flex items-center gap-4 mb-8 relative z-10">
+                    <div className="w-12 h-12 bg-primary/10 rounded-full flex items-center justify-center border border-primary/30">
+                      <span className="material-symbols-outlined text-primary">psychology</span>
+                    </div>
+                    <div>
+                      <h4 className="text-[10px] font-black uppercase tracking-[0.4em] text-primary">The Sovereign's Oracle</h4>
+                      <p className="text-xs text-slate-500 font-label tracking-widest uppercase">Deep Generative Analysis</p>
+                    </div>
+                  </div>
+
+                  <div className="space-y-8 relative z-10">
+                    <div>
+                      <h5 className="font-headline text-white font-bold mb-3 italic">Investment Thesis</h5>
+                      <p className="text-sm text-slate-400 font-label leading-relaxed">
+                        {detail.symbol} currently maintains a robust vector in {detail.sector}. Our agentic models indicate that systemic value capture is stabilizing. Retail sentiment is fractured, yet institutional accumulation remains at {detail.roe > 15 ? 'elevated' : 'moderate'} levels. The algorithmic rating registers a definitive <strong className="text-white">{detail.rating_label ? detail.rating_label.replace("_", " ") : 'HOLD'}</strong>.
+                      </p>
+                    </div>
+
+                    <div>
+                      <h5 className="text-[10px] font-black tracking-[0.3em] uppercase text-secondary mb-4">• Upside Catalysts</h5>
+                      <ul className="text-xs font-label text-white/80 space-y-3 pl-4 border-l border-white/5">
+                        <li>Institutional portfolio recalibration towards {detail.sector}.</li>
+                        <li>Potential multiple expansion if trailing metrics hold.</li>
+                      </ul>
+                    </div>
+
+                    <div>
+                      <h5 className="text-[10px] font-black tracking-[0.3em] uppercase text-error mb-4">• Risk Vectors</h5>
+                      <ul className="text-xs font-label text-white/80 space-y-3 pl-4 border-l border-white/5">
+                        <li>Macroeconomic liquidity tightening affecting capitalization.</li>
+                        <li>Sub-sector momentum divergence indicating exhaustion.</li>
+                      </ul>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+            </motion.div>
+          )}
+
+          {activeTab === "fundamentals" && (
+            <motion.div key="fundamentals" initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }}>
+              <FundamentalsTab 
+                data={fundamentals} 
+                stmtType={stmtType} 
+                onStmtChange={setStmtType} 
+                loading={loadingFundamentals} 
+                shareholdingData={shareholding}
+                shareholdingLoading={loadingShareholding}
+              />
+            </motion.div>
+          )}
+        </AnimatePresence>
+
+      </div>
+    </div>
+  );
+}
+
+function DataCell({ label, value, highlight }) {
+  return (
+    <div className={`bg-surface-container-low p-8 first:rounded-tl-[2rem] last:rounded-br-[2rem] border-[0.5px] border-surface transition-colors hover:bg-surface-container`}>
+      <p className="text-[10px] text-slate-500 font-black uppercase tracking-[0.3em] mb-4">{label}</p>
+      <p className={`text-2xl md:text-3xl font-headline font-bold tracking-tighter ${highlight ? 'text-primary' : 'text-white'}`}>{value}</p>
+    </div>
+  );
+}
+
+function FundamentalsTab({ data, stmtType, onStmtChange, loading, shareholdingData, shareholdingLoading }) {
+  const labels = { PL: "Profit & Loss", BS: "Balance Sheet", CF: "Cash Flow", Ownership: "Ownership Topology" };
+  const stmtOptions = ["PL", "BS", "CF", "Ownership"];
+
+  return (
+    <div className="space-y-12 animate-fadeIn">
+      {/* High-Fidelity Statement Toggles */}
+      <div className="flex bg-surface-container-low/40 p-2 rounded-2xl border border-white/5 w-fit">
+        {stmtOptions.map(t => (
+          <button
+            key={t}
+            onClick={() => onStmtChange(t)}
+            className={`px-8 py-3 rounded-xl font-black text-[10px] tracking-[0.2em] uppercase transition-all ${
+              stmtType === t
+                ? "bg-primary text-black shadow-lg shadow-primary/20"
+                : "text-slate-500 hover:text-white hover:bg-white/5"
+            }`}
+          >
+            {labels[t]}
+          </button>
+        ))}
+      </div>
+
+      {stmtType === 'Ownership' ? (
+        <ShareholdingTab data={shareholdingData} loading={shareholdingLoading} />
+      ) : loading ? (
+        <div className="space-y-8">
+          <div className="flex gap-4 animate-pulse">
+            {[1, 2, 3].map(i => <div key={i} className="h-10 w-32 bg-white/5 rounded-xl"></div>)}
+          </div>
+          <div className="h-96 bg-surface-container-low/30 border border-white/5 rounded-[2.5rem] animate-pulse" />
+        </div>
+      ) : !data?.records?.length ? (
+        <div className="glass-panel p-20 text-center rounded-[3rem] border border-white/5">
+          <span className="material-symbols-outlined text-4xl text-slate-800 mb-4 block">database_off</span>
+          <p className="text-[10px] uppercase font-black tracking-widest text-slate-600">No Intelligence Recovered</p>
+        </div>
+      ) : (
+        <div className="glass-panel overflow-hidden rounded-[2.5rem] border border-white/5 shadow-2xl bg-surface-container-lowest/20">
+          <div className="overflow-x-auto">
+            <table className="w-full text-left border-collapse">
+              <thead>
+                <tr className="border-b border-white/5 bg-white/[0.02]">
+                  <th className="p-8 text-[10px] text-slate-500 font-black uppercase tracking-[0.4em]">Metric Architecture</th>
+                  {data.records.map(r => (
+                    <th key={r.period_end} className="p-8 text-[10px] text-slate-500 font-black uppercase tracking-[0.4em] text-right whitespace-nowrap">
+                      {r.period_end}
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {data.records[0]?.data && Object.entries(data.records[0].data).map(([key]) => (
+                  <tr key={key} className="border-b border-white/[0.03] hover:bg-white/[0.02] transition-all group">
+                    <td className="p-8">
+                      <div className="flex flex-col gap-1">
+                        <span className="text-sm font-bold text-white/90 group-hover:text-primary transition-colors uppercase tracking-tight font-headline">
+                          {key.replace(/_/g, " ")}
+                        </span>
+                        <span className="text-[9px] text-slate-600 font-medium uppercase tracking-widest group-hover:text-slate-400 transition-colors">
+                          Soverign Verified Metric
+                        </span>
+                      </div>
+                    </td>
+                    {data.records.map(r => (
+                      <td key={r.period_end} className="p-8 text-right align-middle">
+                        <span className="font-headline text-lg font-semibold text-white tracking-tighter">
+                          {r.data[key] != null ? r.data[key].toLocaleString("en-IN") : "—"}
+                        </span>
+                      </td>
+                    ))}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function ShareholdingTab({ data, loading }) {
+  if (loading) {
+    return <div className="h-64 bg-surface-container-lowest border border-outline-variant/10 rounded-[3rem] animate-pulse" />;
+  }
+
+  if (!data?.records?.length) {
+    return <div className="text-center py-20 text-[10px] uppercase font-black tracking-widest text-slate-500">No Intelligence Recovered</div>;
+  }
+
+  return (
+    <div className="glass-panel overflow-x-auto rounded-[3rem] border border-outline-variant/10 shadow-2xl animate-fadeIn">
+      <table className="w-full text-left">
+        <thead>
+          <tr className="border-b border-outline-variant/20 bg-surface-container/30">
+            <th className="p-8 text-[10px] text-slate-500 font-black uppercase tracking-[0.5em]">Epoch Filter</th>
+            <th className="p-8 text-[10px] text-slate-500 font-black uppercase tracking-[0.5em] text-right">Promoter %</th>
+            <th className="p-8 text-[10px] text-slate-500 font-black uppercase tracking-[0.5em] text-right">FII %</th>
+            <th className="p-8 text-[10px] text-slate-500 font-black uppercase tracking-[0.5em] text-right">DII %</th>
+            <th className="p-8 text-[10px] text-slate-500 font-black uppercase tracking-[0.5em] text-right">Public %</th>
+            <th className="p-8 text-[10px] text-slate-500 font-black uppercase tracking-[0.5em] text-right">Pledged %</th>
+          </tr>
+        </thead>
+        <tbody>
+          {data.records.map(r => (
+            <tr key={r.period_end} className="border-b border-outline-variant/10 hover:bg-white/[0.03] transition-colors">
+              <td className="p-8 font-headline text-lg font-bold text-white">{r.period_end}</td>
+              <td className="p-8 text-right font-headline text-lg text-white">{r.promoter_pct?.toFixed(2) ?? "—"}</td>
+              <td className="p-8 text-right font-headline text-xl text-secondary font-black bg-secondary/5">{r.fii_pct?.toFixed(2) ?? "—"}</td>
+              <td className="p-8 text-right font-headline text-lg text-white">{r.dii_pct?.toFixed(2) ?? "—"}</td>
+              <td className="p-8 text-right font-headline text-lg text-slate-400">{r.public_pct?.toFixed(2) ?? "—"}</td>
+              <td className="p-8 text-right font-headline text-lg text-error/80">{r.pledged_pct?.toFixed(2) ?? "—"}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}

@@ -1,4 +1,5 @@
-from sqlalchemy import Column, String, Numeric, TIMESTAMP, Date, Boolean, ForeignKey, text, Index
+from sqlalchemy import Column, String, Numeric, TIMESTAMP, Date, Boolean, ForeignKey, text, Index, Integer, BigInteger, Text, UniqueConstraint
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.sql import func
 from sqlalchemy.orm import relationship
 import uuid
@@ -167,3 +168,180 @@ class FundMetrics(Base):
     fund = relationship("FundMaster", back_populates="metrics")
 
 
+# ─── Stock Market Models (Phase 1) ────────────────────────────────────────────
+
+class Stock(Base):
+    __tablename__ = "stocks"
+
+    id             = Column(Integer, primary_key=True)
+    symbol         = Column(String(20), nullable=False, unique=True)
+    nse_symbol     = Column(String(20))
+    bse_code       = Column(String(10))
+    yf_symbol      = Column(String(30), nullable=False)
+    screener_slug  = Column(String(50))
+    company_name   = Column(String(255), nullable=False)
+    sector         = Column(String(100))
+    industry       = Column(String(100))
+    market_cap_cat = Column(String(10))
+    is_index       = Column(Boolean, default=False)
+    is_active      = Column(Boolean, default=True)
+    data_quality   = Column(String(10), default="OK")
+    created_at     = Column(TIMESTAMP(timezone=True), server_default=func.now())
+    updated_at     = Column(TIMESTAMP(timezone=True), server_default=func.now(), onupdate=func.now())
+
+
+class PriceData(Base):
+    __tablename__ = "price_data"
+
+    id         = Column(BigInteger, primary_key=True)
+    stock_id   = Column(Integer, ForeignKey("stocks.id", ondelete="CASCADE"), nullable=False)
+    price_date = Column(Date, nullable=False)
+    open       = Column(Numeric(12, 4))
+    high       = Column(Numeric(12, 4))
+    low        = Column(Numeric(12, 4))
+    close      = Column(Numeric(12, 4), nullable=False)
+    adj_close  = Column(Numeric(12, 4))
+    volume     = Column(BigInteger)
+
+
+class FinancialStatement(Base):
+    __tablename__ = "financial_statements"
+
+    id             = Column(Integer, primary_key=True)
+    stock_id       = Column(Integer, ForeignKey("stocks.id", ondelete="CASCADE"), nullable=False)
+    statement_type = Column(String(5), nullable=False)   # 'PL' | 'BS' | 'CF'
+    period_type    = Column(String(10), nullable=False)  # 'annual' | 'quarterly'
+    period_end     = Column(Date, nullable=False)
+    currency       = Column(String(5), default="INR")
+    data           = Column(JSONB, nullable=False)
+    raw_data       = Column(JSONB)
+    scraped_at     = Column(TIMESTAMP(timezone=True), server_default=func.now())
+    raw_checksum   = Column(String(64))
+
+
+class ShareholdingPattern(Base):
+    __tablename__ = "shareholding_pattern"
+
+    id              = Column(Integer, primary_key=True)
+    stock_id        = Column(Integer, ForeignKey("stocks.id", ondelete="CASCADE"), nullable=False)
+    period_end      = Column(Date, nullable=False)
+    promoter_pct    = Column(Numeric(6, 3))
+    fii_pct         = Column(Numeric(6, 3))
+    dii_pct         = Column(Numeric(6, 3))
+    public_pct      = Column(Numeric(6, 3))
+    pledged_pct     = Column(Numeric(6, 3))
+    promoter_change = Column(Numeric(6, 3))
+    fii_change      = Column(Numeric(6, 3))
+    scraped_at      = Column(TIMESTAMP(timezone=True), server_default=func.now())
+
+
+class FinancialRatio(Base):
+    __tablename__ = "financial_ratios"
+
+    id             = Column(Integer, primary_key=True)
+    stock_id       = Column(Integer, ForeignKey("stocks.id", ondelete="CASCADE"), nullable=False)
+    period_end     = Column(Date, nullable=False)
+    period_type    = Column(String(10), nullable=False)
+    pe_ratio       = Column(Numeric(10, 3))
+    pb_ratio       = Column(Numeric(10, 3))
+    ps_ratio       = Column(Numeric(10, 3))
+    ev_ebitda      = Column(Numeric(10, 3))
+    peg_ratio      = Column(Numeric(10, 3))
+    roe            = Column(Numeric(10, 3))
+    roce           = Column(Numeric(10, 3))
+    roa            = Column(Numeric(10, 3))
+    gross_margin   = Column(Numeric(10, 3))
+    ebitda_margin  = Column(Numeric(10, 3))
+    pat_margin     = Column(Numeric(10, 3))
+    debt_equity    = Column(Numeric(10, 3))
+    interest_cov   = Column(Numeric(10, 3))
+    current_ratio  = Column(Numeric(10, 3))
+    quick_ratio    = Column(Numeric(10, 3))
+    revenue_growth = Column(Numeric(10, 3))
+    pat_growth     = Column(Numeric(10, 3))
+    eps_growth     = Column(Numeric(10, 3))
+    eps            = Column(Numeric(12, 4))
+    book_value_ps  = Column(Numeric(12, 4))
+    dividend_yield = Column(Numeric(8, 4))
+    cfo_to_pat     = Column(Numeric(10, 3))
+    computed_at    = Column(TIMESTAMP(timezone=True), server_default=func.now())
+
+
+class TechnicalIndicator(Base):
+    __tablename__ = "technical_indicators"
+
+    id            = Column(BigInteger, primary_key=True)
+    stock_id      = Column(Integer, ForeignKey("stocks.id", ondelete="CASCADE"), nullable=False)
+    ind_date      = Column(Date, nullable=False)
+    timeframe     = Column(String(5), nullable=False)
+    sma_20        = Column(Numeric(12, 4))
+    sma_50        = Column(Numeric(12, 4))
+    sma_200       = Column(Numeric(12, 4))
+    ema_9         = Column(Numeric(12, 4))
+    ema_21        = Column(Numeric(12, 4))
+    ema_50        = Column(Numeric(12, 4))
+    rsi_14        = Column(Numeric(8, 4))
+    macd_line     = Column(Numeric(12, 4))
+    macd_signal   = Column(Numeric(12, 4))
+    macd_hist     = Column(Numeric(12, 4))
+    bb_upper      = Column(Numeric(12, 4))
+    bb_middle     = Column(Numeric(12, 4))
+    bb_lower      = Column(Numeric(12, 4))
+    atr_14        = Column(Numeric(12, 4))
+    adx_14        = Column(Numeric(8, 4))
+    stoch_k       = Column(Numeric(8, 4))
+    stoch_d       = Column(Numeric(8, 4))
+    volume_sma_20 = Column(BigInteger)
+
+
+class DetectedPattern(Base):
+    __tablename__ = "detected_patterns"
+
+    id             = Column(Integer, primary_key=True)
+    stock_id       = Column(Integer, ForeignKey("stocks.id", ondelete="CASCADE"), nullable=False)
+    pattern_type   = Column(String(30), nullable=False)
+    timeframe      = Column(String(5), nullable=False)
+    detected_on    = Column(Date, nullable=False)
+    pattern_start  = Column(Date, nullable=False)
+    pattern_end    = Column(Date, nullable=False)
+    breakout_level = Column(Numeric(12, 4))
+    direction      = Column(String(10))
+    confidence     = Column(Numeric(4, 3))
+    is_active      = Column(Boolean, default=True)
+    metadata_      = Column("metadata", JSONB)
+    created_at     = Column(TIMESTAMP(timezone=True), server_default=func.now())
+
+
+class StockRating(Base):
+    __tablename__ = "stock_ratings"
+    __table_args__ = (
+        UniqueConstraint("stock_id", "rated_on", name="uq_stock_rating_stock_date"),
+    )
+
+    id                 = Column(Integer, primary_key=True)
+    stock_id           = Column(Integer, ForeignKey("stocks.id", ondelete="CASCADE"), nullable=False)
+    rated_on           = Column(Date, nullable=False)
+    total_score        = Column(Numeric(6, 3))
+    rating_label       = Column(String(15))
+    fundamental_score  = Column(Numeric(6, 3))
+    valuation_score    = Column(Numeric(6, 3))
+    technical_score    = Column(Numeric(6, 3))
+    momentum_score     = Column(Numeric(6, 3))
+    quality_score      = Column(Numeric(6, 3))   # reserved for future quality metrics
+    shareholding_score = Column(Numeric(6, 3))
+    score_breakdown_   = Column("score_breakdown", JSONB)
+
+
+class PipelineAudit(Base):
+    __tablename__ = "pipeline_audit"
+
+    id          = Column(Integer, primary_key=True)
+    job_name    = Column(String(60), nullable=False)
+    stock_id    = Column(Integer, ForeignKey("stocks.id"))
+    status      = Column(String(10), nullable=False)
+    started_at  = Column(TIMESTAMP(timezone=True), server_default=func.now())
+    ended_at    = Column(TIMESTAMP(timezone=True))
+    records_in  = Column(Integer, default=0)
+    records_out = Column(Integer, default=0)
+    error_msg   = Column(Text)
+    metadata_   = Column("metadata", JSONB)

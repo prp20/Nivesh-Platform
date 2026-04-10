@@ -6,16 +6,23 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
 
 from .config import settings
-from .routers import funds, benchmarks, navs, benchmark_navs, metrics, sync, auth
+from .routers import funds, benchmarks, navs, benchmark_navs, metrics, sync, auth, stocks, screener, pipeline
 from .database import engine, Base
+from pipeline.scheduler import configure_scheduler, scheduler
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     # Startup logic
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
+
+    # Configure and start scheduler
+    configure_scheduler()
+    scheduler.start()
+
     yield
-    # Shutdown logic (none needed for now)
+    # Shutdown logic
+    scheduler.shutdown(wait=False)
 
 app = FastAPI(
     title=settings.PROJECT_NAME,
@@ -41,6 +48,9 @@ app.include_router(navs.router, prefix=settings.API_V1_STR)
 app.include_router(benchmark_navs.router, prefix=settings.API_V1_STR)
 app.include_router(metrics.router, prefix=settings.API_V1_STR)
 app.include_router(sync.router, prefix=settings.API_V1_STR)
+app.include_router(stocks.router, prefix=settings.API_V1_STR)
+app.include_router(screener.router, prefix=settings.API_V1_STR)
+app.include_router(pipeline.router, prefix=settings.API_V1_STR)
 
 @app.get("/api/health", tags=["root"])
 async def root():

@@ -5,6 +5,8 @@ import fundsReducer from './slices/fundsSlice';
 import indicesReducer from './slices/indicesSlice';
 import fundDetailReducer from './slices/fundDetailSlice';
 import dashboardReducer from './slices/dashboardSlice';
+import stocksReducer from './slices/stocksSlice';
+import stockCompareReducer from './slices/stockCompareSlice';
 
 export const store = configureStore({
   reducer: {
@@ -14,5 +16,7 @@ export const store = configureStore({
     indices: indicesReducer,
     fundDetail: fundDetailReducer,
     dashboard: dashboardReducer,
+    stocks: stocksReducer,
+    stockCompare: stockCompareReducer,
   },
 });
