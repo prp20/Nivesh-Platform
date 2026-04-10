@@ -12,3 +12,5 @@ frontend/dist
 backend/venv
 backend/db_data
 backend/__pycache__
+CLAUDE.md
+.claude/
