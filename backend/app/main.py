@@ -64,19 +64,35 @@ async def root():
 dist_dir = Path(__file__).parent.parent.parent / "frontend" / "dist"
 
 if dist_dir.exists() and dist_dir.is_dir():
-    app.mount("/assets", StaticFiles(directory=dist_dir / "assets"), name="assets")
-    
+    # Mount /assets (JS/CSS chunks)
+    assets_dir = dist_dir / "assets"
+    if assets_dir.exists():
+        app.mount("/assets", StaticFiles(directory=assets_dir), name="assets")
+
     @app.get("/{full_path:path}", include_in_schema=False)
     async def serve_spa(full_path: str):
+        # Let API and docs routes fall through to their own handlers
+        if full_path.startswith("api/") or full_path in ("docs", "redoc", "openapi.json"):
+            from fastapi import HTTPException
+            raise HTTPException(status_code=404, detail="Not found")
+
+        # Serve the exact file if it exists in dist (favicon, robots.txt, etc.)
+        requested = dist_dir / full_path
+        if requested.exists() and requested.is_file():
+            return FileResponse(requested)
+
+        # Fall back to index.html for all SPA client-side routes
         index_file = dist_dir / "index.html"
         if index_file.exists():
             return FileResponse(index_file)
-        return {"error": "Frontend build not found"}
+
+        from fastapi import HTTPException
+        raise HTTPException(status_code=404, detail="Frontend build not found")
 else:
     @app.get("/", tags=["root"])
     async def fallback_root():
         return {
             "message": f"{settings.PROJECT_NAME} API",
             "status": "running",
-            "warning": "Frontend not built. Run 'npm run build' in frontend directory to serve SPA."
+            "warning": "Frontend not built. Run 'npm run build' in frontend directory to serve SPA.",
         }
