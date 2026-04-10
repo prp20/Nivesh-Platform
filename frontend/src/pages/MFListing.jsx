@@ -86,19 +86,21 @@ const MFListing = () => {
                     <div className="h-12 w-px bg-white/10 mx-4 hidden 3xl:block"></div>
                     
                     <div className="flex bg-black/40 p-2 rounded-2xl border border-white/5">
-                        <button 
+                        <button
                             onClick={() => dispatch(setViewMode('card'))}
                             className={`p-3 rounded-xl transition-all flex items-center gap-3 ${viewMode === 'card' ? 'bg-white/10 text-primary shadow-inner' : 'text-slate-500 hover:text-slate-300'}`}
                             title="Grid Perspective"
+                            aria-label="Switch to grid view"
                         >
-                            <span className="material-symbols-outlined text-xl">grid_view</span>
+                            <span className="material-symbols-outlined text-xl" aria-hidden="true">grid_view</span>
                         </button>
-                        <button 
+                        <button
                             onClick={() => dispatch(setViewMode('table'))}
                             className={`p-3 rounded-xl transition-all flex items-center gap-3 ${viewMode === 'table' ? 'bg-white/10 text-primary shadow-inner' : 'text-slate-500 hover:text-slate-300'}`}
                             title="Analytical Ledger"
+                            aria-label="Switch to table view"
                         >
-                            <span className="material-symbols-outlined text-xl">table_rows</span>
+                            <span className="material-symbols-outlined text-xl" aria-hidden="true">table_rows</span>
                         </button>
                     </div>
                 </div>

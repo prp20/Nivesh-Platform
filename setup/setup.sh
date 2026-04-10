@@ -158,18 +158,36 @@ step "Step 3: Installing ta-lib C Library"
 OS="$(uname -s)"
 TALIB_INSTALLED=false
 
-if [[ "$OS" == "Darwin" ]]; then
+# ── Universal pre-check: is ta-lib already present on the system? ─────────────
+# Covers: prior source installs, apt/brew installs, custom prefix installs.
+_talib_already_present() {
+  # 1. pkg-config knows about it
+  if command -v pkg-config &>/dev/null && pkg-config --exists ta-lib 2>/dev/null; then
+    return 0
+  fi
+  # 2. The shared library is visible to the dynamic linker
+  if ldconfig -p 2>/dev/null | grep -q 'libta_lib'; then
+    return 0
+  fi
+  # 3. The header file exists at common install prefixes
+  for _h in /usr/include/ta-lib/ta_libc.h \
+             /usr/local/include/ta-lib/ta_libc.h \
+             /opt/homebrew/include/ta-lib/ta_libc.h; do
+    [[ -f "$_h" ]] && return 0
+  done
+  return 1
+}
+
+if _talib_already_present; then
+  success "ta-lib C library already installed — skipping installation."
+  TALIB_INSTALLED=true
+elif [[ "$OS" == "Darwin" ]]; then
   # macOS
   if command -v brew &>/dev/null; then
-    if brew list ta-lib &>/dev/null 2>&1; then
-      success "ta-lib already installed via Homebrew."
-      TALIB_INSTALLED=true
-    else
-      info "Installing ta-lib via Homebrew..."
-      brew install ta-lib
-      success "ta-lib installed via Homebrew."
-      TALIB_INSTALLED=true
-    fi
+    info "Installing ta-lib via Homebrew..."
+    brew install ta-lib
+    success "ta-lib installed via Homebrew."
+    TALIB_INSTALLED=true
   else
     warn "Homebrew not found. Install Homebrew first: https://brew.sh"
     warn "Then run: brew install ta-lib"
@@ -179,18 +197,13 @@ if [[ "$OS" == "Darwin" ]]; then
 elif [[ "$OS" == "Linux" ]]; then
   # Try apt-get first (Ubuntu/Debian)
   if command -v apt-get &>/dev/null; then
-    if dpkg -l libta-lib-dev &>/dev/null 2>&1; then
-      success "ta-lib (libta-lib-dev) already installed."
+    info "Installing ta-lib via apt-get (requires sudo)..."
+    sudo apt-get update -qq
+    if sudo apt-get install -y libta-lib-dev &>/dev/null 2>&1; then
+      success "ta-lib installed via apt-get."
       TALIB_INSTALLED=true
     else
-      info "Installing ta-lib via apt-get (requires sudo)..."
-      sudo apt-get update -qq
-      if sudo apt-get install -y libta-lib-dev &>/dev/null 2>&1; then
-        success "ta-lib installed via apt-get."
-        TALIB_INSTALLED=true
-      else
-        warn "apt-get install failed. Falling back to source compile."
-      fi
+      warn "apt-get install failed. Falling back to source compile."
     fi
   fi
 

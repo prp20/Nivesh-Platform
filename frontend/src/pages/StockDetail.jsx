@@ -5,6 +5,7 @@ import { fetchStockDetail, triggerFullStockSync } from "../store/slices/stocksSl
 import stockService from "../api/services/stockService";
 import { motion, AnimatePresence } from 'framer-motion';
 import { AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer } from 'recharts';
+import toast from 'react-hot-toast';
 
 export default function StockDetail() {
   const { symbol } = useParams();
@@ -62,11 +63,14 @@ export default function StockDetail() {
       await stockService.triggerDeepPriceSync(symbol, "1y");
       await stockService.triggerTechnicalAnalysis(symbol);
       await stockService.triggerRatingCompute(symbol);
-      const hist = await stockService.getPriceHistory(symbol, { interval: timeframes.find(t => t.id === activeTimeframe).interval, limit: timeframes.find(t => t.id === activeTimeframe).limit });
+      const tf = timeframes.find(t => t.id === activeTimeframe) || timeframes[2];
+      const hist = await stockService.getPriceHistory(symbol, { interval: tf.interval, limit: tf.limit });
       setPriceHistory(hist.data);
       dispatch(fetchStockDetail(symbol));
-    } catch (e) {
-      console.error(e);
+      toast.success('Price data synced successfully');
+    } catch (error) {
+      console.error('Sync failed:', error);
+      toast.error('Failed to sync price data. Please try again.');
     } finally {
       setSyncingPrices(false);
     }
@@ -83,8 +87,10 @@ export default function StockDetail() {
       if (rat.records?.length > 0) setRatios(rat.records[0]);
       setFundamentals(fund);
       dispatch(fetchStockDetail(symbol));
-    } catch (e) {
-      console.error(e);
+      toast.success('Fundamental data synced successfully');
+    } catch (error) {
+      console.error('Fundamental sync failed:', error);
+      toast.error('Failed to sync fundamental data. Please try again.');
     } finally {
       setSyncingFundamentals(false);
     }

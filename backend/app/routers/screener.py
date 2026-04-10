@@ -1,90 +1,149 @@
 """
-Dynamic screener endpoint. Builds a WHERE clause from filter params.
-Joins stocks + financial_ratios + latest price in one query.
+Dynamic screener endpoint with safe query building and validated inputs.
+
+Uses FilterBuilder for parameterized WHERE clause construction and SortColumnMap
+for safe ORDER BY column selection. All numeric ranges are validated.
 """
 from fastapi import APIRouter, Query, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import text
 from typing import Optional
 from app.database import get_db
+from app.schemas import ScreenerResponse, ScreenerFilterInput
+from app.query_utils import FilterBuilder, SortColumnMap
 
 router = APIRouter()
 
+# Define allowed sort columns to prevent ORDER BY injection
+SORT_COLUMNS = SortColumnMap(
+    {
+        "total_score": "sr.total_score",
+        "roe": "r.roe",
+        "pe_ratio": "r.pe_ratio",
+        "revenue_growth": "r.revenue_growth",
+        "pat_margin": "r.pat_margin",
+        "symbol": "s.symbol",
+    }
+)
 
-@router.get("/screener")
+# Define allowed rating labels (prevent injection)
+ALLOWED_RATING_LABELS = {"STRONG BUY", "BUY", "HOLD", "SELL", "STRONG SELL"}
+
+
+@router.get("/screener", response_model=ScreenerResponse)
 async def screener(
     # Valuation filters
-    min_pe:          Optional[float] = None,
-    max_pe:          Optional[float] = None,
-    min_pb:          Optional[float] = None,
-    max_pb:          Optional[float] = None,
+    min_pe: Optional[float] = None,
+    max_pe: Optional[float] = None,
+    min_pb: Optional[float] = None,
+    max_pb: Optional[float] = None,
     # Profitability filters
-    min_roe:         Optional[float] = None,
-    min_roce:        Optional[float] = None,
-    min_pat_margin:  Optional[float] = None,
+    min_roe: Optional[float] = None,
+    min_roce: Optional[float] = None,
+    min_pat_margin: Optional[float] = None,
     min_ebitda_margin: Optional[float] = None,
     # Growth filters
     min_revenue_growth: Optional[float] = None,
-    min_pat_growth:  Optional[float] = None,
+    min_pat_growth: Optional[float] = None,
     # Leverage filters
     max_debt_equity: Optional[float] = None,
     min_interest_cov: Optional[float] = None,
     # Quality filters
-    min_cfo_to_pat:  Optional[float] = None,
+    min_cfo_to_pat: Optional[float] = None,
     # Stock filters
-    sector:          Optional[str]   = None,
-    market_cap_cat:  Optional[str]   = None,
-    rating_label:    Optional[str]   = None,
-    # Pagination
-    page:  int = Query(1, ge=1),
+    sector: Optional[str] = None,
+    market_cap_cat: Optional[str] = None,
+    rating_label: Optional[str] = None,
+    # Pagination & sorting
+    page: int = Query(1, ge=1, le=10000),
     limit: int = Query(25, ge=1, le=100),
-    sort_by: str = Query("total_score", regex="^(total_score|roe|pe_ratio|revenue_growth|pat_margin|symbol)$"),
-    order:   str = Query("desc",        regex="^(asc|desc)$"),
+    sort_by: str = Query("total_score", min_length=1, max_length=50),
+    order: str = Query("desc", regex="^(asc|desc)$"),
     db: AsyncSession = Depends(get_db),
-):
+) -> ScreenerResponse:
     """
-    Dynamic stock screener with 15+ filter parameters.
-    Builds WHERE clause from non-None filters.
+    Dynamic stock screener with 15+ validated filter parameters.
+
+    All numeric ranges are validated (min <= max), columns are restricted to allow-list,
+    and pagination is bounded. Safe against SQL injection.
+
+    Args:
+        min_pe, max_pe: P/E ratio range (0-500)
+        min_pb, max_pb: P/B ratio range (0-50)
+        min_roe: Minimum ROE (%)
+        min_roce: Minimum ROCE (%)
+        min_pat_margin: Minimum PAT margin (%)
+        min_ebitda_margin: Minimum EBITDA margin (%)
+        min_revenue_growth: Minimum revenue growth (%)
+        min_pat_growth: Minimum PAT growth (%)
+        max_debt_equity: Maximum debt/equity ratio (0-100)
+        min_interest_cov: Minimum interest coverage
+        min_cfo_to_pat: Minimum CFO-to-PAT ratio
+        sector: Sector name (string match)
+        market_cap_cat: Market cap category (Large/Mid/Small)
+        rating_label: Stock rating label
+        page: Page number (1-indexed)
+        limit: Results per page (1-100)
+        sort_by: Sort column (from SORT_COLUMNS allow-list)
+        order: Sort order (asc/desc)
+
+    Returns:
+        ScreenerResponse with results, total count, applied filters
     """
-    # Build filter clauses dynamically
-    filters = ["s.is_active = TRUE", "s.is_index = FALSE"]
-    params  = {"limit": limit, "offset": (page - 1) * limit}
+    # Validate numeric ranges
+    if min_pe is not None and max_pe is not None and min_pe > max_pe:
+        raise HTTPException(status_code=400, detail="min_pe > max_pe")
+    if min_pb is not None and max_pb is not None and min_pb > max_pb:
+        raise HTTPException(status_code=400, detail="min_pb > max_pb")
 
-    def add_filter(col, op, val, key):
-        if val is not None:
-            filters.append(f"{col} {op} :{key}")
-            params[key] = val
+    # Validate range bounds
+    if min_pe is not None and min_pe < 0:
+        raise HTTPException(status_code=400, detail="min_pe must be >= 0")
+    if max_pe is not None and max_pe > 500:
+        raise HTTPException(status_code=400, detail="max_pe must be <= 500")
+    if min_pb is not None and min_pb < 0:
+        raise HTTPException(status_code=400, detail="min_pb must be >= 0")
+    if max_pb is not None and max_pb > 50:
+        raise HTTPException(status_code=400, detail="max_pb must be <= 50")
 
-    add_filter("r.pe_ratio",         ">=", min_pe,           "min_pe")
-    add_filter("r.pe_ratio",         "<=", max_pe,           "max_pe")
-    add_filter("r.pb_ratio",         ">=", min_pb,           "min_pb")
-    add_filter("r.pb_ratio",         "<=", max_pb,           "max_pb")
-    add_filter("r.roe",              ">=", min_roe,          "min_roe")
-    add_filter("r.roce",             ">=", min_roce,         "min_roce")
-    add_filter("r.pat_margin",       ">=", min_pat_margin,   "min_pat_margin")
-    add_filter("r.ebitda_margin",    ">=", min_ebitda_margin,"min_ebitda_margin")
-    add_filter("r.revenue_growth",   ">=", min_revenue_growth,"min_revenue_growth")
-    add_filter("r.pat_growth",       ">=", min_pat_growth,   "min_pat_growth")
-    add_filter("r.debt_equity",      "<=", max_debt_equity,  "max_debt_equity")
-    add_filter("r.interest_cov",     ">=", min_interest_cov, "min_interest_cov")
-    add_filter("r.cfo_to_pat",       ">=", min_cfo_to_pat,   "min_cfo_to_pat")
-    add_filter("s.sector",           "=",  sector,           "sector")
-    add_filter("s.market_cap_cat",   "=",  market_cap_cat,   "market_cap_cat")
-    add_filter("sr.rating_label",    "=",  rating_label,     "rating_label")
+    # Validate rating_label against allow-list
+    if rating_label is not None and rating_label.upper() not in ALLOWED_RATING_LABELS:
+        raise HTTPException(
+            status_code=400,
+            detail=f"rating_label must be one of {ALLOWED_RATING_LABELS}",
+        )
 
-    where = " AND ".join(filters)
+    # Build WHERE clause using safe FilterBuilder
+    builder = FilterBuilder(base_filters=["s.is_active = TRUE", "s.is_index = FALSE"])
 
-    sort_col_map = {
-        "total_score":    "sr.total_score",
-        "roe":            "r.roe",
-        "pe_ratio":       "r.pe_ratio",
-        "revenue_growth": "r.revenue_growth",
-        "pat_margin":     "r.pat_margin",
-        "symbol":         "s.symbol",
-    }
-    sort_col = sort_col_map.get(sort_by, "sr.total_score")
+    builder.add_range("r.pe_ratio", min_pe, max_pe, "min_pe", "max_pe")
+    builder.add_range("r.pb_ratio", min_pb, max_pb, "min_pb", "max_pb")
+    builder.add("r.roe", ">=", min_roe, "min_roe")
+    builder.add("r.roce", ">=", min_roce, "min_roce")
+    builder.add("r.pat_margin", ">=", min_pat_margin, "min_pat_margin")
+    builder.add("r.ebitda_margin", ">=", min_ebitda_margin, "min_ebitda_margin")
+    builder.add("r.revenue_growth", ">=", min_revenue_growth, "min_revenue_growth")
+    builder.add("r.pat_growth", ">=", min_pat_growth, "min_pat_growth")
+    builder.add("r.debt_equity", "<=", max_debt_equity, "max_debt_equity")
+    builder.add("r.interest_cov", ">=", min_interest_cov, "min_interest_cov")
+    builder.add("r.cfo_to_pat", ">=", min_cfo_to_pat, "min_cfo_to_pat")
+    builder.add("s.sector", "=", sector, "sector")
+    builder.add("s.market_cap_cat", "=", market_cap_cat, "market_cap_cat")
+    builder.add("sr.rating_label", "=", rating_label, "rating_label")
 
-    sql = f"""
+    where_clause = builder.build_where()
+    params = builder.get_params()
+
+    # Add pagination params
+    params["limit"] = limit
+    params["offset"] = (page - 1) * limit
+
+    # Get safe sort column and direction
+    sort_col = SORT_COLUMNS.get_column(sort_by, "sr.total_score")
+    order_dir = "DESC" if order == "desc" else "ASC"
+
+    # Single WHERE clause definition, used in both main and count queries
+    sql_main = f"""
         SELECT
             s.symbol, s.company_name, s.sector, s.market_cap_cat,
             p.close        AS latest_close,
@@ -110,12 +169,12 @@ async def screener(
             SELECT rating_label, total_score
             FROM stock_ratings WHERE stock_id = s.id ORDER BY rated_on DESC LIMIT 1
         ) sr ON TRUE
-        WHERE {where}
-        ORDER BY {sort_col} {order} NULLS LAST
+        WHERE {where_clause}
+        ORDER BY {sort_col} {order_dir} NULLS LAST
         LIMIT :limit OFFSET :offset
     """
 
-    count_sql = f"""
+    sql_count = f"""
         SELECT COUNT(*)
         FROM stocks s
         LEFT JOIN LATERAL (
@@ -127,20 +186,30 @@ async def screener(
         LEFT JOIN LATERAL (
             SELECT rating_label FROM stock_ratings WHERE stock_id = s.id ORDER BY rated_on DESC LIMIT 1
         ) sr ON TRUE
-        WHERE {where}
+        WHERE {where_clause}
     """
 
-    result = await db.execute(text(sql), params)
-    count_params = {k: v for k, v in params.items() if k not in ("limit", "offset")}
-    count  = await db.execute(text(count_sql), count_params)
+    # Execute both queries with same parameters
+    result = await db.execute(text(sql_main), params)
+    count = await db.execute(
+        text(sql_count),
+        {k: v for k, v in params.items() if k not in ("limit", "offset")},
+    )
 
-    return {
-        "results": [dict(r._mapping) for r in result.fetchall()],
-        "total":   count.scalar(),
-        "page":    page,
-        "limit":   limit,
-        "filters_applied": {k: v for k, v in params.items() if k not in ("limit", "offset") and v is not None},
+    # Build filters_applied dict (exclude pagination params)
+    filters_applied = {
+        k: v
+        for k, v in params.items()
+        if k not in ("limit", "offset") and v is not None
     }
+
+    return ScreenerResponse(
+        results=[dict(r._mapping) for r in result.fetchall()],
+        total=count.scalar(),
+        page=page,
+        limit=limit,
+        filters_applied=filters_applied,
+    )
 
 
 @router.get("/stocks/{symbol}/ratios")

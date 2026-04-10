@@ -238,3 +238,175 @@ class ComparisonResponse(BaseModel):
     funds: List[FundComparisonItem]
     ranking: Optional[RankingResult] = None
     warning: Optional[str] = None
+
+
+# ============================================================================
+# STOCK SCREENER SCHEMAS
+# ============================================================================
+
+class ScreenerFilterInput(BaseModel):
+    """Validated input for stock screener filters."""
+    # Valuation filters
+    min_pe: Optional[float] = None
+    max_pe: Optional[float] = None
+    min_pb: Optional[float] = None
+    max_pb: Optional[float] = None
+
+    # Profitability filters
+    min_roe: Optional[float] = None
+    min_roce: Optional[float] = None
+    min_pat_margin: Optional[float] = None
+    min_ebitda_margin: Optional[float] = None
+
+    # Growth filters
+    min_revenue_growth: Optional[float] = None
+    min_pat_growth: Optional[float] = None
+
+    # Leverage filters
+    max_debt_equity: Optional[float] = None
+    min_interest_cov: Optional[float] = None
+
+    # Quality filters
+    min_cfo_to_pat: Optional[float] = None
+
+    # Stock filters
+    sector: Optional[str] = None
+    market_cap_cat: Optional[str] = None
+    rating_label: Optional[str] = None
+
+    # Pagination
+    page: int = 1
+    limit: int = 25
+    sort_by: str = "total_score"
+    order: str = "desc"
+
+    class Config:
+        validate_default = True
+
+    def validate_pe_range(self):
+        """Validate PE range: 0 <= min_pe <= max_pe <= 500"""
+        from app.query_utils import validate_min_max_range
+        validate_min_max_range(self.min_pe, self.max_pe, "PE ratio range")
+        if self.min_pe is not None and self.min_pe < 0:
+            raise ValueError("min_pe: must be >= 0")
+        if self.max_pe is not None and self.max_pe > 500:
+            raise ValueError("max_pe: must be <= 500")
+
+    def validate_pb_range(self):
+        """Validate P/B range: 0 <= min_pb <= max_pb <= 50"""
+        from app.query_utils import validate_min_max_range
+        validate_min_max_range(self.min_pb, self.max_pb, "P/B ratio range")
+        if self.min_pb is not None and self.min_pb < 0:
+            raise ValueError("min_pb: must be >= 0")
+        if self.max_pb is not None and self.max_pb > 50:
+            raise ValueError("max_pb: must be <= 50")
+
+    def validate_roe_range(self):
+        """Validate ROE: -100 <= value <= 500"""
+        if self.min_roe is not None and not (-100 <= self.min_roe <= 500):
+            raise ValueError("min_roe: must be between -100 and 500")
+
+    def validate_debt_equity(self):
+        """Validate Debt/Equity: 0 <= value <= 100"""
+        if self.max_debt_equity is not None and not (0 <= self.max_debt_equity <= 100):
+            raise ValueError("max_debt_equity: must be between 0 and 100")
+
+    def validate_margins(self):
+        """Validate margins: -100 <= value <= 100"""
+        for field, val in [
+            ("min_pat_margin", self.min_pat_margin),
+            ("min_ebitda_margin", self.min_ebitda_margin),
+        ]:
+            if val is not None and not (-100 <= val <= 100):
+                raise ValueError(f"{field}: must be between -100 and 100")
+
+
+class StockScreenerResult(BaseModel):
+    """Single stock result from screener."""
+    symbol: str
+    company_name: str
+    sector: Optional[str] = None
+    market_cap_cat: Optional[str] = None
+    latest_close: Optional[float] = None
+    latest_date: Optional[date] = None
+    roe: Optional[float] = None
+    roce: Optional[float] = None
+    pat_margin: Optional[float] = None
+    pe_ratio: Optional[float] = None
+    pb_ratio: Optional[float] = None
+    debt_equity: Optional[float] = None
+    revenue_growth: Optional[float] = None
+    pat_growth: Optional[float] = None
+    eps: Optional[float] = None
+    interest_cov: Optional[float] = None
+    cfo_to_pat: Optional[float] = None
+    rating_label: Optional[str] = None
+    total_score: Optional[float] = None
+
+
+class ScreenerResponse(BaseModel):
+    """Response for screener endpoint."""
+    results: List[StockScreenerResult]
+    total: int
+    page: int
+    limit: int
+    filters_applied: Dict[str, Any]
+
+
+class StockListResult(BaseModel):
+    """
+    Single stock from list_stocks endpoint.
+
+    Note: Internal fields (is_active, data_quality, created_at, etc.) are excluded.
+    Only public-facing fields are included in API responses.
+    """
+
+    id: int
+    symbol: str
+    company_name: str
+    sector: Optional[str] = None
+    market_cap_cat: Optional[str] = None
+    latest_close: Optional[float] = None
+    latest_date: Optional[date] = None
+    rating_label: Optional[str] = None
+    total_score: Optional[float] = None
+
+
+class StockListResponse(BaseModel):
+    """Response for list_stocks endpoint."""
+
+    results: List[StockListResult]
+    total: int
+    page: int
+    limit: int
+
+
+class StockDetailResult(BaseModel):
+    """
+    Full stock detail response.
+
+    Excludes internal fields: is_active, data_quality, created_at, updated_at.
+    Only includes fields relevant to users.
+    """
+
+    id: int
+    symbol: str
+    nse_symbol: Optional[str] = None
+    company_name: str
+    sector: Optional[str] = None
+    industry: Optional[str] = None
+    market_cap_cat: Optional[str] = None
+    latest_close: Optional[float] = None
+    latest_high: Optional[float] = None
+    latest_low: Optional[float] = None
+    latest_volume: Optional[int] = None
+    latest_date: Optional[date] = None
+    change_pct: Optional[float] = None
+    rating_label: Optional[str] = None
+    total_score: Optional[float] = None
+    fundamental_score: Optional[float] = None
+    technical_score: Optional[float] = None
+    rsi_14: Optional[float] = None
+    macd_hist: Optional[float] = None
+    sma_200: Optional[float] = None
+    sma_50: Optional[float] = None

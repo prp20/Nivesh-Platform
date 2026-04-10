@@ -10,9 +10,19 @@ const apiClient = axios.create({
 // Request interceptor to add JWT token
 apiClient.interceptors.request.use(
     (config) => {
-        const token = localStorage.getItem('nivesh_token');
-        if (token) {
-            config.headers.Authorization = `Bearer ${token}`;
+        try {
+            const token = localStorage.getItem('nivesh_token');
+            const isAdminPath = config.url?.includes('/pipeline/');
+            const devAdminToken = import.meta.env.VITE_ADMIN_TOKEN;
+
+            // In development, pipeline endpoints require a specific ADMIN_TOKEN
+            if (isAdminPath && devAdminToken) {
+                config.headers.Authorization = `Bearer ${devAdminToken}`;
+            } else if (token) {
+                config.headers.Authorization = `Bearer ${token}`;
+            }
+        } catch (storageError) {
+            console.warn("Failed to set authentication header", storageError);
         }
         return config;
     },
@@ -24,7 +34,11 @@ apiClient.interceptors.response.use(
     (response) => response,
     (error) => {
         if (error.response?.status === 401) {
-            localStorage.removeItem('nivesh_token');
+            try {
+                localStorage.removeItem('nivesh_token');
+            } catch (storageError) {
+                console.warn("Failed to clear token on 401", storageError);
+            }
             // Optional: window.location.href = '/login';
         }
         return Promise.reject(error);

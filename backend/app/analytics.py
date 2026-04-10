@@ -1,3 +1,10 @@
+"""
+Financial analytics and metric calculations.
+
+Computes risk/return metrics for funds, benchmarks, and portfolios.
+All calculations use standard financial formulas and conventions.
+"""
+
 from __future__ import annotations
 
 import pandas as pd
@@ -5,73 +12,155 @@ import numpy as np
 from typing import TYPE_CHECKING, List, Dict, Optional
 from datetime import date
 
+from .constants import ANNUAL_RISK_FREE_RATE, TRADING_DAYS_PER_YEAR, MIN_DATA_COMPLETENESS_PCT
+
 if TYPE_CHECKING:
     from sqlalchemy.ext.asyncio import AsyncSession
 
+
 def calculate_returns(nav_series: pd.Series) -> pd.Series:
+    """
+    Calculate daily returns from NAV series.
+
+    Args:
+        nav_series: Time series of NAV values
+
+    Returns:
+        Series of daily returns (percentage change)
+    """
     return nav_series.pct_change().dropna()
 
-def calculate_sharpe_ratio(returns: pd.Series, risk_free_rate: float = 0.065) -> float:
-    """Calculate annualized Sharpe Ratio."""
-    if returns.empty or returns.std() == 0: return 0.0
-    excess_returns = returns - (risk_free_rate / 252)
-    return np.sqrt(252) * excess_returns.mean() / returns.std()
 
-def calculate_sortino_ratio(returns: pd.Series, risk_free_rate: float = 0.065) -> float:
-    """Calculate annualized Sortino Ratio.
+def calculate_sharpe_ratio(returns: pd.Series, risk_free_rate: float = ANNUAL_RISK_FREE_RATE) -> float:
+    """
+    Calculate annualized Sharpe Ratio.
 
-    Uses the correct downside deviation: sqrt(mean(min(r, 0)^2))
-    rather than the biased sample std of negative returns.
+    Sharpe Ratio = (mean(excess_returns) / std(excess_returns)) * sqrt(252)
+    where excess_returns = daily_returns - (risk_free_rate / 252)
+
+    Args:
+        returns: Series of daily returns
+        risk_free_rate: Annual risk-free rate (default: 6.5% for India 10Y GSec)
+
+    Returns:
+        Annualized Sharpe Ratio, or 0.0 if insufficient data
+    """
+    if returns.empty or returns.std() == 0:
+        return 0.0
+    excess_returns = returns - (risk_free_rate / TRADING_DAYS_PER_YEAR)
+    return np.sqrt(TRADING_DAYS_PER_YEAR) * excess_returns.mean() / returns.std()
+
+
+def calculate_sortino_ratio(returns: pd.Series, risk_free_rate: float = ANNUAL_RISK_FREE_RATE) -> float:
+    """
+    Calculate annualized Sortino Ratio.
+
+    Sortino Ratio = (mean(excess_returns) / downside_deviation) * sqrt(252)
+    where downside_deviation = sqrt(mean(min(excess_returns, 0)^2))
+
+    Uses downside deviation (penalizes only negative returns) instead of
+    standard deviation, making it more suitable for asymmetric return distributions.
+
+    Args:
+        returns: Series of daily returns
+        risk_free_rate: Annual risk-free rate (default: 6.5%)
+
+    Returns:
+        Annualized Sortino Ratio, or 0.0 if insufficient data
     """
     if returns.empty:
         return 0.0
-    excess_returns = returns - (risk_free_rate / 252)
+    excess_returns = returns - (risk_free_rate / TRADING_DAYS_PER_YEAR)
     downside_returns = np.minimum(excess_returns, 0)
     downside_deviation = np.sqrt(np.mean(downside_returns ** 2))
     if downside_deviation == 0:
         return 10.0 if excess_returns.mean() > 0 else 0.0
-    return float(np.sqrt(252) * excess_returns.mean() / downside_deviation)
+    return float(np.sqrt(TRADING_DAYS_PER_YEAR) * excess_returns.mean() / downside_deviation)
 
 def calculate_max_drawdown(nav_series: pd.Series) -> float:
-    """Calculate maximum drawdown."""
-    if nav_series.empty: return 0.0
+    """
+    Calculate the maximum drawdown from peak.
+
+    Maximum drawdown is the largest percentage decline from a historical peak
+    to a subsequent trough.
+
+    Args:
+        nav_series: Time series of NAV values
+
+    Returns:
+        Maximum drawdown as a decimal (e.g., -0.25 for -25%), or 0.0 if empty
+    """
+    if nav_series.empty:
+        return 0.0
     roll_max = nav_series.cummax()
     drawdown = (nav_series - roll_max) / roll_max
     return float(drawdown.min())
 
+
 def calculate_cagr(nav_series: pd.Series, years: int) -> Optional[float]:
-    """Calculate CAGR for a given number of years."""
-    if nav_series.empty: return None
-    
+    """
+    Calculate Compound Annual Growth Rate (CAGR) over N years.
+
+    CAGR = (end_value / start_value) ^ (1 / years) - 1
+
+    Returns None if insufficient data (less than 90% of requested period).
+
+    Args:
+        nav_series: Time series of NAV values
+        years: Number of years to calculate CAGR for
+
+    Returns:
+        CAGR as decimal (e.g., 0.12 for 12%), or None if insufficient data
+    """
+    if nav_series.empty:
+        return None
+
     end_date = nav_series.index[-1]
     start_date = end_date - pd.DateOffset(years=years)
-    
-    # Find closest start date
+
+    # Find closest start date in available data
     mask = nav_series.index >= start_date
-    if not mask.any(): return None
-    
+    if not mask.any():
+        return None
+
     actual_start_date = nav_series.index[mask][0]
     start_nav = nav_series.loc[actual_start_date]
     end_nav = nav_series.iloc[-1]
-    
-    # Only calculate if we have enough data (at least 90% of the requested period)
+
+    # Only calculate if we have enough data (at least 90% of requested period)
     days_diff = (end_date - actual_start_date).days
-    if days_diff < (years * 365 * 0.9):
+    if days_diff < (years * 365 * MIN_DATA_COMPLETENESS_PCT):
         return None
-        
+
     return float((end_nav / start_nav) ** (1 / years) - 1)
 
-def calculate_absolute_return(nav_series: pd.Series, years: Optional[int] = None, months: Optional[int] = None) -> Optional[float]:
-    """Calculate simple absolute return for a given number of years or months."""
-    if nav_series.empty: return None
-    
+
+def calculate_absolute_return(
+    nav_series: pd.Series, years: Optional[int] = None, months: Optional[int] = None
+) -> Optional[float]:
+    """
+    Calculate simple absolute return over N years or months.
+
+    Returns None if insufficient data (less than 90% of requested period).
+
+    Args:
+        nav_series: Time series of NAV values
+        years: Number of years (mutually exclusive with months)
+        months: Number of months (mutually exclusive with years)
+
+    Returns:
+        Absolute return as decimal (e.g., 0.50 for 50%), or None if insufficient data
+    """
+    if nav_series.empty:
+        return None
+
     end_date = nav_series.index[-1]
     if years:
         start_date = end_date - pd.DateOffset(years=years)
-        min_days = years * 365 * 0.9
+        min_days = years * 365 * MIN_DATA_COMPLETENESS_PCT
     elif months:
         start_date = end_date - pd.DateOffset(months=months)
-        min_days = months * 30 * 0.9
+        min_days = months * 30 * MIN_DATA_COMPLETENESS_PCT
     else:
         return None
     

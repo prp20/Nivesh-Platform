@@ -40,11 +40,21 @@ const stocksSlice = createSlice({
   },
   extraReducers: (builder) => {
     builder
-      .addCase(fetchStocks.pending,   (s)    => { s.status = "loading"; })
-      .addCase(fetchStocks.fulfilled, (s, a) => { s.status = "succeeded"; s.list = a.payload.results; s.pagination.total = a.payload.total; })
-      .addCase(fetchStocks.rejected,  (s, a) => { s.status = "failed"; s.error = a.error.message; })
-      .addCase(fetchStockDetail.fulfilled, (s, a) => { s.detail = a.payload; })
-      .addCase(fetchScreener.fulfilled,    (s, a) => { s.screenerResult = a.payload.results; });
+      .addCase(fetchStocks.pending,   (s)    => { s.status = "loading"; s.error = null; })
+      .addCase(fetchStocks.fulfilled, (s, a) => { s.status = "succeeded"; s.list = a.payload.results; s.pagination.total = a.payload.total; s.error = null; })
+      .addCase(fetchStocks.rejected,  (s, a) => { s.status = "failed"; s.error = a.payload || a.error.message; })
+      .addCase(searchStocks.pending,  (s)    => { s.status = "loading"; s.error = null; })
+      .addCase(searchStocks.fulfilled, (s, a) => { s.status = "succeeded"; s.list = a.payload.results; s.error = null; })
+      .addCase(searchStocks.rejected, (s, a) => { s.status = "failed"; s.error = a.payload || a.error.message; })
+      .addCase(fetchStockDetail.pending, (s) => { s.status = "loading"; s.error = null; })
+      .addCase(fetchStockDetail.fulfilled, (s, a) => { s.detail = a.payload; s.status = "succeeded"; s.error = null; })
+      .addCase(fetchStockDetail.rejected, (s, a) => { s.status = "failed"; s.error = a.payload || a.error.message; })
+      .addCase(fetchScreener.pending, (s)    => { s.status = "loading"; s.error = null; })
+      .addCase(fetchScreener.fulfilled,    (s, a) => { s.screenerResult = a.payload.results; s.status = "succeeded"; s.error = null; })
+      .addCase(fetchScreener.rejected, (s, a) => { s.status = "failed"; s.error = a.payload || a.error.message; })
+      .addCase(triggerFullStockSync.pending, (s) => { s.status = "loading"; s.error = null; })
+      .addCase(triggerFullStockSync.fulfilled, (s) => { s.status = "succeeded"; s.error = null; })
+      .addCase(triggerFullStockSync.rejected, (s, a) => { s.status = "failed"; s.error = a.payload || a.error.message; });
   },
 });
 

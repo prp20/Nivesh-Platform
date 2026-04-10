@@ -1,37 +1,58 @@
 # backend/pipeline/price_ingestion.py
+"""
+Price data ingestion pipeline.
+
+Fetches OHLCV data from yfinance and stores in price_data table.
+Supports both daily incremental ingestion and full historical backfills.
+"""
+
 import asyncio
 import logging
-import time
 import yfinance as yf
 import pandas as pd
 from datetime import date, timedelta
 from pipeline.audit import audit_job
 from app.config import settings
 from app.database import raw_connection
+from app.constants import (
+    PRICE_INGESTION_CHUNK_SIZE,
+    PRICE_INGESTION_LOOKBACK_DAYS,
+    MAX_API_RETRIES,
+    EXPONENTIAL_BACKOFF_BASE,
+    API_CALL_TIMEOUT_SECS,
+)
 
 logger = logging.getLogger(__name__)
-
-CHUNK_SIZE = 30   # Reduced from 50 to avoid rate limits
 
 
 # ─── Main entry point (called by APScheduler) ────────────────────────────────
 
 async def run_daily_price_ingestion():
-    """Fetches last 5 trading days for all active stocks."""
+    """
+    Fetch last 5 trading days for all active stocks.
+
+    Runs daily after market close. Uses chunking to avoid rate limits.
+    Safe to re-run multiple times (ON CONFLICT DO UPDATE).
+    """
     stocks = await _fetch_active_stocks()
     async with audit_job("price_daily_ingestion", records_in=len(stocks)) as audit:
-        chunks = [stocks[i:i+CHUNK_SIZE] for i in range(0, len(stocks), CHUNK_SIZE)]
+        chunks = [
+            stocks[i : i + PRICE_INGESTION_CHUNK_SIZE]
+            for i in range(0, len(stocks), PRICE_INGESTION_CHUNK_SIZE)
+        ]
         total_upserted = 0
         stocks_processed = 0
         for chunk in chunks:
-            count = await _ingest_chunk(chunk, period="5d")
+            count = await _ingest_chunk(chunk, period=f"{PRICE_INGESTION_LOOKBACK_DAYS}d")
             total_upserted += count
             stocks_processed += len(chunk)
             await audit.update_progress(stocks_processed)
-            await asyncio.sleep(1)  # brief pause between chunks
-        
+            await asyncio.sleep(1)  # Brief pause between chunks to avoid overwhelming database
+
         audit.records_out = total_upserted
-        logger.info(f"price_daily_ingestion complete: {total_upserted} rows upserted across {stocks_processed} stocks")
+        logger.info(
+            f"price_daily_ingestion complete: {total_upserted} rows upserted across {stocks_processed} stocks"
+        )
 
 
 async def run_index_ingestion():
@@ -46,10 +67,22 @@ async def run_index_ingestion():
 # ─── Backfill (run once from seed script) ────────────────────────────────────
 
 async def run_backfill(period: str = "5y"):
-    """Fetches full price history. Run once from scripts/seed/backfill_prices.py."""
+    """
+    Fetch full price history for all stocks.
+
+    Run once during initial setup or after adding new stocks.
+    Uses chunking to avoid rate limits and memory exhaustion.
+    Long-running operation (10–30 minutes for 500 stocks).
+
+    Args:
+        period: Time period to backfill ("1y", "2y", "3y", "5y", etc.)
+    """
     stocks = await _fetch_active_stocks()
     async with audit_job("price_backfill", records_in=len(stocks)) as audit:
-        chunks = [stocks[i:i+CHUNK_SIZE] for i in range(0, len(stocks), CHUNK_SIZE)]
+        chunks = [
+            stocks[i : i + PRICE_INGESTION_CHUNK_SIZE]
+            for i in range(0, len(stocks), PRICE_INGESTION_CHUNK_SIZE)
+        ]
         total_upserted = 0
         stocks_processed = 0
         for i, chunk in enumerate(chunks):
@@ -57,8 +90,11 @@ async def run_backfill(period: str = "5y"):
             total_upserted += count
             stocks_processed += len(chunk)
             await audit.update_progress(stocks_processed)
-            logger.info(f"Backfill chunk {i+1}/{len(chunks)} ({stocks_processed}/{len(stocks)} stocks): {count} rows")
-            await asyncio.sleep(2)  # polite delay for backfill
+            logger.info(
+                f"Backfill chunk {i+1}/{len(chunks)} ({stocks_processed}/{len(stocks)} stocks): {count} rows"
+            )
+            # Polite delay for backfill to avoid overwhelming external API
+            await asyncio.sleep(2)
 async def run_price_sync_one(symbol: str, period: str = "1y") -> int:
     """Fetches full price history for a single stock to correct data errors."""
     async with raw_connection() as conn:
@@ -77,15 +113,20 @@ async def run_price_sync_one(symbol: str, period: str = "1y") -> int:
 # ─── Core ingestion logic ─────────────────────────────────────────────────────
 
 async def _ingest_chunk(stocks: list, period: str) -> int:
-    """Download prices for a batch of stocks and upsert to DB."""
+    """
+    Download prices for a batch of stocks and upsert to DB.
+
+    Uses per-stock error tracking so failures don't block other stocks.
+    Returns total rows upserted; errors are logged with stock symbol for debugging.
+    """
     if not stocks:
         return 0
 
     tickers_str = " ".join(s["yf_symbol"] for s in stocks)
     df = None
-    max_retries = 3
-    
-    for attempt in range(max_retries):
+
+    # Download with exponential backoff retry
+    for attempt in range(MAX_API_RETRIES):
         try:
             df = yf.download(
                 tickers_str,
@@ -94,31 +135,54 @@ async def _ingest_chunk(stocks: list, period: str) -> int:
                 group_by="ticker",
                 auto_adjust=False,
                 progress=False,
-                threads=False,   # Sequential is safer against IP blocks
-                timeout=15
+                threads=False,  # Sequential is safer against IP blocks
+                timeout=API_CALL_TIMEOUT_SECS,
             )
             if df is not None and not df.empty:
                 break
         except Exception as e:
-            logger.warning(f"yfinance download attempt {attempt+1} failed for chunk: {e}")
-            if attempt < max_retries - 1:
-                time.sleep(2 * (attempt + 1))  # Exponential backoff
+            logger.warning(
+                f"yfinance download attempt {attempt+1}/{MAX_API_RETRIES} failed for chunk: {e}"
+            )
+            if attempt < MAX_API_RETRIES - 1:
+                wait_time = EXPONENTIAL_BACKOFF_BASE ** (attempt + 1)
+                await asyncio.sleep(wait_time)
+            continue
 
     if df is None or df.empty:
-        logger.error(f"yfinance failed to download data for chunk after {max_retries} attempts")
+        logger.error(
+            f"yfinance failed to download data for {len(stocks)} stocks after {MAX_API_RETRIES} attempts"
+        )
         return 0
 
+    # Process each stock, tracking errors per-stock
     total = 0
+    errors = []
+
     for stock in stocks:
+        stock_symbol = stock["symbol"]
         try:
             stock_df = _extract_ticker_df(df, stock["yf_symbol"], len(stocks))
             if stock_df is None or stock_df.empty:
-                logger.warning(f"No data for {stock['yf_symbol']}")
+                logger.warning(f"No price data from yfinance for {stock_symbol}")
                 continue
+
+            # Upsert this stock's prices (wrapped in transaction via ON CONFLICT)
             count = await _upsert_price_rows(stock["id"], stock_df)
             total += count
+            logger.info(f"Ingested {count} price rows for {stock_symbol}")
+
         except Exception as e:
-            logger.error(f"Failed to upsert {stock['symbol']}: {e}")
+            error_msg = f"Failed to ingest {stock_symbol}: {type(e).__name__}: {str(e)}"
+            logger.error(error_msg)
+            errors.append(error_msg)
+            # Continue with next stock instead of failing entire chunk
+            continue
+
+    if errors:
+        logger.warning(
+            f"Chunk completed with {len(errors)} errors: {'; '.join(errors)}"
+        )
 
     return total
 
