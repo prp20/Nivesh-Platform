@@ -1,17 +1,23 @@
 from contextlib import asynccontextmanager
 from pathlib import Path
-from fastapi import FastAPI
-from fastapi.responses import FileResponse
+import logging
+from fastapi import FastAPI, Request
+from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
 
 from .config import settings
 from .routers import funds, benchmarks, navs, benchmark_navs, metrics, sync, auth, stocks, screener, pipeline
 from .database import engine, Base
+from .rate_limiting import get_rate_limiter
 from pipeline.scheduler import configure_scheduler, scheduler
+
+logger = logging.getLogger(__name__)
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    """Startup and shutdown logic for the FastAPI application."""
     # Startup logic
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
@@ -19,10 +25,12 @@ async def lifespan(app: FastAPI):
     # Configure and start scheduler
     configure_scheduler()
     scheduler.start()
+    logger.info("Scheduler started successfully")
 
     yield
     # Shutdown logic
     scheduler.shutdown(wait=False)
+    logger.info("Scheduler shut down")
 
 app = FastAPI(
     title=settings.PROJECT_NAME,
@@ -39,6 +47,38 @@ app.add_middleware(
     allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
     allow_headers=["Authorization", "Content-Type", "Accept"],
 )
+
+
+# Rate limiting middleware
+@app.middleware("http")
+async def rate_limit_middleware(request: Request, call_next):
+    """
+    Apply rate limiting to incoming requests.
+
+    Uses user identifier from JWT token if available, falls back to IP address.
+    Enforces per-endpoint rate limits defined in rate_limiting.py.
+    """
+    # Get user identifier (prefer JWT user, fall back to IP)
+    user_id = request.headers.get("X-User-Id", request.client.host if request.client else "unknown")
+
+    # Get endpoint path for rate limit lookup
+    endpoint = request.url.path
+    rate_limiter = get_rate_limiter()
+
+    # Check rate limit
+    if not rate_limiter.is_allowed(user_id, endpoint):
+        return JSONResponse(
+            status_code=429,
+            content={
+                "detail": "Rate limit exceeded",
+                "retry_after": 60,
+            },
+            headers={"Retry-After": "60"},
+        )
+
+    # Continue with request
+    response = await call_next(request)
+    return response
 
 # Include Routers
 app.include_router(auth.router, prefix=settings.API_V1_STR)

@@ -1,8 +1,9 @@
 """
-backend/app/routers/pipeline.py
-
 Admin trigger endpoints for the stock data pipeline.
-All endpoints require JWT authentication (same as /sync router).
+
+All endpoints require admin-level authentication (require_admin).
+In dev mode (ENABLE_AUTH=False), requires ADMIN_TOKEN environment variable.
+In production (ENABLE_AUTH=True), requires JWT token with admin role.
 
 Trigger categories:
   /pipeline/prices/*    — OHLCV price ingestion (yfinance)
@@ -11,13 +12,16 @@ Trigger categories:
   /pipeline/technical/* — Technical analysis (ta-lib)
   /pipeline/ratings/*   — Stock rating computation
   /pipeline/status      — Overall pipeline health
+
+All sensitive operations are audited and logged.
 """
 
 import logging
 from typing import Optional
 from fastapi import APIRouter, HTTPException, Depends, BackgroundTasks, Query
 
-from app.security import get_current_user
+from app.security import require_admin
+from app.audit_log import AuditLog
 
 logger = logging.getLogger(__name__)
 
@@ -29,40 +33,80 @@ router = APIRouter(prefix="/pipeline", tags=["Pipeline Triggers"])
 @router.post("/prices/all", summary="Trigger daily price ingestion for all stocks")
 async def trigger_price_ingestion(
     background_tasks: BackgroundTasks,
-    _: str = Depends(get_current_user),
+    admin: str = Depends(require_admin),
 ):
     """
     Fetches the last 5 trading days of OHLCV data for all active non-index stocks.
     Runs as a background task. Safe to re-run (uses ON CONFLICT DO UPDATE).
+
+    Requires admin authentication. Operation is audited.
     """
     from pipeline.price_ingestion import run_daily_price_ingestion
+
+    # Log the admin action
+    await AuditLog.log_action(
+        action=AuditLog.PIPELINE_TRIGGER,
+        user=admin,
+        resource="pipeline/prices/all",
+        details={"job": "price_daily_ingestion"},
+    )
+
     background_tasks.add_task(run_daily_price_ingestion)
-    return {"message": "Price ingestion started in background", "job": "price_daily_ingestion"}
+    return {
+        "message": "Price ingestion started in background",
+        "job": "price_daily_ingestion",
+    }
 
 
 @router.post("/prices/indices", summary="Trigger price ingestion for indices only")
 async def trigger_index_ingestion(
     background_tasks: BackgroundTasks,
-    _: str = Depends(get_current_user),
+    admin: str = Depends(require_admin),
 ):
-    """Fetches the last 5 trading days for all active index instruments (is_index=TRUE)."""
+    """
+    Fetches the last 5 trading days for all active index instruments (is_index=TRUE).
+
+    Requires admin authentication. Operation is audited.
+    """
     from pipeline.price_ingestion import run_index_ingestion
+
+    await AuditLog.log_action(
+        action=AuditLog.PIPELINE_TRIGGER,
+        user=admin,
+        resource="pipeline/prices/indices",
+        details={"job": "index_daily_ingestion"},
+    )
+
     background_tasks.add_task(run_index_ingestion)
-    return {"message": "Index ingestion started in background", "job": "index_daily_ingestion"}
+    return {
+        "message": "Index ingestion started in background",
+        "job": "index_daily_ingestion",
+    }
 
 
 @router.post("/prices/backfill", summary="Trigger 5-year price history backfill")
 async def trigger_price_backfill(
     background_tasks: BackgroundTasks,
     period: str = Query("5y", regex="^(1y|2y|3y|5y)$"),
-    _: str = Depends(get_current_user),
+    admin: str = Depends(require_admin),
 ):
     """
     Backfills full price history for all active stocks.
     Use only for initial setup or after adding new stocks.
     This is a long-running operation (~10–30 minutes for 500 stocks).
+
+    Requires admin authentication. Operation is audited. Be cautious about running
+    during business hours as it consumes significant bandwidth.
     """
     from pipeline.price_ingestion import run_backfill
+
+    await AuditLog.log_action(
+        action=AuditLog.PIPELINE_TRIGGER,
+        user=admin,
+        resource="pipeline/prices/backfill",
+        details={"period": period, "warning": "Long-running operation"},
+    )
+
     background_tasks.add_task(run_backfill, period)
     return {
         "message": f"Price backfill ({period}) started in background",
@@ -75,13 +119,23 @@ async def trigger_price_backfill(
 async def trigger_price_refresh_one(
     symbol: str,
     period: str = Query("1y", regex="^(1mo|6mo|1y|2y|5y|max)$"),
-    _: str = Depends(get_current_user),
+    admin: str = Depends(require_admin),
 ):
     """
     Synchronously fetches historical price data for a single stock.
     Useful for correcting historical data errors or filling gaps.
+
+    Requires admin authentication. Operation is audited.
     """
     from pipeline.price_ingestion import run_price_sync_one
+
+    await AuditLog.log_action(
+        action=AuditLog.PIPELINE_TRIGGER,
+        user=admin,
+        resource=f"pipeline/prices/refresh/{symbol}",
+        details={"symbol": symbol.upper(), "period": period},
+    )
+
     count = await run_price_sync_one(symbol, period)
     return {"symbol": symbol.upper(), "period": period, "records_upserted": count}
 
@@ -91,7 +145,7 @@ async def trigger_price_refresh_one(
 @router.post("/metrics/price-refresh/all", summary="Refresh PE/PB/PS for all stocks")
 async def trigger_price_ratio_refresh_all(
     background_tasks: BackgroundTasks,
-    _: str = Depends(get_current_user),
+    admin: str = Depends(require_admin),
 ):
     """
     Recomputes price-dependent ratios (PE, PB, PS, dividend yield) for all active stocks.
@@ -106,7 +160,7 @@ async def trigger_price_ratio_refresh_all(
 @router.post("/metrics/price-refresh/{symbol}", summary="Refresh PE/PB/PS for one stock")
 async def trigger_price_ratio_refresh_one(
     symbol: str,
-    _: str = Depends(get_current_user),
+    admin: str = Depends(require_admin),
 ):
     """Synchronously refresh price-dependent ratios for a single stock. Returns updated values."""
     from pipeline.metric_recompute import recompute_price_dependent_ratios, _get_latest_close, _fetch_stocks_with_ratios
@@ -135,7 +189,7 @@ async def trigger_price_ratio_refresh_one(
 async def trigger_screener_scrape_all(
     background_tasks: BackgroundTasks,
     days_since_last: int = Query(90, ge=1, le=365),
-    _: str = Depends(get_current_user),
+    admin: str = Depends(require_admin),
 ):
     """
     Scrapes screener.in fundamentals for all stocks not updated in `days_since_last` days.
@@ -161,7 +215,7 @@ async def trigger_screener_scrape_all(
 async def trigger_screener_scrape_one(
     symbol: str,
     force: bool = Query(False, description="Bypass checksum and force re-scrape"),
-    _: str = Depends(get_current_user),
+    admin: str = Depends(require_admin),
 ):
     """
     Scrapes screener.in for a single stock synchronously.
@@ -202,7 +256,7 @@ async def trigger_screener_scrape_one(
 @router.get("/screener/status", summary="Show last scrape date and overdue stocks")
 async def get_screener_status(
     overdue_days: int = Query(90, ge=1),
-    _: str = Depends(get_current_user),
+    admin: str = Depends(require_admin),
 ):
     """Returns last scrape date per stock and flags stocks overdue for scraping."""
     from app.database import raw_connection
@@ -239,7 +293,7 @@ async def get_screener_status(
 @router.post("/technical/all", summary="Run technical analysis for all stocks")
 async def trigger_technical_analysis_all(
     background_tasks: BackgroundTasks,
-    _: str = Depends(get_current_user),
+    admin: str = Depends(require_admin),
 ):
     """
     Computes all TA indicators (SMA, EMA, RSI, MACD, Bollinger, ATR, ADX, Stochastic)
@@ -254,7 +308,7 @@ async def trigger_technical_analysis_all(
 @router.post("/technical/{symbol}", summary="Run technical analysis for a single stock")
 async def trigger_technical_analysis_one(
     symbol: str,
-    _: str = Depends(get_current_user),
+    admin: str = Depends(require_admin),
 ):
     """
     Synchronously computes TA indicators for a single stock.
@@ -279,7 +333,7 @@ async def trigger_technical_analysis_one(
 
 
 @router.get("/technical/status", summary="Show TA computation status per stock")
-async def get_technical_status(_: str = Depends(get_current_user)):
+async def get_technical_status(admin: str = Depends(require_admin)):
     """Returns last TA computation date per stock; flags MISSING or STALE (>2 days old)."""
     from pipeline.technical_analysis import get_ta_status
     data = await get_ta_status()
@@ -298,7 +352,7 @@ async def get_technical_status(_: str = Depends(get_current_user)):
 @router.post("/ratings/all", summary="Recompute stock ratings for all stocks")
 async def trigger_rating_compute_all(
     background_tasks: BackgroundTasks,
-    _: str = Depends(get_current_user),
+    admin: str = Depends(require_admin),
 ):
     """
     Recomputes composite stock ratings (fundamental + valuation + technical + momentum + shareholding).
@@ -312,7 +366,7 @@ async def trigger_rating_compute_all(
 @router.post("/ratings/{symbol}", summary="Recompute rating for a single stock")
 async def trigger_rating_compute_one(
     symbol: str,
-    _: str = Depends(get_current_user),
+    admin: str = Depends(require_admin),
 ):
     """Synchronously recomputes the composite rating for one stock. Returns score breakdown."""
     from pipeline.rating_engine import compute_rating_for_stock
@@ -337,7 +391,7 @@ async def trigger_rating_compute_one(
 # ─── Overall Pipeline Status ──────────────────────────────────────────────────
 
 @router.get("/status", summary="Overall pipeline health and live progress polling")
-async def get_pipeline_status(_: str = Depends(get_current_user)):
+async def get_pipeline_status(admin: str = Depends(require_admin)):
     """Shows last run time, status, and live record counts (progress) for all pipeline jobs."""
     from app.database import raw_connection
     sql = """

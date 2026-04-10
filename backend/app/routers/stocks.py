@@ -1,4 +1,7 @@
 # backend/app/routers/stocks.py
+"""
+Stock endpoints with validated filtering and safe query construction.
+"""
 from fastapi import APIRouter, Query, HTTPException, Depends
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import text
@@ -6,35 +9,66 @@ from typing import Optional
 from datetime import date
 from app.database import get_db
 from app.models import Stock, PriceData
+from app.schemas import StockListResponse
+from app.query_utils import FilterBuilder, SortColumnMap
 
 router = APIRouter(prefix="/stocks", tags=["Stocks"])
+
+# Define allowed sort columns
+SORT_COLUMNS = SortColumnMap(
+    {
+        "symbol": "s.symbol",
+        "company_name": "s.company_name",
+        "sector": "s.sector",
+    }
+)
 
 
 # ─── GET /stocks — paginated listing ─────────────────────────────────────────
 
-@router.get("")
+@router.get("", response_model=StockListResponse)
 async def list_stocks(
-    sector:         Optional[str] = None,
+    sector: Optional[str] = None,
     market_cap_cat: Optional[str] = None,
-    is_index:       bool = False,
-    page:           int  = Query(1, ge=1),
-    limit:          int  = Query(25, ge=1, le=100),
-    sort_by:        str  = Query("symbol", regex="^(symbol|company_name|sector)$"),
-    order:          str  = Query("asc",    regex="^(asc|desc)$"),
+    is_index: bool = False,
+    page: int = Query(1, ge=1, le=10000),
+    limit: int = Query(25, ge=1, le=100),
+    sort_by: str = Query("symbol", min_length=1, max_length=50),
+    order: str = Query("asc", regex="^(asc|desc)$"),
     db: AsyncSession = Depends(get_db),
-):
-    offset = (page - 1) * limit
-    filters = ["s.is_active = TRUE", "s.is_index = :is_index"]
-    params  = {"is_index": is_index, "limit": limit, "offset": offset}
+) -> StockListResponse:
+    """
+    List stocks with optional filtering and pagination.
 
-    if sector:
-        filters.append("s.sector = :sector")
-        params["sector"] = sector
-    if market_cap_cat:
-        filters.append("s.market_cap_cat = :market_cap_cat")
-        params["market_cap_cat"] = market_cap_cat
+    Args:
+        sector: Filter by sector name
+        market_cap_cat: Filter by market cap category (Large/Mid/Small)
+        is_index: Filter by index flag (True for indices only, False for stocks)
+        page: Page number (1-indexed)
+        limit: Results per page (1-100)
+        sort_by: Sort column (symbol, company_name, sector)
+        order: Sort order (asc/desc)
 
-    where = " AND ".join(filters)
+    Returns:
+        StockListResponse with paginated results
+    """
+    # Build WHERE clause using safe FilterBuilder
+    builder = FilterBuilder(base_filters=["s.is_active = TRUE"])
+    builder.add("s.is_index", "=", is_index, "is_index")
+    builder.add("s.sector", "=", sector, "sector")
+    builder.add("s.market_cap_cat", "=", market_cap_cat, "market_cap_cat")
+
+    where_clause = builder.build_where()
+    params = builder.get_params()
+
+    # Add pagination params
+    params["limit"] = limit
+    params["offset"] = (page - 1) * limit
+
+    # Get safe sort column and direction
+    sort_col = SORT_COLUMNS.get_column(sort_by, "s.symbol")
+    order_dir = "DESC" if order == "desc" else "ASC"
+
     sql = f"""
         SELECT
             s.id, s.symbol, s.company_name, s.sector, s.market_cap_cat,
@@ -57,21 +91,28 @@ async def list_stocks(
             ORDER BY rated_on DESC
             LIMIT 1
         ) r ON TRUE
-        WHERE {where}
-        ORDER BY s.{sort_by} {order}
+        WHERE {where_clause}
+        ORDER BY {sort_col} {order_dir}
         LIMIT :limit OFFSET :offset
     """
-    count_sql = f"SELECT COUNT(*) FROM stocks s WHERE {where}"
 
-    result = await db.execute(text(sql),   params)
-    count  = await db.execute(text(count_sql), {k: v for k, v in params.items() if k not in ("limit", "offset")})
+    count_sql = f"""
+        SELECT COUNT(*) FROM stocks s
+        WHERE {where_clause}
+    """
 
-    return {
-        "results": [dict(r._mapping) for r in result.fetchall()],
-        "total":   count.scalar(),
-        "page":    page,
-        "limit":   limit,
-    }
+    result = await db.execute(text(sql), params)
+    count = await db.execute(
+        text(count_sql),
+        {k: v for k, v in params.items() if k not in ("limit", "offset")},
+    )
+
+    return StockListResponse(
+        results=[dict(r._mapping) for r in result.fetchall()],
+        total=count.scalar(),
+        page=page,
+        limit=limit,
+    )
 
 
 # ─── GET /stocks/search ───────────────────────────────────────────────────────

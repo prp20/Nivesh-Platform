@@ -1,8 +1,16 @@
+"""
+CRUD operations for mutual fund and stock market data.
+
+Provides database access layer with async SQLAlchemy queries.
+All functions use proper type hints and docstrings following Google style.
+"""
+
 from sqlalchemy import select, insert, update, delete, func, text
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.orm import joinedload
 from sqlalchemy.exc import IntegrityError
+from sqlalchemy.sql import Select
 from typing import Optional, List, Tuple
 from datetime import datetime
 import uuid
@@ -18,26 +26,66 @@ from .schemas import (
 # FUND MASTER CRUD
 # ============================================================================
 
-async def create_fund_master(session: AsyncSession, fund_in: FundMasterCreate):
+
+async def create_fund_master(
+    session: AsyncSession, fund_in: FundMasterCreate
+) -> FundMaster:
+    """
+    Create a new fund master record.
+
+    Args:
+        session: AsyncSession for database access
+        fund_in: Fund creation data
+
+    Returns:
+        Created FundMaster with loaded relationships
+
+    Raises:
+        IntegrityError: If fund scheme_code or ISIN already exists
+    """
     stmt = insert(FundMaster).values(**fund_in.model_dump()).returning(FundMaster)
     res = await session.execute(stmt)
     fund = res.scalar_one()
     await session.commit()
     return await get_fund_master_by_code(session, fund.scheme_code)
 
-async def get_fund_master_by_code(session: AsyncSession, scheme_code: str):
+
+async def get_fund_master_by_code(
+    session: AsyncSession, scheme_code: str
+) -> Optional[FundMaster]:
+    """
+    Retrieve a fund by scheme code with eager-loaded metrics.
+
+    Args:
+        session: AsyncSession for database access
+        scheme_code: Fund scheme code (primary key)
+
+    Returns:
+        FundMaster object if found, None otherwise
+    """
     q = select(FundMaster).options(joinedload(FundMaster.metrics)).where(FundMaster.scheme_code == scheme_code)
     res = await session.execute(q)
     return res.unique().scalar_one_or_none()
 
-async def get_similar_funds(session: AsyncSession, scheme_code: str, limit: int = 4):
+
+async def get_similar_funds(
+    session: AsyncSession, scheme_code: str, limit: int = 4
+) -> List[FundMaster]:
     """
-    Find funds in the same category and subcategory as the given scheme_code.
+    Find similar funds in the same category and subcategory.
+
+    Args:
+        session: AsyncSession for database access
+        scheme_code: Scheme code to find similar funds for
+        limit: Maximum number of results (default: 4)
+
+    Returns:
+        List of similar active FundMaster objects, ordered by name
     """
     fund = await get_fund_master_by_code(session, scheme_code)
     if not fund:
         return []
-    
+
     q = (
         select(FundMaster)
         .options(joinedload(FundMaster.metrics))
@@ -45,16 +93,17 @@ async def get_similar_funds(session: AsyncSession, scheme_code: str, limit: int 
             FundMaster.scheme_category == fund.scheme_category,
             FundMaster.scheme_subcategory == fund.scheme_subcategory,
             FundMaster.scheme_code != scheme_code,
-            FundMaster.is_active == True
+            FundMaster.is_active == True,
         )
         .limit(limit)
     )
-    
+
     res = await session.execute(q)
     return res.unique().scalars().all()
 
+
 def _apply_fund_filters(
-    q,
+    q: Select[tuple[FundMaster]],
     is_active: Optional[bool] = None,
     category: Optional[str] = None,
     subcategory: Optional[str] = None,
@@ -62,8 +111,23 @@ def _apply_fund_filters(
     plan_type: Optional[str] = None,
     benchmark_code: Optional[str] = None,
     search: Optional[str] = None,
-):
-    """Apply common FundMaster filter predicates to a query."""
+) -> Select[tuple[FundMaster]]:
+    """
+    Apply common FundMaster filter predicates to a query.
+
+    Args:
+        q: SQLAlchemy Select query to filter
+        is_active: Filter by active status
+        category: Filter by scheme category (substring match)
+        subcategory: Filter by scheme subcategory (substring match)
+        amc: Filter by AMC name (substring match)
+        plan_type: Filter by plan type (Direct/Regular)
+        benchmark_code: Filter by benchmark index code (substring match)
+        search: Search in scheme_name and scheme_code (substring match)
+
+    Returns:
+        Modified Select query with applied filters
+    """
     if is_active is not None:
         q = q.where(FundMaster.is_active == is_active)
     if category and category != "All":
@@ -97,6 +161,25 @@ async def get_all_fund_masters(
     skip: int = 0,
     limit: int = 100,
 ) -> List[FundMaster]:
+    """
+    Retrieve paginated list of funds with optional filters.
+
+    Args:
+        session: AsyncSession for database access
+        is_active: Filter by active status
+        category: Filter by scheme category (substring match)
+        subcategory: Filter by scheme subcategory (substring match)
+        amc: Filter by AMC name (substring match)
+        plan_type: Filter by plan type (Direct/Regular)
+        benchmark_code: Filter by benchmark index code (substring match)
+        search: Search in scheme_name and scheme_code (substring match)
+        order_by: Order by column ("scheme_name" or "-scheme_name" for DESC)
+        skip: Number of records to skip (for pagination)
+        limit: Maximum number of records to return
+
+    Returns:
+        List of FundMaster objects matching filters, with metrics eager-loaded
+    """
     query = select(FundMaster)
     q = _apply_fund_filters(
         q=query,

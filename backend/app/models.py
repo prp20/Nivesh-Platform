@@ -192,6 +192,10 @@ class Stock(Base):
 
 class PriceData(Base):
     __tablename__ = "price_data"
+    __table_args__ = (
+        UniqueConstraint('stock_id', 'price_date', name='uq_price_data_stock_date'),
+        Index('ix_price_data_stock_date_desc', 'stock_id', 'price_date'),
+    )
 
     id         = Column(BigInteger, primary_key=True)
     stock_id   = Column(Integer, ForeignKey("stocks.id", ondelete="CASCADE"), nullable=False)
@@ -206,6 +210,11 @@ class PriceData(Base):
 
 class FinancialStatement(Base):
     __tablename__ = "financial_statements"
+    __table_args__ = (
+        UniqueConstraint('stock_id', 'statement_type', 'period_type', 'period_end',
+                        name='uq_financial_stmt_stock_type_period'),
+        Index('ix_financial_stmt_stock_period', 'stock_id', 'period_end'),
+    )
 
     id             = Column(Integer, primary_key=True)
     stock_id       = Column(Integer, ForeignKey("stocks.id", ondelete="CASCADE"), nullable=False)
@@ -221,6 +230,11 @@ class FinancialStatement(Base):
 
 class ShareholdingPattern(Base):
     __tablename__ = "shareholding_pattern"
+    __table_args__ = (
+        UniqueConstraint('stock_id', 'period_end',
+                        name='uq_shareholding_pattern_stock_period'),
+        Index('ix_shareholding_pattern_stock_period', 'stock_id', 'period_end'),
+    )
 
     id              = Column(Integer, primary_key=True)
     stock_id        = Column(Integer, ForeignKey("stocks.id", ondelete="CASCADE"), nullable=False)
@@ -269,6 +283,11 @@ class FinancialRatio(Base):
 
 class TechnicalIndicator(Base):
     __tablename__ = "technical_indicators"
+    __table_args__ = (
+        UniqueConstraint('stock_id', 'ind_date', 'timeframe',
+                        name='uq_technical_indicator_stock_date_tf'),
+        Index('ix_technical_indicator_stock_date', 'stock_id', 'ind_date'),
+    )
 
     id            = Column(BigInteger, primary_key=True)
     stock_id      = Column(Integer, ForeignKey("stocks.id", ondelete="CASCADE"), nullable=False)
