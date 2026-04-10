@@ -14,3 +14,4 @@ backend/db_data
 backend/__pycache__
 CLAUDE.md
 .claude/
+memory/*
