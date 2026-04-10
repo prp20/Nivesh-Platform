@@ -54,7 +54,7 @@ class FilterBuilder:
         Returns:
             self (for method chaining)
         """
-        if value is not None:
+        if value is not None and value != "":
             self.filters.append(f"{column} {operator} :{param_key}")
             self.params[param_key] = value
         return self

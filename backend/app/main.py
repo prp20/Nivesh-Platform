@@ -1,6 +1,7 @@
 from contextlib import asynccontextmanager
 from pathlib import Path
 import logging
+from datetime import datetime, timezone
 from fastapi import FastAPI, Request
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
@@ -94,10 +95,43 @@ app.include_router(pipeline.router, prefix=settings.API_V1_STR)
 
 @app.get("/api/health", tags=["root"])
 async def root():
+    """
+    System health check.
+    Verifies API status and database connectivity.
+    """
+    from sqlalchemy import text
+    import time
+
+    start_time = time.time()
+    db_status = "unknown"
+    db_name = "unknown"
+    
+    try:
+        # Check database connectivity
+        async with engine.connect() as conn:
+            await conn.execute(text("SELECT 1"))
+            db_status = "connected"
+            # Extract DB name from engine URL
+            db_name = engine.url.database
+    except Exception as e:
+        logger.error(f"Health check database error: {e}")
+        db_status = "error"
+
     return {
-        "message": f"{settings.PROJECT_NAME} API",
-        "status": "running",
-        "documentation": "/docs",
+        "status": "healthy" if db_status == "connected" else "unhealthy",
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+        "api": {
+            "name": settings.PROJECT_NAME,
+            "version": "1.0.0",
+            "status": "running",
+            "environment": "development" if not settings.ENABLE_AUTH else "production",
+        },
+        "database": {
+            "status": db_status,
+            "name": db_name,
+            "latency_ms": round((time.time() - start_time) * 1000, 2)
+        },
+        "documentation": "/docs"
     }
 
 # SPA Fallback routing for production deployment

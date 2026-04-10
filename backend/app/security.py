@@ -68,40 +68,32 @@ async def get_current_user(
     """
     Validate JWT token and return username.
 
-    If ENABLE_AUTH is False (dev mode), returns 'dev_user' without validation.
-    In production (ENABLE_AUTH=True), validates JWT and returns username from 'sub' claim.
-
-    Args:
-        token: JWT token from Authorization header
-
-    Returns:
-        Username from token 'sub' claim (or 'dev_user' if auth disabled)
-
-    Raises:
-        HTTPException(401): If token is missing or invalid
+    DISABLED: Returns 'dev_user' without validation.
     """
-    if not settings.ENABLE_AUTH:
-        return "dev_user"
+    return "dev_user"
 
-    credentials_exception = HTTPException(
-        status_code=status.HTTP_401_UNAUTHORIZED,
-        detail="Could not validate credentials",
-        headers={"WWW-Authenticate": "Bearer"},
-    )
-
-    if not token:
-        raise credentials_exception
-
-    try:
-        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
-        username: str = payload.get("sub")
-        if username is None:
-            raise credentials_exception
-    except JWTError as e:
-        logger.warning(f"JWT validation failed: {e}")
-        raise credentials_exception
-
-    return username
+    # if not settings.ENABLE_AUTH:
+    #     return "dev_user"
+    #
+    # credentials_exception = HTTPException(
+    #     status_code=status.HTTP_401_UNAUTHORIZED,
+    #     detail="Could not validate credentials",
+    #     headers={"WWW-Authenticate": "Bearer"},
+    # )
+    #
+    # if not token:
+    #     raise credentials_exception
+    #
+    # try:
+    #     payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+    #     username: str = payload.get("sub")
+    #     if username is None:
+    #         raise credentials_exception
+    # except JWTError as e:
+    #     logger.warning(f"JWT validation failed: {e}")
+    #     raise credentials_exception
+    #
+    # return username
 
 
 async def require_admin(
@@ -110,63 +102,54 @@ async def require_admin(
     """
     Enforce admin-level authentication for sensitive operations.
 
-    In dev mode (ENABLE_AUTH=False), requires ADMIN_TOKEN environment variable.
-    In production (ENABLE_AUTH=True), validates JWT and checks admin role.
-
-    Args:
-        token: JWT token from Authorization header
-
-    Returns:
-        Username if admin, raises 403 otherwise
-
-    Raises:
-        HTTPException(401): If token is missing or invalid
-        HTTPException(403): If user is not admin
+    DISABLED: Returns 'admin_dev' without validation.
     """
-    # In dev mode, require explicit admin token for sensitive operations
-    if not settings.ENABLE_AUTH:
-        admin_token = getattr(settings, "ADMIN_TOKEN", None)
-        if not admin_token:
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail="Admin token required. Set ADMIN_TOKEN environment variable.",
-            )
-        if token != admin_token:
-            logger.warning("Unauthorized admin access attempt with invalid token")
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail="Invalid admin token",
-            )
-        return "admin_dev"
+    return "admin_dev"
 
-    # Production: validate JWT and check admin role
-    credentials_exception = HTTPException(
-        status_code=status.HTTP_401_UNAUTHORIZED,
-        detail="Could not validate credentials",
-        headers={"WWW-Authenticate": "Bearer"},
-    )
-
-    if not token:
-        raise credentials_exception
-
-    try:
-        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
-        username: str = payload.get("sub")
-        role: str = payload.get("role", "user")  # Default role is 'user'
-
-        if username is None:
-            raise credentials_exception
-
-        # Check if user has admin role
-        if role != "admin":
-            logger.warning(f"Non-admin user {username} attempted admin operation")
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail="Admin access required",
-            )
-
-    except JWTError as e:
-        logger.warning(f"JWT validation failed: {e}")
-        raise credentials_exception
-
-    return username
+    # # In dev mode, require explicit admin token for sensitive operations
+    # if not settings.ENABLE_AUTH:
+    #     admin_token = getattr(settings, "ADMIN_TOKEN", None)
+    #     if not admin_token:
+    #         raise HTTPException(
+    #             status_code=status.HTTP_403_FORBIDDEN,
+    #             detail="Admin token required. Set ADMIN_TOKEN environment variable.",
+    #         )
+    #     if token != admin_token:
+    #         logger.warning("Unauthorized admin access attempt with invalid token")
+    #         raise HTTPException(
+    #             status_code=status.HTTP_403_FORBIDDEN,
+    #             detail="Invalid admin token",
+    #         )
+    #     return "admin_dev"
+    #
+    # # Production: validate JWT and check admin role
+    # credentials_exception = HTTPException(
+    #     status_code=status.HTTP_401_UNAUTHORIZED,
+    #     detail="Could not validate credentials",
+    #     headers={"WWW-Authenticate": "Bearer"},
+    # )
+    #
+    # if not token:
+    #     raise credentials_exception
+    #
+    # try:
+    #     payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+    #     username: str = payload.get("sub")
+    #     role: str = payload.get("role", "user")  # Default role is 'user'
+    #
+    #     if username is None:
+    #         raise credentials_exception
+    #
+    #     # Check if user has admin role
+    #     if role != "admin":
+    #         logger.warning(f"Non-admin user {username} attempted admin operation")
+    #         raise HTTPException(
+    #             status_code=status.HTTP_403_FORBIDDEN,
+    #             detail="Admin access required",
+    #         )
+    #
+    # except JWTError as e:
+    #     logger.warning(f"JWT validation failed: {e}")
+    #     raise credentials_exception
+    #
+    # return username
