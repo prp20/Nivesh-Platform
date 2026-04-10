@@ -1,6 +1,24 @@
 # Changelog
 
-## 2026-04-10 — Session: Cross-platform setup scripts + Documentation overhaul
+## 2026-04-10 — Session: Cross-platform setup scripts + Documentation + Frontend Build
+
+### Frontend Build & Environment Configuration
+- Created `frontend/.env` — base environment config with `VITE_API_URL=/api/v1` (gitignored)
+- Created `frontend/.env.production` — production config with relative API URL for same-origin serving (gitignored)
+- Existing `frontend/.env.development` — dev config with `VITE_API_URL=http://localhost:8000/api/v1`
+- Executed `npm run build` — production build outputs to `frontend/dist/`
+- Verified: No hardcoded localhost URLs in built code
+- Verified: API configuration is environment-driven via `VITE_API_URL`
+- All API calls use `src/api/apiClient.js` which reads from env with safe fallback to `/api/v1`
+
+### Environment-Driven API URL Pattern
+| Environment | VITE_API_URL | Usage |
+|---|---|---|
+| Development | `http://localhost:8000/api/v1` | Dev server (5173) → Backend (8000) |
+| Production | `/api/v1` | Backend serves frontend at same origin |
+| Fallback | `/api/v1` | Used if env var undefined |
+
+## 2026-04-10 — Cross-platform setup scripts + Documentation overhaul
 
 ### New Files
 - `setup/setup.sh` — Linux/macOS bash setup script: prereq checks, PostgreSQL choice (Docker or external URL), ta-lib C library install, venv + pip, .env generation, DB migrations, optional seeding, frontend build, API server start

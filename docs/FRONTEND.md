@@ -11,6 +11,60 @@ The Nivesh Elite frontend is built with a focus on **visual excellence** and **r
 
 ---
 
+## 🔧 Environment Configuration
+
+The frontend uses environment variables to dynamically configure the API base URL. **No hardcoded URLs or hostnames** — all API calls are environment-driven.
+
+### Environment Files
+
+| File | `VITE_API_URL` | Purpose |
+|---|---|---|
+| `.env` | `/api/v1` | Base/fallback config (gitignored) |
+| `.env.development` | `http://localhost:8000/api/v1` | Development (dev server calls separate backend) |
+| `.env.production` | `/api/v1` | Production (same-origin serving — backend serves frontend) |
+
+### How It Works
+
+**Development:**
+```bash
+cd frontend
+npm install
+npm run dev
+# Loads .env.development
+# Dev server (http://localhost:5173) → Backend API (http://localhost:8000/api/v1)
+```
+
+**Production Build:**
+```bash
+npm run build
+# Loads .env.production
+# Output: frontend/dist/
+# Relative URL /api/v1 — works when backend serves frontend at same origin
+```
+
+### API Client Configuration
+
+**File**: `src/api/apiClient.js`
+```javascript
+baseURL: import.meta.env.VITE_API_URL || '/api/v1',
+```
+
+- Reads `VITE_API_URL` from environment variables
+- Falls back to `/api/v1` if env var is undefined
+- All API calls go through `apiClient` (no hardcoded URLs in service files)
+- Axios interceptors auto-inject `Authorization: Bearer` token from `AuthContext`
+
+### Service Files
+
+All three service files (`authService.js`, `fundService.js`, `stockService.js`) use **relative paths** through the configured `apiClient`:
+- `/auth/login` → `{VITE_API_URL}/auth/login`
+- `/funds/` → `{VITE_API_URL}/funds/`
+- `/screener` → `{VITE_API_URL}/screener`
+
+No hardcoded `localhost`, ports, or absolute URLs anywhere.
+
+---
+
 ## 🏗️ Project Structure
 ```text
 frontend/
