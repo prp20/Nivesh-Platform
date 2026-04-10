@@ -12,11 +12,17 @@ apiClient.interceptors.request.use(
     (config) => {
         try {
             const token = localStorage.getItem('nivesh_token');
-            if (token) {
+            const isAdminPath = config.url?.includes('/pipeline/');
+            const devAdminToken = import.meta.env.VITE_ADMIN_TOKEN;
+
+            // In development, pipeline endpoints require a specific ADMIN_TOKEN
+            if (isAdminPath && devAdminToken) {
+                config.headers.Authorization = `Bearer ${devAdminToken}`;
+            } else if (token) {
                 config.headers.Authorization = `Bearer ${token}`;
             }
         } catch (storageError) {
-            console.warn("Failed to retrieve token from storage", storageError);
+            console.warn("Failed to set authentication header", storageError);
         }
         return config;
     },

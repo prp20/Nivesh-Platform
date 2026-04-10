@@ -4,10 +4,12 @@ import authService from '../api/services/authService';
 const AuthContext = createContext();
 
 export const AuthProvider = ({ children }) => {
-    const [user, setUser] = useState(null);
-    const [loading, setLoading] = useState(true);
+    const [user, setUser] = useState({ username: 'admin', role: 'admin' });
+    const [loading, setLoading] = useState(false);
 
     useEffect(() => {
+        // Authentication disabled - defaulting to mock user
+        /*
         const initAuth = async () => {
             try {
                 const token = localStorage.getItem('nivesh_token');
@@ -26,6 +28,7 @@ export const AuthProvider = ({ children }) => {
             setLoading(false);
         };
         initAuth();
+        */
     }, []);
 
     const login = async (username, password) => {

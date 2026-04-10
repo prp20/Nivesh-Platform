@@ -293,12 +293,14 @@ const SideNavBar = () => {
                             <span className="font-medium text-sm">Preferences</span>
                         </div>
                     </button>
+                    {/* 
                     <button onClick={() => { logout(); navigate('/login'); }} className="flex items-center justify-between py-3 text-slate-500 hover:text-error transition-colors w-full group">
                         <div className="flex items-center gap-4">
                             <span className="material-symbols-outlined text-xl group-hover:translate-x-1 transition-transform">logout</span>
                             <span className="font-medium text-sm">Terminal Exit</span>
                         </div>
                     </button>
+                    */}
                 </div>
             </div>
         </aside>

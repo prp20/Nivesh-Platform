@@ -41,12 +41,14 @@ const AppContent = () => {
       </div>
   );
 
+  /*
   if (!user) return (
     <Routes>
       <Route path="/login" element={<Login />} />
       <Route path="*" element={<Navigate to="/login" replace />} />
     </Routes>
   );
+  */
 
   return (
     <Layout>
@@ -64,6 +66,7 @@ const AppContent = () => {
         <Route path="/indices" element={<IndicesListing />} />
         <Route path="/indices/:benchmarkCode" element={<IndexDetailRoute />} />
         <Route path="/admin" element={<Admin />} />
+        {/* <Route path="/login" element={<Login />} /> */}
         <Route path="*" element={<Navigate to="/dashboard" replace />} />
       </Routes>
     </Layout>
