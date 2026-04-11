@@ -39,7 +39,10 @@ apiClient.interceptors.response.use(
             } catch (storageError) {
                 console.warn("Failed to clear token on 401", storageError);
             }
-            // Optional: window.location.href = '/login';
+            // Force reload to login to ensure clean state
+            if (!window.location.pathname.includes('/login')) {
+                window.location.href = '/login';
+            }
         }
         return Promise.reject(error);
     }
