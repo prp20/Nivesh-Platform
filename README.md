@@ -50,14 +50,14 @@ The setup script will install dependencies, configure the database, build the fr
 
 | Document | Purpose |
 |----------|---------|
-| **[Installation Guide](./docs/INSTALLATION.md)** | System requirements, step-by-step setup, troubleshooting |
+| **[Getting Started](./docs/SETUP.md)** | Installation, prerequisites, local development setup |
 | **[System Overview](./docs/OVERVIEW.md)** | Architecture, design decisions, data flow |
 | **[API Reference](./docs/API_REFERENCE.md)** | All REST endpoints with examples and authentication |
 | **[Database Schema](./docs/DATABASE.md)** | Database models, table relationships, storage patterns |
+| **[Testing Guide](./docs/TESTING.md)** | Unit tests (45+ cases), fixtures, running tests |
 | **[Frontend Architecture](./docs/FRONTEND.md)** | React components, state management, design system |
 | **[Backend Architecture](./docs/BACKEND.md)** | FastAPI structure, async patterns, analytics engine |
 | **[Development Workflow](./docs/WORKFLOW.md)** | Git workflow, branching strategy, commit conventions |
-| **[Setup Scripts Guide](./setup/README.md)** | Detailed guide for all three setup scripts |
 | **[Developer Guidelines](./CLAUDE.md)** | Code style, project structure, common commands |
 
 ---
@@ -68,7 +68,8 @@ The setup script will install dependencies, configure the database, build the fr
 **Backend:** FastAPI + SQLAlchemy 2.0 + asyncpg  
 **Database:** PostgreSQL 16  
 **Data Processing:** pandas, NumPy, TA-Lib  
-**Scheduling:** APScheduler (background jobs)
+**Scheduling:** APScheduler (background jobs)  
+**Testing:** pytest + pytest-asyncio + in-memory SQLite
 
 ---
 
@@ -115,6 +116,28 @@ npm run dev
 ```
 
 See [Development Workflow](./docs/WORKFLOW.md) for detailed guidelines.
+
+---
+
+## 🧪 Testing
+
+### Backend Tests
+
+```bash
+cd backend
+pytest tests/ -v                    # Run all tests
+pytest tests/test_funds.py -v      # Single test file
+pytest tests/ --cov=app            # With coverage
+```
+
+- **45+ test cases** covering all API endpoints
+- Uses **in-memory SQLite** (no database needed)
+- ~52 seconds for full suite
+- See [Testing Guide](./docs/TESTING.md) for details
+
+### Frontend Tests
+
+Frontend tests can be added using Vitest + React Testing Library.
 
 ---
 
