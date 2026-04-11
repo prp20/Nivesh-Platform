@@ -68,6 +68,30 @@ async def get_fund_master_by_code(
     return res.unique().scalar_one_or_none()
 
 
+async def get_fund_masters_by_codes(
+    session: AsyncSession, scheme_codes: List[str]
+) -> List[FundMaster]:
+    """
+    Retrieve multiple funds by their scheme codes in a single batch.
+
+    Args:
+        session: AsyncSession for database access
+        scheme_codes: List of fund scheme codes
+
+    Returns:
+        List of FundMaster objects found, with metrics eager-loaded
+    """
+    if not scheme_codes:
+        return []
+    q = (
+        select(FundMaster)
+        .options(joinedload(FundMaster.metrics))
+        .where(FundMaster.scheme_code.in_(scheme_codes))
+    )
+    res = await session.execute(q)
+    return res.unique().scalars().all()
+
+
 async def get_similar_funds(
     session: AsyncSession, scheme_code: str, limit: int = 4
 ) -> List[FundMaster]:
