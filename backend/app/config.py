@@ -39,6 +39,10 @@ class Settings(BaseSettings):
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 30
     ADMIN_TOKEN: str = ""  # Dev mode: explicit admin token, optional
 
+    # Admin portal credentials (set during setup)
+    ADMIN_USERNAME: str = "admin"
+    ADMIN_PASSWORD_HASH: str = ""  # bcrypt hash written by setup script
+
     # CORS: Read from environment, fall back to dev defaults
     ALLOWED_ORIGINS: list = []
 

@@ -300,12 +300,51 @@ ENABLE_AUTH=false
 SECRET_KEY=${SECRET_KEY}
 ACCESS_TOKEN_EXPIRE_MINUTES=30
 
+# ── Admin portal credentials (set below) ─────────────────────────────────────
+ADMIN_USERNAME=
+ADMIN_PASSWORD_HASH=
+
 # ── Third-party APIs (if needed) ──────────────────────────────────────────────
 # ALPHA_VANTAGE_APIKEY=your_key_here
 # SUPABASE_PASSWORD=your_password_here
 EOF
   success "backend/.env written with generated SECRET_KEY"
 fi
+
+# ── Admin credentials ─────────────────────────────────────────────────────────
+echo ""
+info "Set up your admin login credentials for the Nivesh portal."
+
+read -rp "  Admin username [admin]: " ADMIN_USERNAME_INPUT
+ADMIN_USERNAME_INPUT="${ADMIN_USERNAME_INPUT:-admin}"
+
+while true; do
+  read -rsp "  Admin password: " ADMIN_PASSWORD_INPUT
+  echo ""
+  if [[ -z "$ADMIN_PASSWORD_INPUT" ]]; then
+    warn "Password cannot be empty. Please try again."
+    continue
+  fi
+  read -rsp "  Confirm password: " ADMIN_PASSWORD_CONFIRM
+  echo ""
+  if [[ "$ADMIN_PASSWORD_INPUT" != "$ADMIN_PASSWORD_CONFIRM" ]]; then
+    warn "Passwords do not match. Please try again."
+  else
+    break
+  fi
+done
+
+ADMIN_PASSWORD_HASH=$(ADMIN_PW="$ADMIN_PASSWORD_INPUT" python3 -c "
+import os
+from passlib.context import CryptContext
+print(CryptContext(schemes=['bcrypt'], deprecated='auto').hash(os.environ['ADMIN_PW']))
+")
+
+# Patch the placeholders in .env
+sed -i "s|^ADMIN_USERNAME=.*|ADMIN_USERNAME=${ADMIN_USERNAME_INPUT}|" "${BACKEND_ENV_FILE}"
+sed -i "s|^ADMIN_PASSWORD_HASH=.*|ADMIN_PASSWORD_HASH=${ADMIN_PASSWORD_HASH}|" "${BACKEND_ENV_FILE}"
+
+success "Admin credentials saved (username: ${ADMIN_USERNAME_INPUT})"
 
 # Frontend .env
 WRITE_FRONTEND_ENV=true

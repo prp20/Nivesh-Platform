@@ -105,7 +105,7 @@ async def require_admin(
     When ENABLE_AUTH=False, bypasses all checks (dev/test only).
     """
     username = await get_current_user(token)
-    if settings.ENABLE_AUTH and username != "admin":
+    if settings.ENABLE_AUTH and username != settings.ADMIN_USERNAME:
         logger.warning(f"Non-admin user '{username}' attempted admin operation")
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,

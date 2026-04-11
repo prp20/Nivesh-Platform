@@ -212,6 +212,10 @@ if "%WRITE_BACKEND_ENV%"=="1" (
     echo SECRET_KEY=%SECRET_KEY%
     echo ACCESS_TOKEN_EXPIRE_MINUTES=30
     echo.
+    echo # -- Admin portal credentials (set below) -------------------------------------
+    echo ADMIN_USERNAME=
+    echo ADMIN_PASSWORD_HASH=
+    echo.
     echo # -- Third-party APIs (if needed) --------------------------------------------
     echo # ALPHA_VANTAGE_APIKEY=your_key_here
     echo # SUPABASE_PASSWORD=your_password_here
@@ -219,6 +223,45 @@ if "%WRITE_BACKEND_ENV%"=="1" (
   echo [OK]    backend\.env written to %BACKEND_ENV_FILE%
   echo [WARN]  ENABLE_AUTH=false -- write endpoints are unprotected. Set to true for production.
 )
+
+:: ── Admin credentials ─────────────────────────────────────────────────────────
+echo.
+echo [INFO]  Set up your admin login credentials for the Nivesh portal.
+echo.
+
+:: Write a temporary Python helper to prompt for credentials and patch the .env
+set "HELPER=%TEMP%\nivesh_admin_setup.py"
+(
+  echo import getpass, re, sys
+  echo from passlib.context import CryptContext
+  echo env_file = sys.argv[1]
+  echo username = input("  Admin username [admin]: ").strip() or "admin"
+  echo while True:
+  echo     pw = getpass.getpass("  Admin password: ")
+  echo     if not pw:
+  echo         print("  [WARN] Password cannot be empty.")
+  echo         continue
+  echo     pw2 = getpass.getpass("  Confirm password: ")
+  echo     if pw != pw2:
+  echo         print("  [WARN] Passwords do not match.")
+  echo         continue
+  echo     break
+  echo hash_ = CryptContext(schemes=["bcrypt"], deprecated="auto").hash(pw^)
+  echo content = open(env_file^).read(^)
+  echo content = re.sub(r"ADMIN_USERNAME=.*", "ADMIN_USERNAME=" + username, content^)
+  echo content = re.sub(r"ADMIN_PASSWORD_HASH=.*", "ADMIN_PASSWORD_HASH=" + hash_, content^)
+  echo open(env_file, "w"^).write(content^)
+  echo print("[OK]    Admin credentials saved (username: " + username + ")"^)
+) > "%HELPER%"
+
+python "%HELPER%" "%BACKEND_ENV_FILE%"
+if errorlevel 1 (
+  echo [ERROR] Failed to set admin credentials.
+  del "%HELPER%" >nul 2>&1
+  pause
+  exit /b 1
+)
+del "%HELPER%" >nul 2>&1
 
 :: Frontend .env
 set WRITE_FRONTEND_ENV=1

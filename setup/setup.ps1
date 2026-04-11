@@ -225,6 +225,10 @@ ENABLE_AUTH=false
 SECRET_KEY=$SecretKey
 ACCESS_TOKEN_EXPIRE_MINUTES=30
 
+# ── Admin portal credentials (set below) ─────────────────────────────────────
+ADMIN_USERNAME=
+ADMIN_PASSWORD_HASH=
+
 # ── Third-party APIs (if needed) ──────────────────────────────────────────────
 # ALPHA_VANTAGE_APIKEY=your_key_here
 # SUPABASE_PASSWORD=your_password_here
@@ -232,6 +236,48 @@ ACCESS_TOKEN_EXPIRE_MINUTES=30
   Set-Content -Path $BackendEnvFile -Value $BackendEnvContent -Encoding UTF8
   Write-Success "backend\.env written with generated SECRET_KEY"
 }
+
+# ── Admin credentials ─────────────────────────────────────────────────────────
+Write-Host ""
+Write-Info "Set up your admin login credentials for the Nivesh portal."
+Write-Host ""
+
+$AdminUsername = Read-Host "  Admin username [admin]"
+if ([string]::IsNullOrWhiteSpace($AdminUsername)) { $AdminUsername = "admin" }
+
+while ($true) {
+  $AdminPasswordSecure = Read-Host "  Admin password" -AsSecureString
+  $AdminPassword = [Runtime.InteropServices.Marshal]::PtrToStringAuto(
+    [Runtime.InteropServices.Marshal]::SecureStringToBSTR($AdminPasswordSecure)
+  )
+  if ([string]::IsNullOrEmpty($AdminPassword)) {
+    Write-Warn "Password cannot be empty. Please try again."
+    continue
+  }
+  $ConfirmSecure = Read-Host "  Confirm password" -AsSecureString
+  $ConfirmPassword = [Runtime.InteropServices.Marshal]::PtrToStringAuto(
+    [Runtime.InteropServices.Marshal]::SecureStringToBSTR($ConfirmSecure)
+  )
+  if ($AdminPassword -ne $ConfirmPassword) {
+    Write-Warn "Passwords do not match. Please try again."
+  } else {
+    break
+  }
+}
+
+$AdminPasswordHash = & $PythonCmd -c @"
+import sys
+from passlib.context import CryptContext
+pw = sys.argv[1]
+print(CryptContext(schemes=['bcrypt'], deprecated='auto').hash(pw))
+"@ $AdminPassword
+
+$EnvContent = Get-Content $BackendEnvFile -Raw
+$EnvContent = $EnvContent -replace 'ADMIN_USERNAME=.*', "ADMIN_USERNAME=$AdminUsername"
+$EnvContent = $EnvContent -replace 'ADMIN_PASSWORD_HASH=.*', "ADMIN_PASSWORD_HASH=$AdminPasswordHash"
+Set-Content -Path $BackendEnvFile -Value $EnvContent -Encoding UTF8 -NoNewline
+
+Write-Success "Admin credentials saved (username: $AdminUsername)"
 
 # Frontend .env
 $WriteFrontendEnv = $true
