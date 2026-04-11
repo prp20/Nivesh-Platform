@@ -1,0 +1,19 @@
+symbol,company_name,sector,market_cap_category,yf_symbol,is_index
+RELIANCE,Reliance Industries Ltd,Energy,large,RELIANCE.NS,false
+TCS,Tata Consultancy Services Ltd,IT,large,TCS.NS,false
+HDFCBANK,HDFC Bank Ltd,Banking,large,HDFCBANK.NS,false
+INFY,Infosys Ltd,IT,large,INFY.NS,false
+ICICIBANK,ICICI Bank Ltd,Banking,large,ICICIBANK.NS,false
+HINDUNILVR,Hindustan Unilever Ltd,FMCG,large,HINDUNILVR.NS,false
+BHARTIARTL,Bharti Airtel Ltd,Telecom,large,BHARTIARTL.NS,false
+KOTAKBANK,Kotak Mahindra Bank Ltd,Banking,large,KOTAKBANK.NS,false
+WIPRO,Wipro Ltd,IT,large,WIPRO.NS,false
+LT,Larsen & Toubro Ltd,Infrastructure,large,LT.NS,false
+AXISBANK,Axis Bank Ltd,Banking,large,AXISBANK.NS,false
+BAJFINANCE,Bajaj Finance Ltd,NBFC,large,BAJFINANCE.NS,false
+SBIN,State Bank of India,Banking,large,SBIN.NS,false
+MARUTI,Maruti Suzuki India Ltd,Auto,large,MARUTI.NS,false
+SUNPHARMA,Sun Pharmaceutical Industries,Pharma,large,SUNPHARMA.NS,false
+NIFTY50,NIFTY 50 Index,Index,,^NSEI,true
+SENSEX,BSE SENSEX,Index,,^BSESN,true
+NIFTYBANK,NIFTY Bank Index,Index,,^NSEBANK,true

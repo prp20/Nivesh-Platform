@@ -173,9 +173,14 @@ async def _get_shares_outstanding(stock_id: int) -> Optional[float]:
 
 
 async def _get_latest_dividend(stock_id: int) -> Optional[float]:
-    """Fetch latest dividend per share from P&L statement."""
+    """
+    Fetch latest dividend per share from P&L statement.
+    Tries multiple possible field names: dividend_payout, dividend_per_share, dps.
+    Returns None if field doesn't exist or value is unparseable.
+    """
     sql = """
-        SELECT data->>'dividend_payout' AS div
+        SELECT
+            COALESCE(data->>'dividend_payout', data->>'dividend_per_share', data->>'dps') AS div
         FROM financial_statements
         WHERE stock_id = $1 AND statement_type = 'PL' AND period_type = 'annual'
         ORDER BY period_end DESC
@@ -183,7 +188,7 @@ async def _get_latest_dividend(stock_id: int) -> Optional[float]:
     """
     async with raw_connection() as conn:
         row = await conn.fetchrow(sql, stock_id)
-        if not row or not row["div"]:
+        if not row or not row["div"] or row["div"] == "n/a":
             return None
         try:
             return float(row["div"])
