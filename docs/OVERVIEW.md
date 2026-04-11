@@ -50,6 +50,7 @@ graph TD
 | **Analytics** | Pandas, NumPy | Vectorized performance for 17+ financial ratios |
 | **Database** | PostgreSQL 16 | Relational master data + time-series price data |
 | **Data Sources** | mftool, yfinance | AMFI (India Mutual Funds) and NSE/BSE Equities |
+| **Testing** | pytest + pytest-asyncio | 45+ tests, in-memory SQLite, all endpoints covered |
 | **Infrastructure** | Docker | Docker Compose for DB and PGAdmin |
 
 ---

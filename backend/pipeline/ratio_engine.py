@@ -34,7 +34,7 @@ async def run_ratio_compute_all():
 
 
 async def compute_ratios_for_stock(stock_id: int, latest_close: Optional[float]):
-    """Compute and upsert annual ratios for one stock."""
+    """Compute and upsert annual + TTM ratios for one stock."""
     pl = await _get_statement(stock_id, "PL")
     bs = await _get_statement(stock_id, "BS")
     cf = await _get_statement(stock_id, "CF")
@@ -52,6 +52,10 @@ async def compute_ratios_for_stock(stock_id: int, latest_close: Optional[float])
     d = pl.get("data", {})
     b = bs.get("data", {})
     c = cf.get("data", {}) if cf else {}
+
+    # Also compute TTM if at least 2 quarters/periods are available
+    if len(periods) >= 2:
+        await _compute_and_store_ttm_ratios(stock_id, pl, bs, cf, latest_close)
 
     def latest(series_key, data_dict=d):
         vals = data_dict.get(series_key, [])
@@ -151,6 +155,93 @@ async def compute_ratios_for_stock(stock_id: int, latest_close: Optional[float])
         return
 
     await _upsert_ratios(stock_id, period_end, "annual", ratios)
+
+
+async def _compute_and_store_ttm_ratios(stock_id: int, pl: dict, bs: dict, cf: dict, latest_close: Optional[float]):
+    """
+    Compute trailing-twelve-months (TTM) ratios by summing/averaging last 4 quarters.
+    For annual data, we use the last available period as reference.
+    """
+    d = pl.get("data", {})
+    b = bs.get("data", {})
+    c = cf.get("data", {}) if cf else {}
+
+    def ttm_sum(series_key, data_dict=d, periods_needed=4):
+        """Sum the last N periods for flow metrics (revenue, PAT, EBITDA, etc.)."""
+        vals = [v for v in data_dict.get(series_key, [])[-periods_needed:] if v is not None and str(v).lower() != "n/a"]
+        if not vals:
+            return None
+        return sum(vals)
+
+    def latest(series_key, data_dict=d):
+        """Get latest value for stock metrics (shares, etc.)."""
+        vals = data_dict.get(series_key, [])
+        return next((v for v in reversed(vals) if v is not None and str(v).lower() != "n/a"), None)
+
+    def safe_div(num, denom):
+        if num is None or denom is None or denom == 0:
+            return None
+        return round(num / denom, 3)
+
+    # TTM aggregates for flow metrics
+    pat_ttm      = ttm_sum("net_profit")
+    revenue_ttm  = ttm_sum("sales") or ttm_sum("revenue")
+    ebitda_ttm   = ttm_sum("operating_profit")
+    deprec_ttm   = ttm_sum("depreciation")
+    ebit_ttm     = ebitda_ttm - deprec_ttm if ebitda_ttm is not None and deprec_ttm is not None else ebitda_ttm
+    interest_ttm = ttm_sum("interest")
+    cfo_ttm      = ttm_sum("cash_from_operating_activity", c) if c else None
+
+    # Stock metrics use latest values
+    equity   = latest("shareholders_equity") or latest("net_worth") or latest("total_equity") or latest("reserves")
+    tot_assets  = latest("total_assets", b)
+    borrowings  = latest("borrowings", b)
+    curr_assets = latest("current_assets", b)
+    curr_liab   = latest("current_liabilities", b)
+    shares      = latest("shares_outstanding")
+    eps_ttm     = safe_div(pat_ttm, shares)
+    book_val_ps = safe_div(equity, shares)
+
+    # Compute TTM ratios
+    roe_val = safe_div(pat_ttm, equity)
+    roe_ttm = round(roe_val * 100, 3) if roe_val is not None else None
+
+    roce_val = safe_div(ebit_ttm, tot_assets)
+    roce_ttm = round(roce_val * 100, 3) if roce_val is not None else None
+
+    roa_val = safe_div(pat_ttm, tot_assets)
+    roa_ttm = round(roa_val * 100, 3) if roa_val is not None else None
+
+    pat_margin_val = safe_div(pat_ttm, revenue_ttm)
+    pat_margin_ttm = round(pat_margin_val * 100, 3) if pat_margin_val is not None else None
+
+    ebitda_margin_val = safe_div(ebitda_ttm, revenue_ttm)
+    ebitda_margin_ttm = round(ebitda_margin_val * 100, 3) if ebitda_margin_val is not None else None
+
+    ratios_ttm = {
+        "pe_ratio":       safe_div(latest_close, eps_ttm) if eps_ttm and eps_ttm > 0 else None,
+        "pb_ratio":       safe_div(latest_close, book_val_ps) if book_val_ps and book_val_ps > 0 else None,
+        "ps_ratio":       safe_div(latest_close * (shares or 0), revenue_ttm) if revenue_ttm else None,
+        "roe":            roe_ttm,
+        "roce":           roce_ttm,
+        "roa":            roa_ttm,
+        "pat_margin":     pat_margin_ttm,
+        "ebitda_margin":  ebitda_margin_ttm,
+        "debt_equity":    safe_div(borrowings, equity),
+        "interest_cov":   safe_div(ebit_ttm, interest_ttm),
+        "current_ratio":  safe_div(curr_assets, curr_liab),
+        "revenue_growth": None,  # N/A for TTM
+        "pat_growth":     None,  # N/A for TTM
+        "eps_growth":     None,  # N/A for TTM
+        "eps":            eps_ttm,
+        "book_value_ps":  book_val_ps,
+        "cfo_to_pat":     safe_div(cfo_ttm, pat_ttm),
+    }
+
+    # Use today's date as the TTM period_end (rolling)
+    from datetime import datetime
+    ttm_period_end = datetime.now().date()
+    await _upsert_ratios(stock_id, ttm_period_end, "ttm", ratios_ttm)
 
 
 # ─── DB helpers ───────────────────────────────────────────────────────────────

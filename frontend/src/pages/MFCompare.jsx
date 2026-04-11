@@ -27,34 +27,36 @@ const MFCompare = () => {
 
     if (compareList.length < 2) {
         return (
-            <div className="min-h-[85vh] w-full flex flex-col items-center justify-center p-12 bg-surface">
-                <div className="absolute inset-0 overflow-hidden pointer-events-none opacity-[0.03]">
-                    <span className="text-[25vw] font-headline font-black uppercase tracking-tighter leading-none select-none">Sovereign</span>
+            <div className="min-h-[85vh] w-full flex flex-col items-center justify-center p-8 bg-surface relative overflow-hidden">
+                {/* Background Pattern */}
+                <div className="absolute inset-0 opacity-[0.02] pointer-events-none">
+                    <div className="absolute top-0 right-0 w-[500px] h-[500px] bg-primary/20 blur-[150px] rounded-full"></div>
+                    <div className="absolute bottom-0 left-0 w-[500px] h-[500px] bg-secondary/10 blur-[150px] rounded-full"></div>
                 </div>
-                
+
                 <motion.div 
-                    initial={{ scale: 0.9, opacity: 0 }}
-                    animate={{ scale: 1, opacity: 1 }}
-                    className="relative z-10 flex flex-col items-center text-center max-w-4xl"
+                    initial={{ y: 20, opacity: 0 }}
+                    animate={{ y: 0, opacity: 1 }}
+                    className="relative z-10 flex flex-col items-center text-center max-w-2xl px-6"
                 >
-                    <div className="w-32 h-32 rounded-[2.5rem] bg-surface-container-lowest ghost-border flex items-center justify-center mb-16 shadow-2xl relative">
-                        <span className="material-symbols-outlined text-primary text-5xl">lock_open</span>
-                        <div className="absolute -bottom-2 -right-2 w-8 h-8 rounded-full bg-error flex items-center justify-center border-4 border-surface shadow-xl">
-                            <span className="material-symbols-outlined text-xs text-white">priority_high</span>
+                    <div className="w-20 h-20 rounded-3xl bg-surface-container-low ghost-border flex items-center justify-center mb-10 shadow-xl relative group">
+                        <span className="material-symbols-outlined text-primary text-3xl group-hover:scale-110 transition-transform">lock_open</span>
+                        <div className="absolute -top-1 -right-1 w-6 h-6 rounded-lg bg-error flex items-center justify-center border-2 border-surface shadow-lg">
+                            <span className="material-symbols-outlined text-[10px] text-white">priority_high</span>
                         </div>
                     </div>
                     
-                    <span className="font-label text-[10px] text-primary font-black uppercase tracking-[0.6em] mb-6 animate-pulse italic">Access Denied: Initialization Failure</span>
-                    <h2 className="text-6xl sm:text-8xl font-headline font-bold text-white mb-8 uppercase tracking-tighter italic leading-none">
-                        Critical <span className="text-primary/10 italic">Depletion</span>
+                    <span className="font-label text-[10px] text-primary font-black uppercase tracking-[0.5em] mb-4 opacity-70 italic">Status: Access Restricted</span>
+                    <h2 className="text-4xl sm:text-5xl font-headline font-bold text-white mb-6 uppercase tracking-tight italic leading-tight">
+                        Insufficient <span className="text-primary/20 italic">Intelligence</span>
                     </h2>
-                    <p className="text-slate-500 text-lg font-medium tracking-tight mb-16 max-w-2xl leading-relaxed italic border-l-2 border-[#45464c]/40 pl-10 mx-auto">
+                    <p className="text-slate-500 text-base font-medium tracking-tight mb-12 max-w-md leading-relaxed italic border-l-2 border-primary/20 pl-8 mx-auto">
                         A minimum of two identified asset artifacts are required to initialize the differential comparison matrix and activate AI consensus protocols.
                     </p>
                     
-                    <Link to="/mf" className="group relative px-14 py-6 overflow-hidden rounded-2xl gold-leaf-gradient text-on-primary font-black uppercase tracking-[0.2em] shadow-[0_24px_48px_rgba(233,195,73,0.15)] transition-all active:scale-95 flex items-center gap-6 font-label text-sm">
-                        <span className="relative z-10 transition-transform group-hover:-translate-x-2">Return to Resource Vault</span>
-                        <span className="material-symbols-outlined relative z-10 group-hover:translate-x-2 transition-transform">arrow_forward</span>
+                    <Link to="/mf" className="group relative px-10 py-5 overflow-hidden rounded-2xl bg-surface-container-high border border-outline-variant/10 text-white font-black uppercase tracking-[0.2em] transition-all active:scale-95 flex items-center gap-4 font-label text-[11px] hover:border-primary/30">
+                        <span className="relative z-10">Return to Resource Vault</span>
+                        <span className="material-symbols-outlined relative z-10 text-sm group-hover:translate-x-1 transition-transform">arrow_forward</span>
                     </Link>
                 </motion.div>
             </div>
@@ -62,43 +64,45 @@ const MFCompare = () => {
     }
 
     return (
-        <div className="relative min-h-screen p-6 md:p-12 lg:p-16 xl:p-24 2xl:p-32 w-full animate-fadeIn transition-all duration-500 pb-60 overflow-hidden bg-surface">
-            {/* Background Watermark */}
-            <div className="absolute top-40 -left-20 pointer-events-none opacity-[0.02] select-none rotate-90 origin-top-left">
-                <span className="text-[18vw] font-headline font-black uppercase tracking-tighter leading-none">The Ledger</span>
-            </div>
+        <div className="relative min-h-screen p-4 md:p-8 lg:p-10 w-full animate-fadeIn transition-all duration-500 pb-32 overflow-hidden bg-surface">
+            {/* Ambient Background */}
+            <div className="absolute top-0 right-0 w-[600px] h-[600px] bg-primary/5 blur-[120px] rounded-full pointer-events-none"></div>
 
-            <div className="relative z-10 flex flex-col gap-24 max-w-[1400px] mx-auto">
-                {/* Header - Ultra Scale */}
-                <header className="flex flex-col xl:flex-row xl:items-end justify-between gap-16 border-b border-[#45464c]/10 pb-16">
-                    <div className="flex-1">
-                        <span className="text-[10px] text-primary font-black uppercase tracking-[0.5em] mb-6 block font-label italic">Asymmetric Intelligence Matrix</span>
-                        <h1 className="text-6xl sm:text-8xl lg:text-9xl font-headline font-bold tracking-tighter leading-none group uppercase italic">
+            <div className="relative z-10 flex flex-col gap-16 max-w-[1600px] mx-auto">
+                {/* Modern Compact Header */}
+                <header className="flex flex-col md:flex-row md:items-center justify-between gap-8 border-b border-outline-variant/10 pb-10">
+                    <div className="flex flex-col gap-2">
+                        <div className="flex items-center gap-3">
+                            <div className="w-8 h-8 rounded-lg bg-primary/10 flex items-center justify-center border border-primary/20">
+                                <span className="material-symbols-outlined text-primary text-lg">analytics</span>
+                            </div>
+                            <span className="text-[10px] text-primary font-black uppercase tracking-[0.4em] font-label italic">Matrix Protocol v4.2</span>
+                        </div>
+                        <h1 className="text-4xl md:text-5xl font-headline font-bold tracking-tight leading-none group uppercase italic text-white mt-1">
                             Consensus <span className="text-primary/10 group-hover:text-primary/20 transition-colors">Engine</span>
                         </h1>
-                        <div className="flex items-center gap-6 mt-8">
-                            <div className="h-[1px] w-20 bg-primary/20"></div>
-                            <span className="text-[10px] text-slate-500 font-bold uppercase tracking-[0.4em] font-label">Status: Differential Analysis Engaged</span>
+                        <div className="flex items-center gap-4">
+                            <span className="text-[9px] text-slate-500 font-bold uppercase tracking-[0.3em] font-label flex items-center gap-2">
+                                <span className="w-1.5 h-1.5 rounded-full bg-secondary animate-pulse"></span>
+                                System status: active surveillance enabled
+                            </span>
                         </div>
                     </div>
 
-                    <div className="flex shrink-0">
+                    <div className="flex items-center gap-4">
                         <button 
                             onClick={() => dispatch(clearCompare())}
-                            className="px-10 py-5 rounded-[1.5rem] bg-surface-container-lowest ghost-border text-slate-400 font-black text-[10px] uppercase tracking-[0.3em] hover:bg-error hover:text-white hover:border-error transition-all flex items-center gap-6 shadow-xl group font-label"
+                            className="px-6 py-3 rounded-xl bg-surface-container-low border border-outline-variant/10 text-slate-400 font-black text-[9px] uppercase tracking-[0.2em] hover:bg-error/10 hover:text-error hover:border-error/20 transition-all flex items-center gap-3 font-label"
                         >
-                            <span className="material-symbols-outlined text-xl group-hover:rotate-180 transition-transform">delete_sweep</span>
+                            <span className="material-symbols-outlined text-sm">delete_sweep</span>
                             Purge Matrix
                         </button>
                     </div>
                 </header>
 
                 {comparisonError && (
-                    <div className="p-12 bg-error/5 ghost-border rounded-[2.5rem] text-error font-black uppercase tracking-[0.3em] text-center shadow-2xl animate-shake font-label flex flex-col items-center gap-6">
-                        <div className="w-14 h-14 rounded-full bg-error/10 flex items-center justify-center">
-                            <span className="material-symbols-outlined text-2xl">warning</span>
-                        </div>
-                        <span className="text-sm">System Malfunction: {comparisonError}</span>
+                    <div className="p-8 bg-error/5 border border-error/10 rounded-2xl text-error font-black uppercase tracking-[0.2em] text-center shadow-lg animate-shake font-label flex flex-col items-center gap-3">
+                        <span className="text-[10px]">System Malfunction: {comparisonError}</span>
                     </div>
                 )}
 
@@ -112,10 +116,10 @@ const MFCompare = () => {
                             initial={{ opacity: 0 }}
                             animate={{ opacity: 1 }}
                             exit={{ opacity: 0 }}
-                            className="flex flex-col items-center justify-center py-40 bg-surface-container-lowest/40 rounded-[3rem] ghost-border shadow-2xl"
+                            className="flex flex-col items-center justify-center py-32 bg-surface-container-low/50 rounded-3xl border border-outline-variant/10 shadow-2xl backdrop-blur-md"
                         >
-                            <div className="w-20 h-20 border-2 border-primary border-t-transparent rounded-full animate-spin mb-10 shadow-[0_0_60px_rgba(233,195,73,0.1)]"></div>
-                            <p className="text-primary font-black uppercase tracking-[0.6em] animate-pulse text-xs italic font-label">Synchronizing Neural Vectors...</p>
+                            <div className="w-12 h-12 border-2 border-primary border-t-transparent rounded-full animate-spin mb-6"></div>
+                            <p className="text-primary font-black uppercase tracking-[0.4em] animate-pulse text-[10px] italic font-label">Synchronizing Neural Vectors...</p>
                         </motion.div>
                     )}
                 </AnimatePresence>
@@ -123,10 +127,9 @@ const MFCompare = () => {
                 {/* Section B & C: Analysis & Recommendation */}
                 {!comparisonLoading && comparisonResult && (
                     <motion.div 
-                        initial={{ opacity: 0, y: 30 }}
+                        initial={{ opacity: 0, y: 20 }}
                         animate={{ opacity: 1, y: 0 }}
-                        transition={{ duration: 0.8, ease: "easeOut" }}
-                        className="flex flex-col gap-32"
+                        className="flex flex-col gap-20"
                     >
                         <ComparisonTable 
                             funds={comparisonResult.funds} 
@@ -140,12 +143,13 @@ const MFCompare = () => {
                     </motion.div>
                 )}
 
-                {/* Footer Style Refined */}
-                <footer className="mt-32 pt-20 border-t border-[#45464c]/10 opacity-30 italic text-[10px] tracking-[0.6em] uppercase font-black text-center leading-relaxed font-label">
+                {/* Compact Footer */}
+                <footer className="mt-10 pt-8 border-t border-outline-variant/5 opacity-50 italic text-[9px] tracking-[0.4em] uppercase font-black text-center leading-relaxed font-label">
                      Protocol: COMP-ELITE-X9 • Sovereign Analysis Enabled • Neural Logic Epoch {new Date().getFullYear()}
                 </footer>
             </div>
         </div>
+
     );
 };
 

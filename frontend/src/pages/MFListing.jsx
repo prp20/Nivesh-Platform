@@ -2,9 +2,10 @@ import React, { useEffect } from 'react';
 import { useDispatch, useSelector } from 'react-redux';
 import { Link, useNavigate } from 'react-router-dom';
 import { fetchFunds, setCategoryFilter, setCurrentPage, setViewMode } from '../store/slices/fundsSlice';
-import { addToCompare, removeFromCompare, clearCompare } from '../store/slices/compareSlice';
+import { addToCompare, removeFromCompare } from '../store/slices/compareSlice';
 import { motion, AnimatePresence } from 'framer-motion';
 import toast from 'react-hot-toast';
+import CompareDock from '../components/Compare/CompareDock';
 
 const MFListing = () => {
     const dispatch = useDispatch();
@@ -60,22 +61,22 @@ const MFListing = () => {
     return (
         <div className="p-6 md:p-12 lg:p-16 xl:p-24 2xl:p-32 w-full animate-fadeIn flex flex-col gap-16 transition-all duration-500 relative pb-64">
             {/* Header - Ultra Scale */}
-            <header className="flex flex-col 3xl:flex-row 3xl:items-end justify-between gap-12 mb-8">
-                <div>
-                    <span className="text-sm md:text-base text-primary font-black uppercase tracking-[0.5em] opacity-80 mb-4 block">Institutional Wealth surveillance</span>
-                    <h1 className="text-5xl sm:text-7xl md:text-8xl lg:text-9xl 3xl:text-[11rem] font-headline font-bold tracking-tighter leading-none group uppercase">
-                        Mutual Fund <span className="text-primary/10 group-hover:text-primary/20 transition-colors">Vault</span>
-                    </h1>
+            <header className="mb-12 flex flex-col xl:flex-row items-start xl:items-center justify-between gap-8 pt-8">
+                <div className="space-y-1">
+                    <p className="font-label text-xs font-semibold uppercase tracking-[0.3em] text-primary">Sovereign Asset Surveillance</p>
+                    <h2 className="font-headline text-5xl font-light tracking-tight text-white uppercase">
+                        Fund <span className="font-extrabold italic text-primary">Vault</span>
+                    </h2>
                 </div>
 
-                <div className="flex flex-wrap gap-8 items-center bg-surface-container-high/40 p-6 rounded-[2.5rem] border border-white/5 backdrop-blur-2xl">
+                <div className="flex flex-wrap gap-4 items-center bg-surface-container-low p-2 rounded-2xl border border-outline-variant/10">
                     {/* Category Filter */}
-                    <div className="flex bg-black/40 p-2 rounded-2xl border border-white/5">
+                    <div className="flex bg-black/20 p-1 rounded-xl border border-outline-variant/10">
                         {['All', 'Equity', 'Debt', 'Hybrid'].map((cat) => (
                             <button 
                                 key={cat} 
                                 onClick={() => dispatch(setCategoryFilter(cat))}
-                                className={`px-8 py-3 text-[10px] font-black tracking-[0.3em] uppercase rounded-xl transition-all ${categoryFilter === cat ? 'bg-primary text-on-primary shadow-2xl shadow-primary/40' : 'text-slate-500 hover:text-white'}`}
+                                className={`px-6 py-2 text-[9px] font-black tracking-widest uppercase rounded-lg transition-all ${categoryFilter === cat ? 'bg-primary text-on-primary shadow-lg shadow-primary/20' : 'text-slate-500 hover:text-white'}`}
                             >
                                 {cat}
                             </button>
@@ -83,24 +84,22 @@ const MFListing = () => {
                     </div>
 
                     {/* View Toggle */}
-                    <div className="h-12 w-px bg-white/10 mx-4 hidden 3xl:block"></div>
+                    <div className="h-8 w-px bg-outline-variant/20 hidden xl:block"></div>
                     
-                    <div className="flex bg-black/40 p-2 rounded-2xl border border-white/5">
+                    <div className="flex bg-black/20 p-1 rounded-xl border border-outline-variant/10">
                         <button
                             onClick={() => dispatch(setViewMode('card'))}
-                            className={`p-3 rounded-xl transition-all flex items-center gap-3 ${viewMode === 'card' ? 'bg-white/10 text-primary shadow-inner' : 'text-slate-500 hover:text-slate-300'}`}
+                            className={`p-2 rounded-lg transition-all flex items-center gap-2 ${viewMode === 'card' ? 'bg-white/10 text-primary shadow-inner' : 'text-slate-500 hover:text-slate-300'}`}
                             title="Grid Perspective"
-                            aria-label="Switch to grid view"
                         >
-                            <span className="material-symbols-outlined text-xl" aria-hidden="true">grid_view</span>
+                            <span className="material-symbols-outlined text-lg">grid_view</span>
                         </button>
                         <button
                             onClick={() => dispatch(setViewMode('table'))}
-                            className={`p-3 rounded-xl transition-all flex items-center gap-3 ${viewMode === 'table' ? 'bg-white/10 text-primary shadow-inner' : 'text-slate-500 hover:text-slate-300'}`}
+                            className={`p-2 rounded-lg transition-all flex items-center gap-2 ${viewMode === 'table' ? 'bg-white/10 text-primary shadow-inner' : 'text-slate-500 hover:text-slate-300'}`}
                             title="Analytical Ledger"
-                            aria-label="Switch to table view"
                         >
-                            <span className="material-symbols-outlined text-xl" aria-hidden="true">table_rows</span>
+                            <span className="material-symbols-outlined text-lg">table_rows</span>
                         </button>
                     </div>
                 </div>
@@ -131,59 +130,58 @@ const MFListing = () => {
 
                             return (
                                 <motion.div 
-                                    initial={{ opacity: 0, y: 30 }}
-                                    animate={{ opacity: 1, y: 0 }}
-                                    transition={{ delay: idx * 0.05 }}
+                                    initial={{ opacity: 0, scale: 0.9 }}
+                                    animate={{ opacity: 1, scale: 1 }}
+                                    transition={{ delay: idx * 0.03 }}
                                     key={fund.scheme_code} 
-                                    className={`bg-surface-container p-12 rounded-[3.5rem] border ${isComparing ? 'border-primary/60 shadow-[0_0_40px_rgba(233,195,73,0.1)]' : 'border-white/5'} hover:border-primary/40 transition-all duration-700 flex flex-col group relative overflow-hidden shadow-2xl hover:translate-y-[-16px] cursor-crosshair`}
+                                    className={`bg-surface-container-low p-6 rounded-2xl border ${isComparing ? 'border-primary/60 shadow-[0_0_40px_rgba(233,195,73,0.1)]' : 'border-outline-variant/10'} hover:border-primary/40 transition-all duration-500 flex flex-col group relative overflow-hidden shadow-xl hover:translate-y-[-8px] cursor-crosshair`}
                                 >
-                                    <div className="absolute top-0 right-0 p-12 opacity-0 group-hover:opacity-10 transition-all duration-1000 scale-150 group-hover:scale-100">
-                                        <span className="material-symbols-outlined text-[150px] text-primary">account_balance</span>
-                                    </div>
-                                    
-                                    <div className="mb-10 flex justify-between items-start relative z-10">
-                                        <span className={`text-[11px] font-black tracking-[0.3em] uppercase px-5 py-2 rounded-xl bg-white/5 border border-white/5 transition-all group-hover:border-primary/30 text-secondary`}>
+                                    <div className="mb-6 flex justify-between items-start relative z-10">
+                                        <span className={`text-[9px] font-black tracking-[0.2em] uppercase px-3 py-1 rounded-lg bg-white/5 border border-outline-variant/10 text-secondary`}>
                                             {fund.scheme_category}
                                         </span>
                                         
                                         <button 
                                             onClick={() => isComparing ? dispatch(removeFromCompare(fund.scheme_code)) : handleAddToCompare(fund)}
-                                            className={`p-3 rounded-full transition-all ${isComparing ? 'bg-primary text-on-primary ring-4 ring-primary/20' : 'bg-white/5 text-slate-500 hover:text-white hover:bg-white/10'} ${isLocked && !isComparing ? 'opacity-20 cursor-not-allowed' : ''}`}
-                                            title={isComparing ? "Remove from Matrix" : "Inject into Matrix"}
+                                            className={`p-2 rounded-xl transition-all ${isComparing ? 'bg-primary text-on-primary' : 'bg-white/5 text-slate-500 hover:text-white hover:bg-white/10'} ${isLocked && !isComparing ? 'opacity-20 cursor-not-allowed' : ''}`}
                                         >
-                                            <span className="material-symbols-outlined text-2xl">{isComparing ? 'check_circle' : 'add_circle'}</span>
+                                            <span className="material-symbols-outlined text-xl">{isComparing ? 'check' : 'add'}</span>
                                         </button>
                                     </div>
 
                                     <Link 
                                         to={`/mf/${fund.scheme_code}`} 
                                         onClick={(e) => handleDetailNavigation(e, fund.scheme_code)}
-                                        className="text-3xl sm:text-4xl font-headline font-bold text-white mb-4 group-hover:text-primary transition-colors tracking-tight leading-tight uppercase line-clamp-2 min-h-[5rem] relative z-10"
+                                        className="text-2xl font-headline font-bold text-white mb-1 group-hover:text-primary transition-colors tracking-tight uppercase line-clamp-2 min-h-[4rem] flex items-center relative z-10"
                                     >
                                         {fund.scheme_name}
                                     </Link>
-                                    <p className="text-sm text-slate-500 font-black tracking-[0.4em] uppercase mb-12 opacity-60 relative z-10">ID: {fund.scheme_code} • {fund.amc_name}</p>
+                                    <p className="text-[10px] text-slate-500 font-label font-bold tracking-widest uppercase truncate mb-6 opacity-60 relative z-10">ID: {fund.scheme_code} • {fund.amc_name}</p>
 
-                                    <div className="grid grid-cols-2 gap-10 mb-12 py-8 border-y border-white/5 bg-white/[0.01] backdrop-blur-sm relative z-10">
+                                    <div className="grid grid-cols-2 gap-4 mb-6 py-4 border-y border-outline-variant/10 relative z-10">
                                         <div>
-                                            <p className="text-[10px] uppercase tracking-[0.4em] text-slate-500 font-black mb-3">AUM Valuation</p>
-                                            <p className="font-extrabold text-3xl text-white tracking-tighter truncate">{fund.displayMetrics.aum}</p>
+                                            <p className="text-[8px] uppercase tracking-widest text-slate-600 font-black mb-1">Vault AUM</p>
+                                            <p className="font-bold text-sm text-white tracking-tighter truncate">{fund.displayMetrics.aum}</p>
                                         </div>
                                         <div>
-                                            <p className="text-[10px] uppercase tracking-[0.4em] text-slate-500 font-black mb-3">Current Nav</p>
-                                            <p className="font-extrabold text-3xl text-white tracking-tighter">₹{fund.displayMetrics.nav}</p>
+                                            <p className="text-[8px] uppercase tracking-widest text-slate-600 font-black mb-1">Current Nav</p>
+                                            <p className="font-bold text-sm text-white tracking-tighter">₹{fund.displayMetrics.nav}</p>
                                         </div>
                                     </div>
 
                                     <div className="flex justify-between items-end mt-auto relative z-10">
                                         <div>
-                                            <p className="text-[10px] uppercase tracking-[0.4em] text-slate-500 font-black mb-3">Session Alpha</p>
-                                            <p className={`text-4xl font-black ${fund.displayMetrics.change.startsWith('+') ? 'text-secondary' : 'text-error'} tracking-tighter`}>
+                                            <p className="text-[8px] uppercase tracking-widest text-slate-600 font-black mb-1">Session Alpha</p>
+                                            <p className={`text-2xl font-black ${fund.displayMetrics.change.startsWith('+') ? 'text-secondary' : 'text-error'} tracking-tighter`}>
                                                 {fund.displayMetrics.change}
                                             </p>
                                         </div>
+                                        <div className="flex flex-col items-end">
+                                            <p className="text-[8px] uppercase tracking-widest text-slate-600 font-black mb-1 text-right">Sovereign Stance</p>
+                                            <RatingBadge score={fund.score} />
+                                        </div>
                                     </div>
-                                    <div className={`absolute inset-x-0 bottom-0 h-1 gold-gradient transition-opacity ${isComparing ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'}`}></div>
+                                    <div className={`absolute inset-x-0 bottom-0 h-0.5 bg-primary transition-opacity ${isComparing ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'}`}></div>
                                 </motion.div>
                             );
                         })}
@@ -292,62 +290,7 @@ const MFListing = () => {
             </div>
 
             {/* Floating Compare Dock */}
-            <AnimatePresence>
-                {compareList.length > 0 && (
-                    <motion.div 
-                        initial={{ y: 200, opacity: 0 }}
-                        animate={{ y: 0, opacity: 1 }}
-                        exit={{ y: 200, opacity: 0 }}
-                        className="fixed bottom-12 left-1/2 -translate-x-1/2 z-[100] w-full max-w-6xl px-6"
-                    >
-                        <div className="glass-panel p-8 rounded-[3rem] border border-primary/20 shadow-[0_-32px_64px_rgba(0,0,0,0.5)] flex flex-col md:flex-row items-center justify-between gap-12 bg-[#0f1419]/95 backdrop-blur-3xl">
-                            <div className="flex items-center gap-8 flex-1 overflow-x-auto w-full no-scrollbar px-4">
-                                <div className="flex flex-col">
-                                    <span className="text-[10px] font-black text-primary uppercase tracking-[0.4em] leading-none mb-1">Matrix Active</span>
-                                    <span className="text-2xl font-black text-white tracking-widest uppercase">{compareList.length}/4</span>
-                                </div>
-                                <div className="h-10 w-px bg-white/10 mx-4 hidden md:block"></div>
-                                <div className="flex gap-4">
-                                    {compareList.map((fund) => (
-                                        <motion.div 
-                                            layout
-                                            initial={{ scale: 0.8, opacity: 0 }}
-                                            animate={{ scale: 1, opacity: 1 }}
-                                            key={fund.scheme_code}
-                                            className="px-6 py-3 rounded-2xl bg-white/5 border border-white/5 flex items-center gap-4 group hover:border-primary/40 transition-all cursor-default whitespace-nowrap"
-                                        >
-                                            <span className="text-[11px] font-black text-white/80 uppercase tracking-widest">{fund.scheme_name.substring(0, 15)}...</span>
-                                            <button 
-                                                onClick={() => dispatch(removeFromCompare(fund.scheme_code))}
-                                                className="material-symbols-outlined text-slate-500 hover:text-error text-lg transition-colors"
-                                            >
-                                                close
-                                            </button>
-                                        </motion.div>
-                                    ))}
-                                </div>
-                            </div>
-
-                            <div className="flex items-center gap-8">
-                                <button 
-                                    onClick={() => dispatch(clearCompare())}
-                                    className="px-8 py-4 rounded-xl text-[10px] font-black uppercase tracking-[0.3em] text-slate-500 hover:text-error transition-all"
-                                >
-                                    Purge All
-                                </button>
-                                <button 
-                                    onClick={() => navigate('/compare')}
-                                    disabled={compareList.length < 2}
-                                    className={`px-12 py-5 rounded-2xl gold-gradient text-on-primary font-black text-xs uppercase tracking-[0.3em] shadow-2xl transition-all active:scale-95 flex items-center gap-4 ${compareList.length < 2 ? 'opacity-30 grayscale cursor-not-allowed' : 'hover:brightness-110'}`}
-                                >
-                                    <span className="material-symbols-outlined">analytics</span>
-                                    Initialize Comparison
-                                </button>
-                            </div>
-                        </div>
-                    </motion.div>
-                )}
-            </AnimatePresence>
+            <CompareDock />
 
             <footer className="mt-20 py-16 border-t border-white/5 opacity-30 italic text-[11px] tracking-[0.6em] uppercase font-black text-center leading-relaxed">
                 Benchmark Consensus Protocol Active • Decentralized Market Surveillance • Epoch {new Date().getFullYear()}
@@ -355,5 +298,29 @@ const MFListing = () => {
         </div>
     );
 };
+
+function RatingBadge({ score }) {
+    if (score === undefined || score === null) return null;
+    
+    let label = "HOLD";
+    let colorClass = "text-primary border-primary/50 bg-primary/10";
+    
+    if (score >= 80) {
+        label = "STRONG BUY";
+        colorClass = "text-secondary border-secondary bg-secondary/20";
+    } else if (score >= 60) {
+        label = "BUY";
+        colorClass = "text-secondary border-secondary/50 bg-secondary/10";
+    } else if (score < 40) {
+        label = "SELL";
+        colorClass = "text-error border-error/50 bg-error/10";
+    }
+
+    return (
+        <div className={`px-3 py-1 rounded-full text-[9px] uppercase font-black tracking-widest border ${colorClass}`}>
+            {label}
+        </div>
+    );
+}
 
 export default MFListing;

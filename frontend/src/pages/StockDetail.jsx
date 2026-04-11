@@ -97,7 +97,7 @@ export default function StockDetail() {
   };
 
   useEffect(() => {
-    if (symbol && activeTab === "fundamentals") {
+    if (symbol && activeTab === "fundamentals" && ["PL", "BS", "CF"].includes(stmtType)) {
       setLoadingFundamentals(true);
       stockService
         .getFundamentals(symbol, { statement_type: stmtType, limit: 5 })
@@ -108,7 +108,7 @@ export default function StockDetail() {
   }, [symbol, activeTab, stmtType]);
 
   useEffect(() => {
-    if (symbol && activeTab === "shareholding" && !shareholding) {
+    if (symbol && activeTab === "fundamentals" && stmtType === "Ownership" && !shareholding) {
       setLoadingShareholding(true);
       stockService
         .getShareholding(symbol, { limit: 8 })
@@ -116,7 +116,7 @@ export default function StockDetail() {
         .catch(err => console.error("Failed to fetch shareholding:", err))
         .finally(() => setLoadingShareholding(false));
     }
-  }, [symbol, activeTab, shareholding]);
+  }, [symbol, activeTab, stmtType, shareholding]);
 
   if (status === "loading" || !detail) {
     return (
@@ -140,52 +140,117 @@ export default function StockDetail() {
       <div className="max-w-[1400px] mx-auto px-6 lg:px-16 pt-12 relative z-10">
 
         {/* Breadcrumb & Tier Header */}
-        <div className="flex justify-between items-end mb-16">
-          <div>
-            <button onClick={() => navigate(-1)} className="flex items-center gap-3 text-slate-500 hover:text-white transition-colors mb-8 group">
-              <span className="material-symbols-outlined group-hover:-translate-x-1 transition-transform">arrow_back</span>
-              <span className="font-label text-xs uppercase tracking-widest font-black">Return to Vault</span>
-            </button>
-            <div className="flex items-center gap-4 mb-4">
-              <span className="text-[10px] text-primary font-black uppercase tracking-[0.5em] italic">The Sovereign</span>
-              <div className="w-1 h-1 rounded-full bg-primary/50"></div>
-              <span className="text-[10px] text-slate-500 font-bold uppercase tracking-[0.5em]">Private Wealth Tier</span>
-            </div>
-            <h1 className="text-6xl sm:text-8xl md:text-9xl font-headline font-bold text-white uppercase tracking-tighter leading-none mb-2">
-              {detail.company_name}
-            </h1>
-            <p className="text-xl md:text-2xl font-headline text-slate-400 capitalize tracking-tight">Ticker:  {detail.symbol}</p>
-          </div>
-
-          <div className="text-right group">
-            <span className="text-[10px] text-slate-500 font-black uppercase tracking-[0.5em] mb-4 block italic">Current Valuation</span>
-            <div className="text-6xl md:text-7xl font-bold font-headline tracking-tighter text-white">
-              ₹{detail.latest_close?.toFixed(2) ?? "—"}
-            </div>
-            
-            <div className="flex flex-wrap justify-end gap-3 mt-8">
-              <button 
-                onClick={handleSyncDaily} 
-                disabled={syncingPrices}
-                className="font-label text-[10px] md:text-[11px] uppercase tracking-widest font-black text-white border border-emerald-500/30 hover:bg-emerald-500/10 transition-all rounded-xl px-4 md:px-5 py-3 flex items-center gap-2 md:gap-3 bg-emerald-500/5 shadow-lg shadow-emerald-500/5 cursor-pointer whitespace-nowrap"
-              >
-                <span className={`material-symbols-outlined text-[16px] md:text-[18px] ${syncingPrices ? 'animate-spin text-emerald-500' : 'text-emerald-500'}`}>sync</span>
-                {syncingPrices ? 'Syncing...' : 'Sync Price & History'}
-              </button>
-              <button 
-                onClick={handleSyncFundamentals} 
-                disabled={syncingFundamentals}
-                className="font-label text-[10px] md:text-[11px] uppercase tracking-widest font-black text-white border border-primary/30 hover:bg-primary/10 transition-all rounded-xl px-4 md:px-5 py-3 flex items-center gap-2 md:gap-3 bg-primary/5 shadow-lg shadow-primary/5 cursor-pointer whitespace-nowrap"
-              >
-                <span className={`material-symbols-outlined text-[16px] md:text-[18px] ${syncingFundamentals ? 'animate-spin text-primary' : 'text-primary'}`}>sync</span>
-                {syncingFundamentals ? 'Syncing...' : 'Sync Fundamentals'}
-              </button>
-            </div>
+      {/* Compact Sovereign Header */}
+      <header className="mb-12 flex flex-col md:flex-row items-start md:items-center justify-between gap-8 pt-8 border-b border-outline-variant/10 pb-8">
+        <div className="flex items-center gap-6">
+          <button onClick={() => navigate(-1)} className="p-3 bg-white/5 rounded-xl hover:bg-white/10 transition-colors group">
+            <span className="material-symbols-outlined text-sm group-hover:-translate-x-0.5 transition-transform">arrow_back</span>
+          </button>
+          <div className="space-y-1">
+            <p className="font-label text-[10px] font-semibold uppercase tracking-[0.3em] text-primary flex items-center gap-2">
+              Sovereign Core Architecture <span className="w-1 h-1 rounded-full bg-primary/50"></span> {detail.sector}
+            </p>
+            <h2 className="font-headline text-4xl md:text-5xl font-light tracking-tight text-white uppercase">
+              {detail.company_name} <span className="font-extrabold italic text-primary">{detail.symbol}</span>
+            </h2>
           </div>
         </div>
 
+        <div className="flex items-center gap-4 self-end md:self-center">
+           <div className="flex bg-surface-container-low border border-outline-variant/20 p-1 rounded-xl">
+             <button 
+               onClick={handleSyncDaily} 
+               disabled={syncingPrices}
+               className="p-2.5 hover:bg-white/5 rounded-lg transition-colors text-slate-400 hover:text-emerald-500"
+               title="Sync Market Data"
+             >
+               <span className={`material-symbols-outlined text-xl ${syncingPrices ? 'animate-spin' : ''}`}>sync</span>
+             </button>
+             <button 
+               onClick={handleSyncFundamentals} 
+               disabled={syncingFundamentals}
+               className="p-2.5 hover:bg-white/5 rounded-lg transition-colors text-slate-400 hover:text-primary"
+               title="Sync Fundamentals"
+             >
+               <span className={`material-symbols-outlined text-xl ${syncingFundamentals ? 'animate-spin' : ''}`}>database</span>
+             </button>
+           </div>
+           <div className="bg-surface-container-low border border-outline-variant/20 px-4 py-2 rounded-xl flex items-center gap-3">
+             <span className="w-2 h-2 rounded-full bg-secondary animate-pulse"></span>
+             <span className="text-[10px] font-black uppercase tracking-widest text-secondary">Live Nexus Active</span>
+           </div>
+        </div>
+      </header>
+
+      {/* High-Density Metric Grid */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6 mb-12">
+          {/* Price Card */}
+          <div className="glass-panel p-6 rounded-2xl relative overflow-hidden group">
+            <div className="flex justify-between items-start mb-4">
+              <p className="font-label text-[10px] uppercase tracking-widest text-slate-500 group-hover:text-primary transition-colors">Current Valuation</p>
+              <span className="material-symbols-outlined text-primary text-lg">payments</span>
+            </div>
+            <div className="flex items-end gap-2">
+              <p className="font-headline text-4xl font-extrabold text-white">₹{detail.latest_close?.toFixed(2)}</p>
+              <div className="flex flex-col mb-1">
+                <span className={`text-[10px] font-black ${detail.change_pct >= 0 ? 'text-secondary' : 'text-error'}`}>
+                  {detail.change_pct >= 0 ? '+' : ''}{detail.change_pct?.toFixed(2)}%
+                </span>
+                <span className="text-[8px] text-slate-600 uppercase font-bold tracking-tighter">Session Delta</span>
+              </div>
+            </div>
+            <div className={`absolute bottom-0 left-0 h-1 transition-all duration-700 ${detail.change_pct >= 0 ? 'bg-secondary w-full' : 'bg-error w-full'}`}></div>
+          </div>
+
+          {/* Scale Card */}
+          <div className="glass-panel p-6 rounded-2xl relative overflow-hidden group">
+            <div className="flex justify-between items-start mb-4">
+              <p className="font-label text-[10px] uppercase tracking-widest text-slate-500 group-hover:text-primary transition-colors">Market Presence</p>
+              <span className="material-symbols-outlined text-primary text-lg">account_balance_wallet</span>
+            </div>
+            <div className="flex items-end gap-2">
+              <p className="font-headline text-4xl font-extrabold text-white capitalize">{detail.market_cap_cat || 'N/A'}</p>
+              <div className="flex flex-col mb-1">
+                <span className="text-[10px] text-secondary font-black uppercase">Tier 1</span>
+                <span className="text-[8px] text-slate-600 uppercase font-bold tracking-tighter">Equity Scale</span>
+              </div>
+            </div>
+          </div>
+
+          {/* Fundamental Health Card */}
+          <div className="glass-panel p-6 rounded-2xl relative overflow-hidden group">
+            <div className="flex justify-between items-start mb-4">
+              <p className="font-label text-[10px] uppercase tracking-widest text-slate-500 group-hover:text-primary transition-colors">Price Multiplier (P/E)</p>
+              <span className="material-symbols-outlined text-primary text-lg">analytics</span>
+            </div>
+            <div className="flex items-end gap-2">
+              <p className="font-headline text-4xl font-extrabold text-white">{ratios?.pe_ratio?.toFixed(1) || '—'}</p>
+              <div className="flex flex-col mb-1">
+                <span className="text-[10px] text-secondary font-black uppercase">Optimal</span>
+                <span className="text-[8px] text-slate-600 uppercase font-bold tracking-tighter">Sector Relative</span>
+              </div>
+            </div>
+          </div>
+
+          {/* Analyst Stance Card */}
+          <div className="glass-panel p-6 rounded-2xl relative overflow-hidden group border-l-4 border-l-primary">
+            <div className="flex justify-between items-start mb-4">
+              <p className="font-label text-[10px] uppercase tracking-widest text-slate-500 group-hover:text-primary transition-colors">Sovereign Rating</p>
+              <span className="material-symbols-outlined text-primary text-lg">verified</span>
+            </div>
+            <div className="flex items-end gap-2">
+              <p className="font-headline text-4xl font-extrabold text-white uppercase tracking-tighter">{detail.rating_label ? detail.rating_label.replace("_", " ") : 'HOLD'}</p>
+              <div className="flex flex-col mb-1">
+                <span className="text-[10px] text-secondary font-black uppercase">Consensus</span>
+                <span className="text-[8px] text-slate-600 uppercase font-bold tracking-tighter">Institutional</span>
+              </div>
+            </div>
+          </div>
+      </div>
+
+
         {/* Global Tabs */}
-        <div className="flex gap-8 mb-16 border-b border-outline-variant/20 overflow-x-auto no-scrollbar">
+        <div className="flex justify-center gap-8 mb-16 border-b border-outline-variant/20 overflow-x-auto no-scrollbar">
           {[
             { id: "oracle", label: "Intelligence" },
             { id: "fundamentals", label: "Fundamental Lattice" }
@@ -405,7 +470,7 @@ function FundamentalsTab({ data, stmtType, onStmtChange, loading, shareholdingDa
   return (
     <div className="space-y-12 animate-fadeIn">
       {/* High-Fidelity Statement Toggles */}
-      <div className="flex bg-surface-container-low/40 p-2 rounded-2xl border border-white/5 w-fit">
+      <div className="flex bg-surface-container-low/40 p-2 rounded-2xl border border-white/5 w-fit mx-auto">
         {stmtOptions.map(t => (
           <button
             key={t}

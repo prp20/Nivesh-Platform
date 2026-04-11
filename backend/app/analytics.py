@@ -330,14 +330,10 @@ async def get_comparison_data(session: AsyncSession, scheme_codes: List[str]) ->
     import asyncio
     from . import crud, schemas
 
-    # Fetch all fund masters and metrics in parallel (2*N queries)
-    # Note: joinedload in crud already fetches metrics if we use get_fund_master_by_code,
-    # but we already have optimized get_fund_metrics calls. Let's use get_fund_master_by_code
-    # as it's cleaner and already has joinedload(FundMaster.metrics).
-    
-    masters_results = await asyncio.gather(
-        *[crud.get_fund_master_by_code(session, code) for code in scheme_codes]
-    )
+    # Fetch all fund masters in batch (1 query instead of N)
+    results = await crud.get_fund_masters_by_codes(session, scheme_codes)
+    masters_map = {m.scheme_code: m for m in results}
+    masters_results = [masters_map.get(code) for code in scheme_codes]
 
     funds_payload = []
     for code, master_db in zip(scheme_codes, masters_results):

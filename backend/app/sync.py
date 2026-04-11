@@ -140,6 +140,8 @@ async def sync_fund_data(session: AsyncSession, scheme_code: str, job_id: Option
                 logger.warning(f"Failed to fetch ISIN from mftool for {scheme_code}: {e}")
 
         # 4.2 Fetch AUM and TER from Captnemo/Kuvera if ISIN is available
+        # FALLBACK: When Kuvera/ISIN is unavailable, AUM/expense_ratio/fund_rating default to None
+        # This prioritises local generation over external fetch (as per architecture guidelines)
         if isin:
             await update_progress(f"Fetching AUM and Expense Ratio for ISIN {isin}...")
             fund_data = await asyncio.to_thread(get_aum_by_isin, isin)
@@ -150,12 +152,17 @@ async def sync_fund_data(session: AsyncSession, scheme_code: str, job_id: Option
                 fund_rating = float(fund_data.get("fund_rating")) if fund_data.get("fund_rating") else None
                 volatility = float(fund_data.get("volatility")) if fund_data.get("volatility") else None
             else:
-                logger.warning(f"No Kuvera data for ISIN {isin}, AUM set to 0.0")
+                logger.warning(f"No Kuvera data for ISIN {isin}, external fetch failed, using defaults")
+                expense_ratio = None
+                fund_rating = None
+                volatility = None
+                aum = 0.0
         else:
             expense_ratio = None
             fund_rating = None
             volatility = None
-            logger.warning(f"No ISIN available for {scheme_code}, AUM set to 0.0")
+            aum = 0.0
+            logger.warning(f"No ISIN available for {scheme_code}, cannot fetch from Kuvera")
 
         # 5. Get Benchmark History if available
         benchmark_history_list = None

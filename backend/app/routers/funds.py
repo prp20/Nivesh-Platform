@@ -73,10 +73,10 @@ async def compare_funds(
     if len(scheme_codes) > 4:
         raise HTTPException(status_code=400, detail="Maximum 4 funds can be compared at a time")
 
-    # 2. Fetch all fund masters in parallel
-    masters = await asyncio.gather(
-        *[crud.get_fund_master_by_code(session, code) for code in scheme_codes]
-    )
+    # 2. Fetch all fund masters in batch
+    results = await crud.get_fund_masters_by_codes(session, scheme_codes)
+    masters_map = {m.scheme_code: m for m in results}
+    masters = [masters_map.get(code) for code in scheme_codes]
     
     for i, master in enumerate(masters):
         if not master:

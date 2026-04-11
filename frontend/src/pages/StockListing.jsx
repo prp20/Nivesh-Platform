@@ -59,32 +59,32 @@ const StockListing = () => {
     return (
         <div className="p-6 md:p-12 lg:p-16 xl:p-24 2xl:p-32 w-full animate-fadeIn flex flex-col gap-16 transition-all duration-500 relative pb-64 bg-surface text-on-surface">
             {/* Header - Ultra Scale */}
-            <header className="flex flex-col 3xl:flex-row 3xl:items-end justify-between gap-12 mb-8">
-                <div>
-                    <span className="text-sm md:text-base text-primary font-black uppercase tracking-[0.5em] opacity-80 mb-4 block">Institutional Wealth surveillance</span>
-                    <h1 className="text-5xl sm:text-7xl md:text-8xl lg:text-9xl 3xl:text-[11rem] font-headline font-bold tracking-tighter leading-none group uppercase">
-                        Equity <span className="text-primary/10 group-hover:text-primary/20 transition-colors">Vault</span>
-                    </h1>
+            <header className="mb-12 flex flex-col xl:flex-row items-start xl:items-center justify-between gap-8 pt-8">
+                <div className="space-y-1">
+                    <p className="font-label text-xs font-semibold uppercase tracking-[0.3em] text-primary">Sovereign Asset Surveillance</p>
+                    <h2 className="font-headline text-5xl font-light tracking-tight text-white uppercase">
+                        Equity <span className="font-extrabold italic text-primary">Vault</span>
+                    </h2>
                 </div>
 
-                <div className="flex flex-wrap gap-8 items-center bg-surface-container-high/40 p-6 rounded-[2.5rem] border border-white/5 backdrop-blur-2xl">
+                <div className="flex flex-wrap gap-4 items-center bg-surface-container-low p-2 rounded-2xl border border-outline-variant/10">
                     {/* Search Field */}
-                    <div className="flex bg-black/40 p-1 rounded-2xl border border-white/5 w-64 md:w-80 relative">
-                        <span className="material-symbols-outlined absolute left-4 top-1/2 -translate-y-1/2 text-slate-500">search</span>
+                    <div className="flex bg-black/20 p-1 rounded-xl border border-outline-variant/10 w-64 relative">
+                        <span className="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-slate-500 text-sm">search</span>
                         <input
                             type="text"
                             placeholder="Identify Ticker..."
                             value={search}
                             onChange={(e) => setSearch(e.target.value)}
                             onKeyDown={handleSearch}
-                            className="w-full bg-transparent border-none pl-12 pr-4 py-3 text-xs font-label uppercase tracking-widest text-white placeholder-slate-600 focus:outline-none focus:ring-0"
+                            className="w-full bg-transparent border-none pl-10 pr-4 py-2 text-[10px] font-label uppercase tracking-widest text-white placeholder-slate-600 focus:outline-none focus:ring-0"
                         />
                     </div>
 
-                    <div className="h-12 w-px bg-white/10 hidden md:block"></div>
+                    <div className="h-8 w-px bg-outline-variant/20 hidden md:block"></div>
 
                     {/* Sector Filter Chips */}
-                    <div className="flex flex-wrap gap-2">
+                    <div className="flex flex-wrap gap-1.5">
                         {SECTORS.map(sector => (
                             <button
                                 key={sector}
@@ -92,9 +92,9 @@ const StockListing = () => {
                                     key: "sector",
                                     val: filters.sector === sector ? "" : sector
                                 }))}
-                                className={`px-5 py-2 text-[10px] font-black tracking-[0.3em] uppercase rounded-xl transition-all ${filters.sector === sector
-                                        ? 'bg-primary text-on-primary shadow-lg shadow-primary/40'
-                                        : 'bg-black/40 border border-white/5 text-slate-500 hover:text-white'
+                                className={`px-4 py-1.5 text-[9px] font-black tracking-widest uppercase rounded-lg transition-all ${filters.sector === sector
+                                        ? 'bg-primary text-on-primary shadow-lg shadow-primary/20'
+                                        : 'bg-white/5 border border-outline-variant/10 text-slate-500 hover:text-white'
                                     }`}
                             >
                                 {sector}
@@ -102,23 +102,23 @@ const StockListing = () => {
                         ))}
                     </div>
 
-                    <div className="h-12 w-px bg-white/10 hidden xl:block"></div>
+                    <div className="h-8 w-px bg-outline-variant/20 hidden xl:block"></div>
 
                     {/* View Toggle */}
-                    <div className="flex bg-black/40 p-2 rounded-2xl border border-white/5">
+                    <div className="flex bg-black/20 p-1 rounded-xl border border-outline-variant/10">
                         <button
                             onClick={() => setViewMode('card')}
-                            className={`p-3 rounded-xl transition-all flex items-center gap-3 ${viewMode === 'card' ? 'bg-white/10 text-primary shadow-inner' : 'text-slate-500 hover:text-slate-300'}`}
+                            className={`p-2 rounded-lg transition-all flex items-center gap-2 ${viewMode === 'card' ? 'bg-white/10 text-primary shadow-inner' : 'text-slate-500 hover:text-slate-300'}`}
                             title="Grid Perspective"
                         >
-                            <span className="material-symbols-outlined text-xl">grid_view</span>
+                            <span className="material-symbols-outlined text-lg">grid_view</span>
                         </button>
                         <button
                             onClick={() => setViewMode('table')}
-                            className={`p-3 rounded-xl transition-all flex items-center gap-3 ${viewMode === 'table' ? 'bg-white/10 text-primary shadow-inner' : 'text-slate-500 hover:text-slate-300'}`}
+                            className={`p-2 rounded-lg transition-all flex items-center gap-2 ${viewMode === 'table' ? 'bg-white/10 text-primary shadow-inner' : 'text-slate-500 hover:text-slate-300'}`}
                             title="Analytical Ledger"
                         >
-                            <span className="material-symbols-outlined text-xl">table_rows</span>
+                            <span className="material-symbols-outlined text-lg">table_rows</span>
                         </button>
                     </div>
                 </div>
@@ -149,66 +149,64 @@ const StockListing = () => {
 
                             return (
                                 <motion.div
-                                    initial={{ opacity: 0, y: 30 }}
-                                    animate={{ opacity: 1, y: 0 }}
-                                    transition={{ delay: idx * 0.05 }}
+                                    initial={{ opacity: 0, scale: 0.9 }}
+                                    animate={{ opacity: 1, scale: 1 }}
+                                    transition={{ delay: idx * 0.03 }}
                                     key={stock.symbol}
-                                    className={`bg-surface-container p-12 rounded-[3.5rem] border ${isComparing ? 'border-primary/60 shadow-[0_0_40px_rgba(233,195,73,0.1)]' : 'border-outline-variant/10'} hover:border-primary/40 transition-all duration-700 flex flex-col group relative overflow-hidden shadow-2xl hover:translate-y-[-16px] cursor-crosshair`}
+                                    className={`bg-surface-container-low p-6 rounded-2xl border ${isComparing ? 'border-primary/60 shadow-[0_0_40px_rgba(233,195,73,0.1)]' : 'border-outline-variant/10'} hover:border-primary/40 transition-all duration-500 flex flex-col group relative overflow-hidden shadow-xl hover:translate-y-[-8px] cursor-crosshair`}
                                 >
-                                    <div className="absolute top-0 right-0 p-12 opacity-0 group-hover:opacity-10 transition-all duration-1000 scale-150 group-hover:scale-100">
-                                        <span className="material-symbols-outlined text-[150px] text-primary">monitoring</span>
-                                    </div>
-
-                                    <div className="mb-10 flex justify-between items-start relative z-10">
-                                        <span className={`text-[11px] font-black tracking-[0.3em] uppercase px-5 py-2 rounded-xl bg-white/5 border border-white/5 transition-all group-hover:border-primary/30 text-secondary`}>
+                                    <div className="mb-6 flex justify-between items-start relative z-10">
+                                        <span className="text-[9px] font-black tracking-[0.2em] uppercase px-3 py-1 rounded-lg bg-white/5 text-slate-400 group-hover:text-primary transition-colors border border-outline-variant/10">
                                             {stock.sector}
                                         </span>
 
                                         <button
                                             onClick={() => isComparing ? dispatch(removeStockFromCompare(stock.symbol)) : handleAddToCompare(stock)}
-                                            className={`p-3 rounded-full transition-all ${isComparing ? 'bg-primary text-on-primary ring-4 ring-primary/20' : 'bg-white/5 text-slate-500 hover:text-white hover:bg-white/10'}`}
-                                            title={isComparing ? "Remove from Matrix" : "Inject into Matrix"}
+                                            className={`p-2 rounded-xl transition-all ${isComparing ? 'bg-primary text-on-primary' : 'bg-white/5 text-slate-500 hover:text-white hover:bg-white/10'}`}
                                         >
-                                            <span className="material-symbols-outlined text-2xl">{isComparing ? 'check_circle' : 'add_circle'}</span>
+                                            <span className="material-symbols-outlined text-xl">{isComparing ? 'check' : 'add'}</span>
                                         </button>
                                     </div>
 
                                     <Link
                                         to={`/stocks/${stock.symbol}`}
                                         onClick={(e) => handleDetailNavigation(e, stock.symbol)}
-                                        className="text-4xl sm:text-5xl font-headline font-bold text-white mb-4 group-hover:text-primary transition-colors tracking-tight leading-tight uppercase relative z-10"
+                                        className="text-3xl font-headline font-bold text-white mb-1 group-hover:text-primary transition-colors tracking-tight uppercase relative z-10"
                                     >
                                         {stock.symbol}
                                     </Link>
-                                    <p className="text-xs text-slate-500 font-label font-bold tracking-[0.2em] uppercase line-clamp-2 min-h-[2.5rem] mb-12 opacity-80 relative z-10">
+                                    <p className="text-[10px] text-slate-500 font-label font-bold tracking-widest uppercase truncate mb-6 opacity-60 relative z-10">
                                         {stock.company_name}
                                     </p>
 
-                                    <div className="grid grid-cols-2 gap-10 mb-12 py-8 border-y border-white/5 bg-white/[0.01] backdrop-blur-sm relative z-10">
+                                    <div className="grid grid-cols-2 gap-4 mb-6 py-4 border-y border-outline-variant/10 relative z-10">
                                         <div>
-                                            <p className="text-[10px] uppercase tracking-[0.4em] text-slate-500 font-black mb-3">Market Cap</p>
-                                            <p className="font-extrabold text-lg text-white tracking-widest uppercase">{stock.market_cap_cat || "—"}</p>
+                                            <p className="text-[8px] uppercase tracking-widest text-slate-600 font-black mb-1">Market Presence</p>
+                                            <p className="font-bold text-xs text-white uppercase tracking-wider">{stock.market_cap_cat || "—"}</p>
                                         </div>
                                         <div>
-                                            <p className="text-[10px] uppercase tracking-[0.4em] text-slate-500 font-black mb-3">CMP</p>
-                                            <p className="font-extrabold text-2xl text-white tracking-tighter">₹{stock.latest_close?.toFixed(2) ?? "—"}</p>
+                                            <p className="text-[8px] uppercase tracking-widest text-slate-600 font-black mb-1">Valuation</p>
+                                            <p className="font-bold text-sm text-white tracking-tighter">₹{stock.latest_close?.toFixed(2) ?? "—"}</p>
                                         </div>
                                     </div>
 
                                     <div className="flex justify-between items-end mt-auto relative z-10">
                                         <div>
-                                            <p className="text-[10px] uppercase tracking-[0.4em] text-slate-500 font-black mb-3">Session Alpha</p>
-                                            <p className={`text-4xl font-black ${changeColor} tracking-tighter`}>
+                                            <p className="text-[8px] uppercase tracking-widest text-slate-600 font-black mb-1">Session Delta</p>
+                                            <p className={`text-2xl font-black ${changeColor} tracking-tighter`}>
                                                 {stock.change_pct != null
                                                     ? `${stock.change_pct > 0 ? "+" : ""}${stock.change_pct}%`
                                                     : "—"}
                                             </p>
                                         </div>
                                         {stock.rating_label && (
-                                            <RatingBadge label={stock.rating_label} />
+                                            <div className="flex flex-col items-end">
+                                              <p className="text-[8px] uppercase tracking-widest text-slate-600 font-black mb-1">Sovereign Stance</p>
+                                              <RatingBadge label={stock.rating_label} />
+                                            </div>
                                         )}
                                     </div>
-                                    <div className={`absolute inset-x-0 bottom-0 h-1 bg-gradient-to-r from-primary to-[#9d7e00] transition-opacity ${isComparing ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'}`}></div>
+                                    <div className={`absolute inset-x-0 bottom-0 h-0.5 bg-primary transition-opacity ${isComparing ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'}`}></div>
                                 </motion.div>
                             );
                         })}
@@ -328,23 +326,29 @@ const StockListing = () => {
                                 </div>
                                 <div className="h-10 w-px bg-white/10 mx-4 hidden md:block"></div>
                                 <div className="flex gap-4">
-                                    {compareList.map((stock) => (
-                                        <motion.div
-                                            layout
-                                            initial={{ scale: 0.8, opacity: 0 }}
-                                            animate={{ scale: 1, opacity: 1 }}
-                                            key={stock.symbol}
-                                            className="px-6 py-3 rounded-2xl bg-white/5 border border-white/5 flex items-center gap-4 group hover:border-primary/40 transition-all cursor-default whitespace-nowrap"
-                                        >
-                                            <span className="text-[11px] font-black text-white/80 uppercase tracking-widest">{stock.symbol}</span>
-                                            <button
-                                                onClick={() => dispatch(removeStockFromCompare(stock.symbol))}
-                                                className="material-symbols-outlined text-slate-500 hover:text-error text-lg transition-colors"
+                                    {compareList.map((stock, i) => {
+                                        const colors = ['#4ade80', '#818cf8', '#fbbf24', '#fb7185'];
+                                        const accentColor = colors[i % colors.length];
+
+                                        return (
+                                            <motion.div
+                                                layout
+                                                initial={{ scale: 0.8, opacity: 0 }}
+                                                animate={{ scale: 1, opacity: 1 }}
+                                                key={stock.symbol}
+                                                className="px-6 py-3 rounded-2xl bg-white/5 border-l-2 flex items-center gap-4 group hover:border-primary/40 transition-all cursor-default whitespace-nowrap"
+                                                style={{ borderImageSource: `linear-gradient(to bottom, ${accentColor}, ${accentColor}44)`, borderLeftColor: accentColor }}
                                             >
-                                                close
-                                            </button>
-                                        </motion.div>
-                                    ))}
+                                                <span className="text-[11px] font-black text-white/80 uppercase tracking-widest">{stock.symbol}</span>
+                                                <button
+                                                    onClick={() => dispatch(removeStockFromCompare(stock.symbol))}
+                                                    className="material-symbols-outlined text-slate-500 hover:text-error text-lg transition-colors"
+                                                >
+                                                    close
+                                                </button>
+                                            </motion.div>
+                                        );
+                                    })}
                                 </div>
                             </div>
 
