@@ -326,23 +326,29 @@ const StockListing = () => {
                                 </div>
                                 <div className="h-10 w-px bg-white/10 mx-4 hidden md:block"></div>
                                 <div className="flex gap-4">
-                                    {compareList.map((stock) => (
-                                        <motion.div
-                                            layout
-                                            initial={{ scale: 0.8, opacity: 0 }}
-                                            animate={{ scale: 1, opacity: 1 }}
-                                            key={stock.symbol}
-                                            className="px-6 py-3 rounded-2xl bg-white/5 border border-white/5 flex items-center gap-4 group hover:border-primary/40 transition-all cursor-default whitespace-nowrap"
-                                        >
-                                            <span className="text-[11px] font-black text-white/80 uppercase tracking-widest">{stock.symbol}</span>
-                                            <button
-                                                onClick={() => dispatch(removeStockFromCompare(stock.symbol))}
-                                                className="material-symbols-outlined text-slate-500 hover:text-error text-lg transition-colors"
+                                    {compareList.map((stock, i) => {
+                                        const colors = ['#4ade80', '#818cf8', '#fbbf24', '#fb7185'];
+                                        const accentColor = colors[i % colors.length];
+
+                                        return (
+                                            <motion.div
+                                                layout
+                                                initial={{ scale: 0.8, opacity: 0 }}
+                                                animate={{ scale: 1, opacity: 1 }}
+                                                key={stock.symbol}
+                                                className="px-6 py-3 rounded-2xl bg-white/5 border-l-2 flex items-center gap-4 group hover:border-primary/40 transition-all cursor-default whitespace-nowrap"
+                                                style={{ borderImageSource: `linear-gradient(to bottom, ${accentColor}, ${accentColor}44)`, borderLeftColor: accentColor }}
                                             >
-                                                close
-                                            </button>
-                                        </motion.div>
-                                    ))}
+                                                <span className="text-[11px] font-black text-white/80 uppercase tracking-widest">{stock.symbol}</span>
+                                                <button
+                                                    onClick={() => dispatch(removeStockFromCompare(stock.symbol))}
+                                                    className="material-symbols-outlined text-slate-500 hover:text-error text-lg transition-colors"
+                                                >
+                                                    close
+                                                </button>
+                                            </motion.div>
+                                        );
+                                    })}
                                 </div>
                             </div>
 

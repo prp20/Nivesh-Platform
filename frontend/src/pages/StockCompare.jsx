@@ -134,23 +134,40 @@ const StockCompare = () => {
                                 <thead>
                                     <tr>
                                         <th className="w-1/4 p-8 border-b border-outline-variant/10"></th>
-                                        {comparisonResult.map((stock) => (
-                                            <th key={stock.symbol} className="w-1/4 p-8 border-b border-outline-variant/10 text-center relative group">
-                                                <button 
-                                                    onClick={() => dispatch(removeStockFromCompare(stock.symbol))}
-                                                    className="absolute top-4 right-4 text-slate-600 hover:text-error transition-colors"
-                                                >
-                                                    <span className="material-symbols-outlined text-base">close</span>
-                                                </button>
-                                                <div className="flex justify-center mb-6">
-                                                    <div className="w-16 h-16 rounded-xl flex items-center justify-center font-black text-xl border border-primary/20 text-primary shadow-lg bg-primary/5 uppercase italic">
-                                                        {stock.symbol.substring(0, 3)}
+                                        {comparisonResult.map((stock, i) => {
+                                            const colors = ['#4ade80', '#818cf8', '#fbbf24', '#fb7185'];
+                                            const accentColor = colors[i % colors.length];
+                                            
+                                            return (
+                                                <th key={stock.symbol} className="w-1/4 p-0 border-b border-outline-variant/10 text-center relative overflow-hidden bg-surface-container-low">
+                                                    {/* Column Identification Accent */}
+                                                    <div 
+                                                        className="absolute top-0 left-0 right-0 h-1 z-50 transition-all duration-700"
+                                                        style={{ backgroundColor: accentColor, boxShadow: `0 2px 10px ${accentColor}33` }}
+                                                    ></div>
+
+                                                    <button 
+                                                        onClick={() => dispatch(removeStockFromCompare(stock.symbol))}
+                                                        className="absolute top-4 right-4 text-slate-600 hover:text-error transition-colors z-10"
+                                                    >
+                                                        <span className="material-symbols-outlined text-base">close</span>
+                                                    </button>
+
+                                                    <div className="flex flex-col items-center gap-4 p-8 pt-10">
+                                                        <div 
+                                                            className="w-16 h-16 rounded-2xl flex items-center justify-center font-black text-xl border shadow-lg uppercase italic transition-all duration-700"
+                                                            style={{ backgroundColor: `${accentColor}11`, borderColor: `${accentColor}22`, color: accentColor }}
+                                                        >
+                                                            {stock.symbol.substring(0, 3)}
+                                                        </div>
+                                                        <div className="flex flex-col items-center gap-1">
+                                                            <h3 className="text-xl font-headline font-black text-white uppercase italic tracking-tight">{stock.symbol}</h3>
+                                                            <p className="text-[9px] text-slate-500 font-black tracking-widest uppercase font-label opacity-40">{stock.sector || 'Sector'}</p>
+                                                        </div>
                                                     </div>
-                                                </div>
-                                                <h3 className="text-xl font-headline font-black text-white mb-1 uppercase italic tracking-tight">{stock.symbol}</h3>
-                                                <p className="text-[9px] text-slate-500 font-black tracking-widest uppercase font-label">{stock.sector || 'Sector'}</p>
-                                            </th>
-                                        ))}
+                                                </th>
+                                            );
+                                        })}
                                     </tr>
                                 </thead>
                                 <tbody>

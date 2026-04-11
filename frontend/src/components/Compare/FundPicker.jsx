@@ -48,18 +48,25 @@ const FundPicker = () => {
                 {/* Current Slots */}
                 {[...Array(4)].map((_, i) => {
                     const fund = compareList[i];
+                    const colors = ['#4ade80', '#818cf8', '#fbbf24', '#fb7185'];
+                    const accentColor = colors[i % colors.length];
+
                     return (
                         <div key={i} className={`relative group h-44 rounded-2xl transition-all duration-300 flex flex-col items-center justify-center p-6 text-center ${fund ? 'bg-surface-container-low border border-outline-variant/10 shadow-lg' : 'bg-surface-container-lowest/30 border border-dashed border-outline-variant/10 hover:border-primary/20 hover:bg-surface-container-low/20'}`}>
                             {fund ? (
                                 <motion.div 
                                     initial={{ scale: 0.95, opacity: 0 }}
                                     animate={{ scale: 1, opacity: 1 }}
-                                    className="w-full h-full flex flex-col items-center"
+                                    className="w-full h-full flex flex-col items-center pt-2 relative"
                                 >
-                                    <div className="w-10 h-10 rounded-xl bg-primary/5 flex items-center justify-center border border-primary/10 mb-4">
-                                        <span className="material-symbols-outlined text-primary text-xl">query_stats</span>
+                                    <div 
+                                        className="absolute -top-6 left-1/2 -translate-x-1/2 h-1 w-12 rounded-full opacity-60 shadow-[0_0_15px_rgba(0,0,0,0.5)] transition-all duration-700"
+                                        style={{ backgroundColor: accentColor, boxShadow: `0 -5px 20px ${accentColor}44` }}
+                                    ></div>
+                                    <div className="w-10 h-10 rounded-xl flex items-center justify-center border mb-4 transition-all duration-700" style={{ backgroundColor: `${accentColor}11`, borderColor: `${accentColor}22` }}>
+                                        <span className="material-symbols-outlined text-xl" style={{ color: accentColor }}>query_stats</span>
                                     </div>
-                                    <h4 className="text-sm font-headline font-bold text-white uppercase tracking-tight leading-tight line-clamp-2 italic mb-1">{fund.scheme_name}</h4>
+                                    <h4 className="text-[10px] font-label font-bold text-white leading-snug line-clamp-3 mb-1 px-2">{fund.scheme_name}</h4>
                                     <p className="font-label text-[8px] text-slate-500 tracking-[0.2em] uppercase font-black mb-4">ID: {fund.scheme_code}</p>
                                     
                                     <button 

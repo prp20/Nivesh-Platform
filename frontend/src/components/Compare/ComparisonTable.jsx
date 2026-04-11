@@ -61,18 +61,37 @@ const ComparisonTable = ({ funds, ranking }) => {
                                 <th className="sticky left-0 z-40 bg-surface-container-high p-6 text-left min-w-[280px] align-middle border-r border-outline-variant/10">
                                     <span className="font-label text-[9px] uppercase tracking-[0.3em] text-primary/60 font-black">Metric Category</span>
                                 </th>
-                                {funds.map((fund) => (
-                                    <th key={fund.scheme_code} className="p-6 border-r border-outline-variant/10 bg-surface-container-low min-w-[220px]">
-                                        <div className="flex flex-col items-center gap-2">
-                                            <div className="w-8 h-8 rounded-lg bg-primary/5 flex items-center justify-center border border-primary/10">
-                                                <span className="material-symbols-outlined text-primary text-lg">query_stats</span>
+                                {funds.map((fund, i) => {
+                                    const colors = ['#4ade80', '#818cf8', '#fbbf24', '#fb7185'];
+                                    const accentColor = colors[i % colors.length];
+
+                                    return (
+                                        <th key={fund.scheme_code} className="p-0 border-r border-outline-variant/10 bg-surface-container-low min-w-[220px] relative overflow-hidden">
+                                            {/* Column Identification Accent */}
+                                            <div 
+                                                className="absolute top-0 left-0 right-0 h-1 z-50 transition-all duration-700"
+                                                style={{ backgroundColor: accentColor, boxShadow: `0 2px 10px ${accentColor}33` }}
+                                            ></div>
+                                            
+                                            <div className="flex flex-col items-center gap-3 p-6 pt-8">
+                                                <div 
+                                                    className="w-10 h-10 rounded-xl flex items-center justify-center border transition-all duration-700"
+                                                    style={{ backgroundColor: `${accentColor}11`, borderColor: `${accentColor}22` }}
+                                                >
+                                                    <span className="material-symbols-outlined text-xl" style={{ color: accentColor }}>query_stats</span>
+                                                </div>
+                                                <div className="flex flex-col items-center text-center gap-1">
+                                                    <h3 className="font-headline text-[11px] font-bold text-white tracking-widest uppercase italic leading-tight px-2">
+                                                        {fund.scheme_name}
+                                                    </h3>
+                                                    <span className="font-label text-[8px] text-slate-500 font-black tracking-[0.2em] opacity-40">
+                                                        {fund.scheme_code}
+                                                    </span>
+                                                </div>
                                             </div>
-                                            <h3 className="font-headline text-sm font-bold text-white tracking-tight leading-tight uppercase italic line-clamp-1">
-                                                {fund.scheme_name}
-                                            </h3>
-                                        </div>
-                                    </th>
-                                ))}
+                                        </th>
+                                    );
+                                })}
                             </tr>
                         </thead>
                         <tbody>
