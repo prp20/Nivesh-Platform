@@ -6,7 +6,10 @@ via environment variables (recommended for production deployments).
 """
 
 import os
+import logging
 from pydantic_settings import BaseSettings
+
+_logger = logging.getLogger(__name__)
 
 _DEV_SECRET_KEY = "dev-secret-key-do-not-use-in-production"
 
@@ -31,7 +34,7 @@ class Settings(BaseSettings):
     API_V1_STR: str = "/api/v1"
 
     # Security: Authentication
-    ENABLE_AUTH: bool = False
+    ENABLE_AUTH: bool = True
     SECRET_KEY: str = _DEV_SECRET_KEY
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 30
     ADMIN_TOKEN: str = ""  # Dev mode: explicit admin token, optional
@@ -60,11 +63,12 @@ class Settings(BaseSettings):
 settings = Settings()
 
 
-# Validation: Fail fast on insecure production config
+# Warn if auth is enabled with an insecure key (don't hard-fail to allow local dev)
 if settings.ENABLE_AUTH and settings.SECRET_KEY == _DEV_SECRET_KEY:
-    raise ValueError(
-        "ENABLE_AUTH is True but SECRET_KEY is still the insecure dev default. "
-        "Set a strong random SECRET_KEY via environment variable before enabling auth in production."
+    _logger.warning(
+        "SECURITY WARNING: ENABLE_AUTH=True but SECRET_KEY is the insecure dev default. "
+        "Set a strong random SECRET_KEY via environment variable for any non-local deployment. "
+        "Generate one with: python -c \"import secrets; print(secrets.token_urlsafe(32))\""
     )
 
 if settings.ENABLE_AUTH and not settings.SECRET_KEY:

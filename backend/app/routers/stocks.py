@@ -11,6 +11,7 @@ from app.database import get_db
 from app.models import Stock, PriceData
 from app.schemas import StockListResponse
 from app.query_utils import FilterBuilder, SortColumnMap
+from app import security
 
 router = APIRouter(prefix="/stocks", tags=["Stocks"])
 
@@ -36,6 +37,7 @@ async def list_stocks(
     sort_by: str = Query("symbol", min_length=1, max_length=50),
     order: str = Query("asc", regex="^(asc|desc)$"),
     db: AsyncSession = Depends(get_db),
+    current_user: str = Depends(security.get_current_user),
 ) -> StockListResponse:
     """
     List stocks with optional filtering and pagination.
@@ -122,6 +124,7 @@ async def search_stocks(
     q:     str = Query(..., min_length=1, max_length=50),
     limit: int = Query(10, ge=1, le=20),
     db:    AsyncSession = Depends(get_db),
+    current_user: str = Depends(security.get_current_user),
 ):
     sql = """
         SELECT id, symbol, company_name, sector, market_cap_cat
@@ -148,7 +151,11 @@ async def search_stocks(
 # ─── GET /stocks/{symbol} — full snapshot ────────────────────────────────────
 
 @router.get("/{symbol}")
-async def get_stock(symbol: str, db: AsyncSession = Depends(get_db)):
+async def get_stock(
+    symbol: str,
+    db: AsyncSession = Depends(get_db),
+    current_user: str = Depends(security.get_current_user),
+):
     sql = """
         SELECT
             s.*,
@@ -204,6 +211,7 @@ async def get_price_history(
     interval:  str = Query("1d", regex="^(1d|1w|1mo)$"),
     limit:     int = Query(365, ge=1, le=2000),
     db:        AsyncSession = Depends(get_db),
+    current_user: str = Depends(security.get_current_user),
 ):
     stock = await _get_stock_id(symbol, db)
     if not stock:
@@ -279,6 +287,7 @@ async def get_fundamentals(
     period_type:    str = Query("annual", regex="^(annual|quarterly)$"),
     limit:          int = Query(5, ge=1, le=20),
     db: AsyncSession = Depends(get_db),
+    current_user: str = Depends(security.get_current_user),
 ):
     stock = await _get_stock_id(symbol, db)
     if not stock:
@@ -307,6 +316,7 @@ async def get_shareholding(
     symbol: str,
     limit:  int = Query(8, ge=1, le=20),
     db: AsyncSession = Depends(get_db),
+    current_user: str = Depends(security.get_current_user),
 ):
     stock = await _get_stock_id(symbol, db)
     if not stock:
