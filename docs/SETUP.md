@@ -21,7 +21,18 @@ source venv/bin/activate
 pip install -r requirements.txt
 ```
 
-### 3. Application Launch
+### 3. Testing (Optional)
+Run the test suite without needing a running database:
+```bash
+pytest tests/ -v
+```
+- Uses **in-memory SQLite** for fast, isolated execution
+- Covers 45+ test cases across all API endpoints
+- See [TESTING.md](./TESTING.md) for details
+
+---
+
+### 4. Application Launch
 ```bash
 uvicorn app.main:app --port 8000
 ```
@@ -30,7 +41,7 @@ uvicorn app.main:app --port 8000
 
 ---
 
-### 4. Frontend Environment
+### 5. Frontend Environment
 ```bash
 cd frontend
 npm install
