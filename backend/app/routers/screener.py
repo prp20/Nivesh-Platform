@@ -260,21 +260,21 @@ async def compare_stocks(
             SELECT s.symbol, s.company_name, s.sector,
                    p.close AS latest_close, p.price_date,
                    r.pe_ratio, r.pb_ratio, r.roe, r.roce,
-                   r.pat_margin, r.debt_equity, r.revenue_growth,
-                   r.eps, r.interest_cov,
+                   r.pat_margin, r.ebitda_margin, r.debt_equity, r.revenue_growth,
+                   r.pat_growth, r.eps, r.interest_cov,
                    sr.rating_label, sr.total_score,
-                   sr.fundamental_score, sr.technical_score
+                   sr.fundamental_score, sr.technical_score, sr.valuation_score
             FROM stocks s
             LEFT JOIN LATERAL (
                 SELECT close, price_date FROM price_data WHERE stock_id=s.id ORDER BY price_date DESC LIMIT 1
             ) p ON TRUE
             LEFT JOIN LATERAL (
-                SELECT pe_ratio, pb_ratio, roe, roce, pat_margin, debt_equity,
-                       revenue_growth, eps, interest_cov
+                SELECT pe_ratio, pb_ratio, roe, roce, pat_margin, ebitda_margin, debt_equity,
+                       revenue_growth, pat_growth, eps, interest_cov
                 FROM financial_ratios WHERE stock_id=s.id ORDER BY period_end DESC LIMIT 1
             ) r ON TRUE
             LEFT JOIN LATERAL (
-                SELECT rating_label, total_score, fundamental_score, technical_score
+                SELECT rating_label, total_score, fundamental_score, technical_score, valuation_score
                 FROM stock_ratings WHERE stock_id=s.id ORDER BY rated_on DESC LIMIT 1
             ) sr ON TRUE
             WHERE s.symbol = :symbol AND s.is_active = TRUE

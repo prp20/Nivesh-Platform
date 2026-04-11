@@ -227,12 +227,21 @@ const SideNavBar = () => {
                         </div>
                     </NavLink>
                 </div>
-                {/* Research */}
+                {/* Intelligence Matrix - Stock Comparison */}
+                <div>
+                    <NavLink to="/stock-compare" className={({ isActive }) => isActive ? navItemActiveClass : navItemBaseClass}>
+                        <div className="flex items-center gap-4">
+                            <span className="material-symbols-outlined transition-transform group-hover:translate-x-1">query_stats</span>
+                            <span className="font-medium text-sm">Stock Comparison</span>
+                        </div>
+                    </NavLink>
+                </div>
+                {/* Intelligence Matrix - Fund Comparison */}
                 <div>
                     <NavLink to="/compare" className={({ isActive }) => isActive ? navItemActiveClass : navItemBaseClass}>
                         <div className="flex items-center gap-4">
-                            <span className="material-symbols-outlined transition-transform group-hover:translate-x-1">menu_book</span>
-                            <span className="font-medium text-sm flex items-center justify-between gap-4">Research {compareList?.length > 0 && <span className="bg-primary text-black rounded-full px-1.5 text-[8px] font-bold leading-tight">{compareList.length}</span>}</span>
+                            <span className="material-symbols-outlined transition-transform group-hover:translate-x-1">compare_arrows</span>
+                            <span className="font-medium text-sm flex items-center justify-between gap-4">Fund Comparison {compareList?.length > 0 && <span className="bg-primary text-black rounded-full px-1.5 text-[8px] font-bold leading-tight">{compareList.length}</span>}</span>
                         </div>
                     </NavLink>
                 </div>

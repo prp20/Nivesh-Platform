@@ -55,7 +55,7 @@ const MFCompare = () => {
                     </p>
                     
                     <Link to="/mf" className="group relative px-10 py-5 overflow-hidden rounded-2xl bg-surface-container-high border border-outline-variant/10 text-white font-black uppercase tracking-[0.2em] transition-all active:scale-95 flex items-center gap-4 font-label text-[11px] hover:border-primary/30">
-                        <span className="relative z-10">Return to Resource Vault</span>
+                        <span className="relative z-10">Return to Wealth Vault</span>
                         <span className="material-symbols-outlined relative z-10 text-sm group-hover:translate-x-1 transition-transform">arrow_forward</span>
                     </Link>
                 </motion.div>
