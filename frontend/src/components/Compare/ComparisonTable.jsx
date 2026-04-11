@@ -80,8 +80,8 @@ const ComparisonTable = ({ funds, ranking }) => {
                                                 >
                                                     <span className="material-symbols-outlined text-xl" style={{ color: accentColor }}>query_stats</span>
                                                 </div>
-                                                <div className="flex flex-col items-center text-center gap-1">
-                                                    <h3 className="font-headline text-[11px] font-bold text-white tracking-widest uppercase italic leading-tight px-2">
+                                                <div className="flex flex-col items-center text-center gap-1 min-h-[48px] justify-center">
+                                                    <h3 className="font-label text-[10px] font-bold text-white tracking-tight leading-snug px-2 line-clamp-3">
                                                         {fund.scheme_name}
                                                     </h3>
                                                     <span className="font-label text-[8px] text-slate-500 font-black tracking-[0.2em] opacity-40">
