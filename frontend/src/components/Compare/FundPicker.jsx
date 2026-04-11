@@ -33,52 +33,49 @@ const FundPicker = () => {
     };
 
     return (
-        <section className="mb-20">
-            <header className="mb-12">
-                <span className="text-[10px] text-primary font-black uppercase tracking-[0.4em] mb-4 block font-label">Deployment Phase A</span>
-                <h2 className="text-5xl sm:text-6xl font-headline font-bold text-white tracking-tighter uppercase italic leading-none">
-                    Selection <span className="text-primary/40 italic">Matrix</span>
-                </h2>
-                <div className="flex items-center gap-6 mt-4">
-                    <div className="h-[1px] w-16 bg-[#45464c]/30"></div>
-                    <span className="text-[10px] text-slate-500 font-bold uppercase tracking-[0.3em] font-label">
-                        {selectedCategory} • {selectedSubcategory}
-                    </span>
+        <section className="mb-12">
+            <header className="mb-8 flex flex-col gap-1">
+                <div className="flex items-center gap-3">
+                    <span className="text-[9px] text-primary font-black uppercase tracking-[0.4em] font-label">Phase A: Asset Assembly</span>
+                    <div className="h-[1px] w-12 bg-primary/20"></div>
                 </div>
+                <h2 className="text-3xl font-headline font-black text-white tracking-tight uppercase italic leading-none">
+                    Selection <span className="text-primary/20 italic">Matrix</span>
+                </h2>
             </header>
 
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-8 mb-12">
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
                 {/* Current Slots */}
                 {[...Array(4)].map((_, i) => {
                     const fund = compareList[i];
                     return (
-                        <div key={i} className={`relative group h-60 rounded-[2.5rem] transition-all duration-500 flex flex-col items-center justify-center p-8 text-center ${fund ? 'bg-surface-container-low/50 ghost-border shadow-2xl' : 'bg-surface-container-lowest/40 border border-dashed border-[#45464c]/20 hover:border-primary/20'}`}>
+                        <div key={i} className={`relative group h-44 rounded-2xl transition-all duration-300 flex flex-col items-center justify-center p-6 text-center ${fund ? 'bg-surface-container-low border border-outline-variant/10 shadow-lg' : 'bg-surface-container-lowest/30 border border-dashed border-outline-variant/10 hover:border-primary/20 hover:bg-surface-container-low/20'}`}>
                             {fund ? (
                                 <motion.div 
-                                    initial={{ scale: 0.9, opacity: 0 }}
+                                    initial={{ scale: 0.95, opacity: 0 }}
                                     animate={{ scale: 1, opacity: 1 }}
                                     className="w-full h-full flex flex-col items-center"
                                 >
-                                    <div className="w-14 h-14 rounded-full bg-primary/5 flex items-center justify-center border border-primary/10 mb-6">
-                                        <span className="material-symbols-outlined text-primary text-2xl">query_stats</span>
+                                    <div className="w-10 h-10 rounded-xl bg-primary/5 flex items-center justify-center border border-primary/10 mb-4">
+                                        <span className="material-symbols-outlined text-primary text-xl">query_stats</span>
                                     </div>
-                                    <h4 className="text-lg font-headline font-bold text-white uppercase tracking-tight leading-tight line-clamp-2 italic mb-2">{fund.scheme_name}</h4>
-                                    <p className="font-label text-[9px] text-slate-500 tracking-[0.3em] uppercase font-black mb-6">ID: {fund.scheme_code}</p>
+                                    <h4 className="text-sm font-headline font-bold text-white uppercase tracking-tight leading-tight line-clamp-2 italic mb-1">{fund.scheme_name}</h4>
+                                    <p className="font-label text-[8px] text-slate-500 tracking-[0.2em] uppercase font-black mb-4">ID: {fund.scheme_code}</p>
                                     
                                     <button 
                                         onClick={() => dispatch(removeFromCompare(fund.scheme_code))}
-                                        className="mt-auto inline-flex items-center gap-2 group/btn"
+                                        className="mt-auto px-4 py-2 rounded-lg bg-error/5 border border-error/10 hover:bg-error/20 transition-all flex items-center gap-2 group/btn"
                                     >
-                                        <span className="material-symbols-outlined text-sm text-slate-600 group-hover/btn:text-error transition-colors">close</span>
-                                        <span className="text-[9px] font-black uppercase tracking-[0.4em] text-slate-600 group-hover/btn:text-error transition-colors font-label">Eject Asset</span>
+                                        <span className="material-symbols-outlined text-[10px] text-error">close</span>
+                                        <span className="text-[8px] font-black uppercase tracking-[0.3em] text-error font-label">Eject</span>
                                     </button>
                                 </motion.div>
                             ) : (
-                                <div className="text-slate-800 flex flex-col items-center gap-5">
-                                    <div className="w-12 h-12 rounded-full border border-dashed border-[#45464c]/40 flex items-center justify-center">
-                                        <span className="material-symbols-outlined text-2xl opacity-20">add</span>
+                                <div className="text-slate-800 flex flex-col items-center gap-3">
+                                    <div className="w-8 h-8 rounded-lg border border-dashed border-outline-variant/20 flex items-center justify-center">
+                                        <span className="material-symbols-outlined text-lg opacity-20">add</span>
                                     </div>
-                                    <p className="text-[9px] font-black uppercase tracking-[0.4em] opacity-30 italic font-label">Matrix Slot 0{i+1}</p>
+                                    <p className="text-[8px] font-black uppercase tracking-[0.3em] opacity-30 italic font-label">Slot 0{i+1}</p>
                                 </div>
                             )}
                         </div>
@@ -90,27 +87,27 @@ const FundPicker = () => {
             <AnimatePresence>
                 {compareList.length < 4 && (
                     <motion.div 
-                        initial={{ opacity: 0, y: 20 }}
+                        initial={{ opacity: 0, y: 10 }}
                         animate={{ opacity: 1, y: 0 }}
-                        className="relative max-w-2xl mx-auto"
+                        className="relative max-w-xl mx-auto"
                     >
                         <div className="relative group">
                             <input 
                                 type="text" 
-                                placeholder="INJECT ADDITIONAL ASSET BY NAME..."
+                                placeholder="INJECT ADDITIONAL ASSET..."
                                 value={searchTerm}
                                 onChange={(e) => {
                                     setSearchTerm(e.target.value);
                                     setShowDropdown(true);
                                 }}
                                 onFocus={() => setShowDropdown(true)}
-                                className="w-full bg-surface-container-lowest/60 ghost-border rounded-2xl px-12 py-6 text-sm font-bold text-white focus:outline-none focus:border-primary/40 focus:ring-4 focus:ring-primary/5 transition-all uppercase tracking-[0.2em] placeholder:text-slate-700 font-label italic"
+                                className="w-full bg-surface-container-low border border-outline-variant/10 rounded-xl px-12 py-5 text-xs font-bold text-white focus:outline-none focus:border-primary/40 focus:ring-4 focus:ring-primary/5 transition-all uppercase tracking-[0.15em] placeholder:text-slate-600 font-label italic"
                             />
-                            <span className="absolute left-12 top-1/2 -translate-y-1/2 material-symbols-outlined text-slate-700 font-thin scale-125">search</span>
+                            <span className="absolute left-4 top-1/2 -translate-y-1/2 material-symbols-outlined text-slate-600 text-lg">search</span>
                             {searchTerm && (
                                 <button 
                                     onClick={() => setSearchTerm('')}
-                                    className="absolute right-12 top-1/2 -translate-y-1/2 material-symbols-outlined text-slate-700 hover:text-white transition-colors"
+                                    className="absolute right-4 top-1/2 -translate-y-1/2 material-symbols-outlined text-slate-600 hover:text-white transition-colors text-lg"
                                 >
                                     close
                                 </button>
@@ -120,38 +117,38 @@ const FundPicker = () => {
                         <AnimatePresence>
                             {showDropdown && (searchTerm.length > 0 || categoryFundsLoading) && (
                                 <motion.div 
-                                    initial={{ opacity: 0, y: 10, scale: 0.98 }}
-                                    animate={{ opacity: 1, y: 0, scale: 1 }}
-                                    exit={{ opacity: 0, y: 10, scale: 0.98 }}
-                                    className="absolute z-50 left-0 right-0 top-full mt-6 bg-[#0f1419]/95 border border-[#45464c]/20 rounded-3xl shadow-[0_64px_128px_rgba(0,0,0,0.8)] overflow-hidden max-h-[500px] overflow-y-auto no-scrollbar backdrop-blur-3xl"
+                                    initial={{ opacity: 0, scale: 0.98 }}
+                                    animate={{ opacity: 1, scale: 1 }}
+                                    exit={{ opacity: 0, scale: 0.98 }}
+                                    className="absolute z-50 left-0 right-0 top-full mt-4 bg-surface-container-high border border-outline-variant/20 rounded-2xl shadow-2xl overflow-hidden max-h-[400px] overflow-y-auto no-scrollbar backdrop-blur-3xl"
                                 >
                                     {categoryFundsLoading ? (
-                                        <div className="p-16 text-center">
-                                            <div className="w-12 h-12 border-2 border-primary border-t-transparent rounded-full animate-spin mx-auto mb-6 shadow-[0_0_30px_rgba(233,195,73,0.1)]"></div>
-                                            <p className="text-[10px] font-black text-primary uppercase tracking-[0.5em] italic animate-pulse font-label">Syncing Database...</p>
+                                        <div className="p-10 text-center">
+                                            <div className="w-8 h-8 border-2 border-primary border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
+                                            <p className="text-[9px] font-black text-primary uppercase tracking-[0.4em] italic animate-pulse font-label">Syncing...</p>
                                         </div>
                                     ) : filteredFunds.length > 0 ? (
-                                        <div className="p-3">
+                                        <div className="p-2">
                                             {filteredFunds.slice(0, 10).map((fund) => (
                                                 <button 
                                                     key={fund.scheme_code}
                                                     onClick={() => handleAdd(fund)}
-                                                    className="w-full text-left p-8 hover:bg-white/[0.03] rounded-2xl transition-all group flex items-center justify-between border border-transparent hover:border-white/5 active:scale-[0.99]"
+                                                    className="w-full text-left p-4 hover:bg-white/[0.03] rounded-xl transition-all group flex items-center justify-between border border-transparent hover:border-white/5 active:scale-[0.99]"
                                                 >
-                                                    <div>
-                                                        <div className="text-base font-headline font-bold text-white group-hover:text-primary transition-colors uppercase italic tracking-tight">{fund.scheme_name}</div>
-                                                        <div className="text-[10px] text-slate-500 font-black tracking-[0.3em] uppercase mt-2 opacity-60 font-label">{fund.scheme_code}</div>
+                                                    <div className="flex flex-col gap-1">
+                                                        <div className="text-sm font-headline font-bold text-white group-hover:text-primary transition-colors uppercase italic tracking-tight">{fund.scheme_name}</div>
+                                                        <div className="text-[9px] text-slate-500 font-black tracking-[0.2em] uppercase font-label">{fund.scheme_code}</div>
                                                     </div>
-                                                    <div className="w-10 h-10 rounded-full border border-[#45464c]/30 flex items-center justify-center group-hover:border-primary group-hover:bg-primary transition-all">
-                                                        <span className="material-symbols-outlined text-slate-600 font-thin group-hover:text-on-primary transition-colors">add</span>
+                                                    <div className="w-8 h-8 rounded-lg border border-outline-variant/10 flex items-center justify-center group-hover:bg-primary group-hover:border-primary transition-all">
+                                                        <span className="material-symbols-outlined text-slate-500 text-sm group-hover:text-on-primary">add</span>
                                                     </div>
                                                 </button>
                                             ))}
                                         </div>
                                     ) : (
-                                        <div className="p-20 text-center flex flex-col items-center gap-6">
-                                            <span className="material-symbols-outlined text-5xl opacity-10 font-thin">search_off</span>
-                                            <p className="text-[10px] font-black uppercase tracking-[0.5em] opacity-40 italic font-label">No Cryptographic Matches Found</p>
+                                        <div className="p-12 text-center flex flex-col items-center gap-4">
+                                            <span className="material-symbols-outlined text-4xl opacity-10">search_off</span>
+                                            <p className="text-[9px] font-black uppercase tracking-[0.4em] opacity-40 italic font-label">No Matches Found</p>
                                         </div>
                                     )}
                                 </motion.div>
@@ -160,7 +157,7 @@ const FundPicker = () => {
                         
                         {showDropdown && (
                             <div 
-                                className="fixed inset-0 z-40 bg-black/20 backdrop-blur-[2px]" 
+                                className="fixed inset-0 z-40" 
                                 onClick={() => setShowDropdown(false)}
                             ></div>
                         )}
@@ -168,6 +165,7 @@ const FundPicker = () => {
                 )}
             </AnimatePresence>
         </section>
+
     );
 };
 

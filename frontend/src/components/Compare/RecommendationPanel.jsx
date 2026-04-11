@@ -107,94 +107,88 @@ const RecommendationPanel = ({ recommendation, funds }) => {
     ];
 
     return (
-        <section className="mb-20 animate-fadeInUp">
-            <header className="mb-12">
-                <span className="text-[10px] text-secondary font-black uppercase tracking-[0.4em] mb-4 block font-label italic">Deployment Phase C</span>
-                <h2 className="text-5xl sm:text-6xl font-headline font-bold text-white tracking-tighter uppercase italic leading-none">
-                    Strategic <span className="text-secondary/40 italic">Intelligence</span>
-                </h2>
-                <div className="flex items-center gap-6 mt-4">
-                    <div className="h-[1px] w-16 bg-[#45464c]/30"></div>
-                    <span className="text-[10px] text-slate-500 font-bold uppercase tracking-[0.3em] font-label">AI Consensus Engine Active</span>
+        <section className="mb-12 animate-fadeIn">
+            <header className="mb-8 flex flex-col gap-1">
+                <div className="flex items-center gap-3">
+                    <span className="text-[9px] text-secondary font-black uppercase tracking-[0.4em] font-label italic">Phase C: Strategic Intelligence</span>
+                    <div className="h-[1px] w-12 bg-secondary/20"></div>
                 </div>
+                <h2 className="text-3xl font-headline font-black text-white tracking-tight uppercase italic leading-none">
+                    AI <span className="text-secondary/20 italic">Consensus</span>
+                </h2>
             </header>
 
-            <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-stretch">
-                {/* Executive Summary Card (Lg: 8) */}
-                <div className="lg:col-span-8 bg-surface-container-low/40 p-12 rounded-[3rem] ghost-border relative overflow-hidden group flex flex-col">
-                    <div className="absolute -right-20 -top-20 w-80 h-80 bg-secondary/5 rounded-full blur-[80px] group-hover:bg-secondary/10 transition-all duration-700"></div>
+            <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-stretch">
+                {/* Executive Summary Card */}
+                <div className="lg:col-span-8 bg-surface-container-low border border-outline-variant/10 p-8 rounded-2xl relative overflow-hidden group flex flex-col shadow-lg">
+                    <div className="absolute -right-10 -top-10 w-40 h-40 bg-secondary/5 rounded-full blur-[60px] group-hover:bg-secondary/10 transition-all duration-700"></div>
                     
                     <div className="relative z-10 flex flex-col h-full">
-                        <div className="flex items-center gap-4 mb-10">
-                            <span className="material-symbols-outlined text-secondary opacity-60" style={{ fontVariationSettings: "'FILL' 1" }}>auto_awesome</span>
-                            <h3 className="font-headline text-2xl font-bold tracking-tight text-white uppercase italic">Executive Summary</h3>
+                        <div className="flex items-center gap-3 mb-6">
+                            <span className="material-symbols-outlined text-secondary text-base" style={{ fontVariationSettings: "'FILL' 1" }}>auto_awesome</span>
+                            <h3 className="font-headline text-lg font-bold tracking-tight text-white uppercase italic">Executive Summary</h3>
                         </div>
 
-                        <p className="text-xl sm:text-2xl text-on-surface-variant leading-relaxed font-light italic mb-12 flex-1 border-l-2 border-secondary/20 pl-10 ml-2">
+                        <p className="text-base sm:text-lg text-on-surface-variant leading-relaxed font-light italic mb-8 flex-1 border-l border-secondary/20 pl-6 ml-1">
                            "{recommendation.reason}"
                         </p>
 
-                        <div className="flex flex-wrap items-center gap-8 pt-10 border-t border-[#45464c]/15">
-                            <div className="flex -space-x-4">
-                                {[1, 2, 3].map(i => (
-                                    <div key={i} className="w-12 h-12 rounded-full border-4 border-[#0f1419] bg-surface-container-highest overflow-hidden">
-                                        <img className="w-full h-full object-cover grayscale opacity-60 hover:grayscale-0 hover:opacity-100 transition-all cursor-crosshair" src={`https://i.pravatar.cc/150?u=${i+10}`} alt="Analyst" />
+                        <div className="flex items-center gap-4 pt-6 border-t border-outline-variant/5">
+                            <div className="flex -space-x-2">
+                                {[1, 2].map(i => (
+                                    <div key={i} className="w-8 h-8 rounded-full border-2 border-surface bg-surface-container-high flex items-center justify-center text-[8px] font-black text-slate-500 font-label">
+                                        AN
                                     </div>
                                 ))}
-                                <div className="w-12 h-12 rounded-full border-4 border-[#0f1419] bg-surface-container-highest flex items-center justify-center text-[10px] font-black text-slate-500 font-label">+4</div>
                             </div>
-                            <span className="text-[10px] font-black uppercase tracking-[0.3em] text-slate-500 font-label">Verified by Nivesh Elite Analysis Board</span>
+                            <span className="text-[8px] font-black uppercase tracking-[0.2em] text-slate-500 font-label">Verified by Nivesh Elite Matrix</span>
                         </div>
                     </div>
                 </div>
 
-                {/* Alpha Signal Card (Lg: 4) */}
-                <div className="lg:col-span-4 gold-leaf-gradient rounded-[3rem] p-12 flex flex-col justify-between overflow-hidden relative group shadow-2xl">
-                    <div className="absolute inset-0 bg-black/10 opacity-0 group-hover:opacity-100 transition-opacity"></div>
-                    
+                {/* Alpha Signal Card */}
+                <div className="lg:col-span-4 bg-primary p-8 rounded-2xl flex flex-col justify-between overflow-hidden relative group shadow-xl border border-primary/20">
                     <div className="relative z-10">
-                        <span className="text-[9px] uppercase font-black tracking-[0.4em] text-on-primary/60 block mb-3 font-label">Alpha Signal Alpha</span>
-                        <h3 className="text-on-primary font-headline text-4xl font-black leading-tight uppercase italic tracking-tighter">Ready to Deploy?</h3>
-                        <p className="text-on-primary/70 mt-6 text-sm leading-relaxed font-medium">Execute a precision capital allocation to align your portfolio with these high-performance insights instantly.</p>
+                        <span className="text-[8px] uppercase font-black tracking-[0.3em] text-on-primary/60 block mb-2 font-label">Actionable Signal</span>
+                        <h3 className="text-on-primary font-headline text-2xl font-black leading-tight uppercase italic tracking-tight">Execute Deployment?</h3>
                     </div>
 
-                    <button className="relative z-10 mt-10 w-full bg-on-primary text-primary font-black py-5 rounded-2xl flex items-center justify-center gap-4 hover:shadow-[0_20px_40px_rgba(0,0,0,0.3)] transition-all active:scale-[0.98] group/btn">
-                        <span className="font-label text-xs uppercase tracking-widest">Execute Tactical Load</span>
-                        <span className="material-symbols-outlined group-hover/btn:translate-x-2 transition-transform">trending_up</span>
+                    <button className="relative z-10 mt-6 w-full bg-white text-primary font-black py-3 rounded-xl flex items-center justify-center gap-3 hover:shadow-2xl transition-all active:scale-[0.98] group/btn">
+                        <span className="font-label text-xs uppercase tracking-widest">Execute Load</span>
+                        <span className="material-symbols-outlined text-sm group-hover/btn:translate-x-1 transition-transform">trending_up</span>
                     </button>
 
-                    {/* Decorative Background Icon */}
-                    <div className="absolute -bottom-10 -right-10 opacity-20 transform rotate-12 pointer-events-none">
-                        <span className="material-symbols-outlined text-[180px] font-thin" style={{ fontVariationSettings: "'wght' 100" }}>payments</span>
+                    <div className="absolute -bottom-6 -right-6 opacity-10 pointer-events-none">
+                        <span className="material-symbols-outlined text-8xl font-thin">payments</span>
                     </div>
                 </div>
             </div>
 
             {/* Radar Analysis Section */}
-            <div className="mt-12 glass-panel p-16 rounded-[3rem] ghost-border flex flex-col md:flex-row items-center gap-16">
+            <div className="mt-6 bg-surface-container-low border border-outline-variant/10 p-8 rounded-2xl flex flex-col md:flex-row items-center gap-12 shadow-lg">
                  <div className="flex-1">
-                     <div className="inline-flex items-center gap-4 bg-secondary/10 border border-secondary/20 px-6 py-2 rounded-full mb-8">
-                        <span className="material-symbols-outlined text-secondary text-lg">psychology</span>
-                        <span className="text-[10px] font-black text-secondary uppercase tracking-[0.3em] font-label">Neural Vector Analysis</span>
+                     <div className="inline-flex items-center gap-3 bg-secondary/10 border border-secondary/20 px-4 py-1.5 rounded-lg mb-6">
+                        <span className="material-symbols-outlined text-secondary text-base">psychology</span>
+                        <span className="text-[9px] font-black text-secondary uppercase tracking-[0.2em] font-label">Vector Analysis</span>
                     </div>
-                    <h3 className="text-3xl font-headline font-black text-white uppercase italic mb-6 tracking-tight">Performance <span className="text-secondary/40">Fingerprint</span></h3>
-                    <p className="text-slate-500 font-medium leading-relaxed max-w-xl">
-                        A visual representation of the asset's multidimensional efficiency. The <span className="text-secondary font-bold">Emerald Vector</span> represents the optimal candidate across returns, risk, and structural efficiency.
+                    <h3 className="text-xl font-headline font-black text-white uppercase italic mb-4 tracking-tight">Performance <span className="text-secondary/20">Fingerprint</span></h3>
+                    <p className="text-slate-500 text-sm font-medium leading-relaxed max-w-md italic">
+                        Multidimensional efficiency matrix. The <span className="text-secondary font-bold">Emerald Vector</span> represents the optimal candidate across returns, risk, and stability.
                     </p>
                  </div>
                  
-                 <div className="relative">
+                 <div className="relative flex flex-col items-center">
                     <RadarChart 
                         data={recommendation.score_breakdown} 
                         dimensions={chartDimensions}
                     />
                     
-                    <div className="mt-10 flex flex-wrap justify-center gap-6">
+                    <div className="mt-6 flex flex-wrap justify-center gap-4">
                         {funds.map((fund) => (
-                            <div key={fund.scheme_code} className="flex items-center gap-3">
-                                <div className={`w-2.5 h-2.5 rounded-full ${fund.scheme_code === recommendation.best_fund ? 'bg-secondary drop-shadow-[0_0_8px_rgba(102,221,139,0.5)]' : 'bg-primary/30 opacity-40'}`}></div>
-                                <span className={`text-[9px] font-black uppercase tracking-[0.3em] font-label ${fund.scheme_code === recommendation.best_fund ? 'text-white' : 'text-slate-600'}`}>
-                                    {fund.scheme_name.substring(0, 15)}...
+                            <div key={fund.scheme_code} className="flex items-center gap-2">
+                                <div className={`w-1.5 h-1.5 rounded-full ${fund.scheme_code === recommendation.best_fund ? 'bg-secondary' : 'bg-primary/30'}`}></div>
+                                <span className={`text-[8px] font-black uppercase tracking-[0.2em] font-label ${fund.scheme_code === recommendation.best_fund ? 'text-white' : 'text-slate-600'}`}>
+                                    {fund.scheme_name.substring(0, 10)}...
                                 </span>
                             </div>
                         ))}
@@ -202,6 +196,7 @@ const RecommendationPanel = ({ recommendation, funds }) => {
                  </div>
             </div>
         </section>
+
     );
 };
 

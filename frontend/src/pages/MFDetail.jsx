@@ -2,13 +2,19 @@ import React, { useEffect, useState } from 'react';
 import { useDispatch, useSelector } from 'react-redux';
 import { useParams, Link } from 'react-router-dom';
 import { fetchFundDetail, clearDetail, syncFundMetrics } from '../store/slices/fundDetailSlice';
+import { addToCompare, removeFromCompare } from '../store/slices/compareSlice';
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip, ResponsiveContainer } from 'recharts';
 import { motion, AnimatePresence } from 'framer-motion';
+import { useNavigate } from 'react-router-dom';
+import toast from 'react-hot-toast';
+import CompareDock from '../components/Compare/CompareDock';
 
 const MFDetail = () => {
     const { schemeCode } = useParams();
     const dispatch = useDispatch();
+    const navigate = useNavigate();
     const { fund, navHistory, metrics, loading, error, syncing } = useSelector((state) => state.fundDetail);
+    const { compareList } = useSelector((state) => state.compare);
     const [isLedgerExpanded, setIsLedgerExpanded] = useState(false);
 
     useEffect(() => {
@@ -17,6 +23,24 @@ const MFDetail = () => {
         }
         return () => dispatch(clearDetail());
     }, [dispatch, schemeCode]);
+
+    const handleAddToCompare = () => {
+        if (compareList.length >= 4) {
+            toast.error('Maximum phase capacity reached (4 assets)');
+            return;
+        }
+        
+        if (compareList.length > 0) {
+            if (compareList[0].scheme_category !== fund.scheme_category || 
+                compareList[0].scheme_subcategory !== fund.scheme_subcategory) {
+                toast.error('Strategic Mismatch: Assets must share identical category & subcategory');
+                return;
+            }
+        }
+
+        dispatch(addToCompare(fund));
+        toast.success(`${fund.scheme_name.substring(0, 20)}... locked into matrix`);
+    };
 
     if (loading && !fund) {
         return (
@@ -89,68 +113,122 @@ const MFDetail = () => {
 
     return (
         <div className="p-6 md:p-12 lg:p-16 xl:p-24 2xl:p-32 w-full animate-fadeIn flex flex-col gap-16 transition-all duration-500">
-            {/* Breadcrumbs */}
-            <nav className="flex items-center gap-6 text-xs sm:text-sm font-black uppercase tracking-[0.5em] opacity-40">
-                <Link to="/mf" className="hover:text-primary transition-all hover:scale-105">Resource Vault</Link>
-                <span className="material-symbols-outlined text-sm">chevron_right</span>
-                <span className="text-white">Quantitative Intelligence</span>
-            </nav>
-
-            {/* Hero Section */}
-            <header className="flex flex-col 2xl:flex-row 2xl:items-end justify-between gap-16 mb-8">
-                <div className="flex-1">
-                    <div className="flex items-center gap-6 mb-10">
-                        <span className="bg-primary/10 text-primary border border-primary/20 px-6 py-3 rounded-2xl text-[10px] font-black uppercase tracking-[0.4em] leading-none"> {fund.scheme_category} </span>
-                        {metrics?.hash_sufficient_data && (
-                            <span className="text-secondary text-sm font-black uppercase tracking-[0.4em] flex items-center gap-3">
-                                <span className="material-symbols-outlined text-2xl animate-pulse">verified</span>
-                                Elite Certified ({formatPercent(metrics.data_completeness_percentage/100)} COMP)
-                            </span>
-                        )}
-                    </div>
-                    <h1 className="text-6xl sm:text-7xl md:text-8xl lg:text-9xl 3xl:text-[12rem] font-headline font-bold text-white tracking-tighter leading-none mb-10 group">
-                        {fund.scheme_name.split(' - ')[0]} <span className="text-primary/10 group-hover:text-primary transition-all duration-1000">{fund.scheme_name.split(' - ')[1] || 'Growth'}</span>
-                    </h1>
-                    <p className="text-xl md:text-2xl text-slate-500 font-black max-w-6xl leading-tight italic uppercase tracking-[0.2em] opacity-60"> 
-                        Identifier: {fund.scheme_code} • ISIN: {fund.isin || 'ARTIFACT-X'} • Inception: {fund.inception_date || 'N/A'}
-                    </p>
-                    <p className="text-sm font-black text-primary uppercase tracking-[0.4em] mt-8 opacity-40 italic"> {fund.amc_name} • Benchmark: {fund.benchmark_index_code} </p>
+            {/* Compact Asset Header */}
+            <header className="mb-12 flex flex-col md:flex-row items-start md:items-center justify-between gap-8 pt-8 border-b border-outline-variant/10 pb-8">
+              <div className="flex items-center gap-6">
+                <button onClick={() => navigate(-1)} className="p-3 bg-white/5 rounded-xl hover:bg-white/10 transition-colors group">
+                  <span className="material-symbols-outlined text-sm group-hover:-translate-x-0.5 transition-transform">arrow_back</span>
+                </button>
+                <div className="space-y-1">
+                  <p className="font-label text-[10px] font-semibold uppercase tracking-[0.3em] text-primary flex items-center gap-2">
+                    {fund.scheme_category} <span className="w-1 h-1 rounded-full bg-primary/50"></span> {fund.scheme_subcategory}
+                  </p>
+                  <h2 className="font-headline text-4xl md:text-5xl font-light tracking-tight text-white uppercase max-w-4xl">
+                    {fund.scheme_name.split(' - ')[0]} <span className="font-extrabold italic text-primary">{fund.scheme_name.split(' - ')[1] || 'Growth'}</span>
+                  </h2>
                 </div>
+              </div>
 
-                <div className="flex flex-col items-end gap-4 bg-surface-container-high/60 p-12 md:p-16 rounded-[4rem] border border-white/5 shadow-[0_64px_128px_rgba(0,0,0,0.6)] backdrop-blur-3xl min-w-[400px]">
-                    <span className="text-sm font-black text-slate-500 uppercase tracking-[0.5em] leading-none mb-2 opacity-60">Global Nav Valuation</span>
-                    <div className="text-7xl sm:text-8xl md:text-9xl font-headline font-black text-white tracking-tighter leading-none mt-2">₹{formatValue(metrics?.current_nav)}</div>
-                    <div className={`flex items-center gap-4 text-3xl font-black uppercase tracking-[0.3em] mt-8 px-10 py-5 rounded-[2.5rem] border shadow-2xl ${metrics?.absolute_return_1y > 0 ? 'text-secondary bg-secondary/10 border-secondary/20' : 'text-error bg-error/10 border-error/20'}`}>
-                        <span className="material-symbols-outlined text-4xl">{metrics?.absolute_return_1y > 0 ? 'trending_up' : 'trending_down'}</span>
-                        {formatPercent(metrics?.absolute_return_1y)} T-12M
-                    </div>
-                </div>
+              <div className="flex items-center gap-4 self-end md:self-center">
+                 {(() => {
+                   const isComparing = compareList.some(f => f.scheme_code === fund.scheme_code);
+                   return (
+                     <button 
+                       onClick={() => isComparing ? dispatch(removeFromCompare(fund.scheme_code)) : handleAddToCompare()}
+                       className={`flex items-center gap-3 px-6 py-2.5 rounded-xl border transition-all font-black text-[10px] uppercase tracking-widest ${isComparing ? 'bg-primary text-on-primary border-primary shadow-[0_0_20px_rgba(233,195,73,0.3)]' : 'bg-white/5 text-slate-400 border-white/10 hover:border-primary/40 hover:text-white'}`}
+                     >
+                       <span className="material-symbols-outlined text-lg">{isComparing ? 'check_circle' : 'add_circle'}</span>
+                       {isComparing ? 'Locked in Matrix' : 'Add to Compare'}
+                     </button>
+                   );
+                 })()}
+
+                 <div className="bg-surface-container-low border border-outline-variant/20 px-4 py-2 rounded-xl flex items-center gap-3">
+                   <span className="w-2 h-2 rounded-full bg-secondary animate-pulse"></span>
+                   <span className="text-[10px] font-black uppercase tracking-widest text-secondary italic">Vault Verified</span>
+                 </div>
+              </div>
             </header>
 
-            {/* Strategic Intelligence Verdict */}
+            {/* Strategic Intelligence Verdict (Compact) */}
             {metrics?.final_verdict && (
-                <div className="glass-panel p-16 rounded-[4rem] border-l-8 border border-white/5 border-l-primary shadow-2xl bg-white/[0.02] backdrop-blur-3xl">
-                    <div className="flex items-center gap-8 mb-8">
-                        <span className="material-symbols-outlined text-4xl text-primary animate-bounce">auto_awesome</span>
-                        <h4 className="text-3xl font-headline font-black uppercase tracking-widest leading-none">Strategic Intelligence Verdict</h4>
+                <div className="glass-panel p-6 rounded-2xl border-l-4 border-l-primary bg-white/[0.02]">
+                    <div className="flex items-center gap-4 mb-2">
+                        <span className="material-symbols-outlined text-xl text-primary animate-pulse">auto_awesome</span>
+                        <h4 className="text-xs font-black uppercase tracking-widest text-slate-500">Intelligence Verdict</h4>
                     </div>
-                    <p className="text-3xl sm:text-4xl text-white/80 font-bold leading-tight uppercase tracking-tight italic opacity-90">
+                    <p className="text-lg text-white/90 font-medium tracking-tight italic">
                         "{metrics.final_verdict}"
                     </p>
                 </div>
             )}
 
-            {/* Top Metrics Grid */}
-            <div className="grid grid-cols-1 md:grid-cols-2 2xl:grid-cols-4 gap-12 xl:gap-16">
-                {displayMetrics.map((m, idx) => (
-                    <div key={idx} className="glass-panel p-12 rounded-[2.5rem] border border-white/5 shadow-2xl hover:translate-y-[-10px] transition-all duration-500 bg-white/[0.01] relative overflow-hidden group">
-                        <span className="material-symbols-outlined absolute -right-6 -bottom-6 text-[120px] text-primary opacity-[0.03] group-hover:scale-125 transition-transform duration-1000">{m.icon}</span>
-                        <p className="text-[11px] uppercase tracking-[0.5em] text-slate-500 font-black mb-8 leading-none">{m.label}</p>
-                        <p className="text-4xl sm:text-5xl xl:text-6xl font-headline font-black text-white tracking-tighter mb-4 leading-none">{m.val}</p>
-                        <p className="text-[11px] text-primary font-black uppercase tracking-[0.4em] opacity-40 italic tracking-widest">{m.sub}</p>
+            {/* High-Density Status Grid */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
+                {/* NAV Card */}
+                <div className="glass-panel p-6 rounded-2xl relative overflow-hidden group">
+                  <div className="flex justify-between items-start mb-4">
+                    <p className="font-label text-[10px] uppercase tracking-widest text-slate-500 group-hover:text-primary transition-colors">Net Asset Value</p>
+                    <span className="material-symbols-outlined text-primary text-lg">account_balance</span>
+                  </div>
+                  <div className="flex items-end gap-2">
+                    <p className="font-headline text-4xl font-extrabold text-white">₹{formatValue(metrics?.current_nav)}</p>
+                    <div className="flex flex-col mb-1">
+                      <span className={`text-[10px] font-black ${metrics?.absolute_return_1y >= 0 ? 'text-secondary' : 'text-error'}`}>
+                        {metrics?.absolute_return_1y >= 0 ? '+' : ''}{formatPercent(metrics?.absolute_return_1y)}
+                      </span>
+                      <span className="text-[8px] text-slate-600 uppercase font-bold tracking-tighter">T-12M Alpha</span>
                     </div>
-                ))}
+                  </div>
+                  <div className={`absolute bottom-0 left-0 h-1 transition-all duration-700 ${metrics?.absolute_return_1y >= 0 ? 'bg-secondary w-full' : 'bg-error w-full'}`}></div>
+                </div>
+
+                {/* AUM Card */}
+                <div className="glass-panel p-6 rounded-2xl relative overflow-hidden group">
+                  <div className="flex justify-between items-start mb-4">
+                    <p className="font-label text-[10px] uppercase tracking-widest text-slate-500 group-hover:text-primary transition-colors">Assets Under Mgmt</p>
+                    <span className="material-symbols-outlined text-primary text-lg">inventory_2</span>
+                  </div>
+                  <div className="flex items-end gap-2">
+                    <p className="font-headline text-4xl font-extrabold text-white">₹{metrics?.aum_in_crores ? (metrics.aum_in_crores/1000).toFixed(1) + 'k Cr' : '—'}</p>
+                    <div className="flex flex-col mb-1">
+                      <span className="text-[10px] text-secondary font-black uppercase tracking-tighter">Tier 1 AUM</span>
+                      <span className="text-[8px] text-slate-600 uppercase font-bold tracking-tighter">Portfolio Scale</span>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Return Alpha Card */}
+                <div className="glass-panel p-6 rounded-2xl relative overflow-hidden group">
+                  <div className="flex justify-between items-start mb-4">
+                    <p className="font-label text-[10px] uppercase tracking-widest text-slate-500 group-hover:text-primary transition-colors">3Y CAGR Momentum</p>
+                    <span className="material-symbols-outlined text-primary text-lg">trending_up</span>
+                  </div>
+                  <div className="flex items-end gap-2">
+                    <p className="font-headline text-4xl font-extrabold text-white tracking-tighter">{formatPercent(metrics?.cagr_3year)}</p>
+                    <div className="flex flex-col mb-1">
+                      <span className="text-[10px] text-secondary font-black uppercase">Steady Growth</span>
+                      <span className="text-[8px] text-slate-600 uppercase font-bold tracking-tighter">Compounded</span>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Asset Identity Card */}
+                <div className="glass-panel p-6 rounded-2xl relative overflow-hidden group">
+                  <div className="flex justify-between items-start mb-4">
+                    <p className="font-label text-[10px] uppercase tracking-widest text-slate-500 group-hover:text-primary transition-colors">Elite Registry ID</p>
+                    <span className="material-symbols-outlined text-primary text-lg">fingerprint</span>
+                  </div>
+                  <div className="flex items-end gap-2">
+                    <p className="font-headline text-4xl font-extrabold text-white uppercase tracking-tighter">{fund.scheme_code}</p>
+                    <div className="flex flex-col mb-1">
+                      <span className="text-[10px] text-secondary font-black uppercase truncate max-w-[100px]">{fund.amc_name?.split(' ')[0]}</span>
+                      <span className="text-[8px] text-slate-600 uppercase font-bold tracking-tighter">Asset Controller</span>
+                    </div>
+                  </div>
+                </div>
             </div>
+
 
             {/* Detailed Ledger Toggle */}
             <section className="flex flex-col gap-8">
@@ -281,6 +359,8 @@ const MFDetail = () => {
                 Autonomous Decentralized Feed: Sync Interval T-1s • Ledger Identification Artifacts Verified <br/>
                 Sovereign Protocol Core-ID: {fund.isin || fund.scheme_code}
             </footer>
+
+            <CompareDock />
         </div>
     );
 };

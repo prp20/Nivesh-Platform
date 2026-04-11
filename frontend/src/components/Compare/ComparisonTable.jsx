@@ -42,36 +42,34 @@ const ComparisonTable = ({ funds, ranking }) => {
     const isWorst = (fundCode, metricKey) => ranking?.[metricKey]?.worst === fundCode;
 
     return (
-        <section className="mb-20 animate-fadeInUp">
-            <header className="mb-12">
-                <span className="text-[10px] text-primary font-black uppercase tracking-[0.4em] mb-4 block font-label">Deployment Phase B</span>
-                <h2 className="text-5xl sm:text-6xl font-headline font-bold text-white tracking-tighter uppercase italic leading-none">
-                    Analytical <span className="text-primary/40 italic">Ledger</span>
-                </h2>
-                <div className="flex items-center gap-6 mt-4">
-                    <div className="h-[1px] w-16 bg-[#45464c]/30"></div>
-                    <span className="text-[10px] text-slate-500 font-bold uppercase tracking-[0.3em] font-label">Matrix Intelligence Protocol Active</span>
+        <section className="mb-12 animate-fadeIn">
+            <header className="mb-8 flex flex-col gap-1">
+                <div className="flex items-center gap-3">
+                    <span className="text-[9px] text-primary font-black uppercase tracking-[0.4em] font-label">Phase B: Analytical Ledger</span>
+                    <div className="h-[1px] w-12 bg-primary/20"></div>
                 </div>
+                <h2 className="text-3xl font-headline font-black text-white tracking-tight uppercase italic leading-none">
+                    Intelligence <span className="text-primary/20 italic">Matrix</span>
+                </h2>
             </header>
 
-            <div className="relative overflow-hidden rounded-[2.5rem] ghost-border bg-[#0f1419] shadow-[0_64px_128px_rgba(0,0,0,0.4)]">
+            <div className="relative overflow-hidden rounded-2xl border border-outline-variant/10 bg-surface-container-low shadow-xl">
                 <div className="overflow-x-auto no-scrollbar">
-                    <table className="w-full border-collapse min-w-[1000px]">
+                    <table className="w-full border-collapse min-w-[900px]">
                         <thead>
-                            <tr className="border-b-2 border-[#45464c]/10 bg-surface">
-                                <th className="sticky left-0 z-40 bg-surface p-10 text-left min-w-[300px] align-bottom">
-                                    <span className="font-label text-[10px] uppercase tracking-[0.4em] text-primary/60 font-black">Instrument Details</span>
+                            <tr className="border-b border-outline-variant/10 bg-surface-container-high/40">
+                                <th className="sticky left-0 z-40 bg-surface-container-high p-6 text-left min-w-[280px] align-middle border-r border-outline-variant/10">
+                                    <span className="font-label text-[9px] uppercase tracking-[0.3em] text-primary/60 font-black">Metric Category</span>
                                 </th>
                                 {funds.map((fund) => (
-                                    <th key={fund.scheme_code} className="p-10 border-l border-[#45464c]/10 bg-surface-container-low/30 min-w-[250px]">
-                                        <div className="flex flex-col items-center text-center">
-                                            <div className="w-14 h-14 rounded-full bg-primary/5 flex items-center justify-center border border-primary/10 mb-6">
-                                                <span className="material-symbols-outlined text-primary text-2xl">query_stats</span>
+                                    <th key={fund.scheme_code} className="p-6 border-r border-outline-variant/10 bg-surface-container-low min-w-[220px]">
+                                        <div className="flex flex-col items-center gap-2">
+                                            <div className="w-8 h-8 rounded-lg bg-primary/5 flex items-center justify-center border border-primary/10">
+                                                <span className="material-symbols-outlined text-primary text-lg">query_stats</span>
                                             </div>
-                                            <h3 className="font-headline text-lg font-bold text-white tracking-tight leading-tight uppercase italic line-clamp-2">
+                                            <h3 className="font-headline text-sm font-bold text-white tracking-tight leading-tight uppercase italic line-clamp-1">
                                                 {fund.scheme_name}
                                             </h3>
-                                            <p className="font-label text-[9px] text-slate-500 tracking-[0.3em] uppercase font-black mt-3">ID: {fund.scheme_code}</p>
                                         </div>
                                     </th>
                                 ))}
@@ -80,16 +78,16 @@ const ComparisonTable = ({ funds, ranking }) => {
                         <tbody>
                             {metricGroups.map((group, gIdx) => (
                                 <React.Fragment key={gIdx}>
-                                    <tr className="bg-surface-container-lowest/40">
-                                        <td colSpan={funds.length + 1} className="px-10 py-5 border-b border-[#45464c]/10">
-                                            <span className="font-headline font-black text-primary text-xs uppercase tracking-[0.4em] italic opacity-80">
-                                                {gIdx + 1}. {group.title}
+                                    <tr className="bg-surface-container-lowest/20">
+                                        <td colSpan={funds.length + 1} className="px-6 py-3 border-b border-outline-variant/10">
+                                            <span className="font-headline font-black text-primary text-[10px] uppercase tracking-[0.3em] italic opacity-80">
+                                                {group.title}
                                             </span>
                                         </td>
                                     </tr>
                                     {group.metrics.map((metric, mIdx) => (
-                                        <tr key={mIdx} className="group hover:bg-surface-container-high/20 transition-colors">
-                                            <td className="sticky left-0 z-30 bg-surface p-10 font-label text-[11px] font-black text-slate-400 uppercase tracking-widest border-b border-[#45464c]/5">
+                                        <tr key={mIdx} className="group hover:bg-white/[0.02] transition-colors border-b border-outline-variant/5">
+                                            <td className="sticky left-0 z-30 bg-surface-container-low p-6 font-label text-[10px] font-black text-slate-400 uppercase tracking-widest border-r border-outline-variant/10">
                                                 {metric.label}
                                             </td>
                                             {funds.map((fund) => {
@@ -100,17 +98,18 @@ const ComparisonTable = ({ funds, ranking }) => {
                                                 return (
                                                     <td 
                                                         key={fund.scheme_code} 
-                                                        className={`p-10 text-center border-l border-[#45464c]/5 border-b border-[#45464c]/5 transition-all duration-500`}
+                                                        className="p-6 text-center border-r border-outline-variant/10"
                                                     >
-                                                        <div className={`font-headline text-3xl font-black tracking-tighter ${best ? 'text-secondary drop-shadow-[0_0_15px_rgba(102,221,139,0.3)]' : worst ? 'text-error opacity-40' : 'text-white'}`}>
-                                                            {val !== 'N/A' ? `${val}${metric.unit}` : val}
-                                                        </div>
-                                                        {best && (
-                                                            <div className="mt-3 inline-flex items-center gap-2 bg-secondary/10 px-3 py-1 rounded-full border border-secondary/20">
-                                                                <span className="material-symbols-outlined text-[10px] text-secondary" style={{ fontVariationSettings: "'FILL' 1" }}>bolt</span>
-                                                                <span className="text-[9px] font-black text-secondary tracking-widest uppercase">OPTIMAL</span>
+                                                        <div className="flex flex-col items-center gap-1">
+                                                            <div className={`font-headline text-2xl font-black tracking-tight ${best ? 'text-secondary' : worst ? 'text-error opacity-40' : 'text-white'}`}>
+                                                                {val !== 'N/A' ? `${val}${metric.unit}` : val}
                                                             </div>
-                                                        )}
+                                                            {best && (
+                                                                <div className="flex items-center gap-1 bg-secondary/10 px-2 py-0.5 rounded border border-secondary/20">
+                                                                    <span className="text-[8px] font-black text-secondary tracking-widest uppercase font-label">OPTIMAL</span>
+                                                                </div>
+                                                            )}
+                                                        </div>
                                                     </td>
                                                 );
                                             })}
@@ -123,17 +122,18 @@ const ComparisonTable = ({ funds, ranking }) => {
                 </div>
             </div>
             
-            <div className="mt-12 flex justify-center gap-12 font-label">
-                <div className="flex items-center gap-4">
-                    <div className="w-2.5 h-2.5 rounded-full bg-secondary shadow-[0_0_10px_rgba(102,221,139,0.5)]"></div>
-                    <span className="text-[9px] font-black text-slate-500 uppercase tracking-[0.2em]">Sovereign Peak</span>
+            <div className="mt-8 flex justify-center gap-10 font-label">
+                <div className="flex items-center gap-3">
+                    <div className="w-2 h-2 rounded-full bg-secondary"></div>
+                    <span className="text-[8px] font-black text-slate-500 uppercase tracking-[0.2em]">Peak Performance</span>
                 </div>
-                <div className="flex items-center gap-4">
-                    <div className="w-2.5 h-2.5 rounded-full bg-error opacity-30"></div>
-                    <span className="text-[9px] font-black text-slate-500 uppercase tracking-[0.2em]">Risk Floor</span>
+                <div className="flex items-center gap-3">
+                    <div className="w-2 h-2 rounded-full bg-error opacity-30"></div>
+                    <span className="text-[8px] font-black text-slate-500 uppercase tracking-[0.2em]">Risk Floor</span>
                 </div>
             </div>
         </section>
+
     );
 };
 
