@@ -11,6 +11,7 @@ from typing import Optional
 from app.database import get_db
 from app.schemas import ScreenerResponse, ScreenerFilterInput
 from app.query_utils import FilterBuilder, SortColumnMap
+from app import security
 
 router = APIRouter()
 
@@ -60,6 +61,7 @@ async def screener(
     sort_by: str = Query("total_score", min_length=1, max_length=50),
     order: str = Query("desc", regex="^(asc|desc)$"),
     db: AsyncSession = Depends(get_db),
+    current_user: str = Depends(security.get_current_user),
 ) -> ScreenerResponse:
     """
     Dynamic stock screener with 15+ validated filter parameters.
@@ -218,6 +220,7 @@ async def get_ratios(
     period_type: str = Query("annual", regex="^(annual|ttm)$"),
     limit:       int = Query(5, ge=1, le=20),
     db: AsyncSession = Depends(get_db),
+    current_user: str = Depends(security.get_current_user),
 ):
     """Get financial ratios history for a stock."""
     from app.routers.stocks import _get_stock_id
@@ -243,6 +246,7 @@ async def get_ratios(
 async def compare_stocks(
     symbols: str = Query(..., description="Comma-separated symbols, max 5"),
     db: AsyncSession = Depends(get_db),
+    current_user: str = Depends(security.get_current_user),
 ):
     """Compare up to 5 stocks side-by-side."""
     from app.routers.stocks import _get_stock_id

@@ -23,5 +23,6 @@ async def get_nav_history(
     scheme_code: str,
     limit: int = Query(100, ge=1, le=5000),
     session: AsyncSession = Depends(get_db),
+    current_user: str = Depends(security.get_current_user),
 ):
     return await crud.get_fund_nav_history(session, scheme_code, limit)

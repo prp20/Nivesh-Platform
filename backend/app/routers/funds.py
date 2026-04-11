@@ -31,7 +31,8 @@ async def list_funds(
     order_by: Optional[str] = Query("scheme_name", description="Sort field (scheme_name, -scheme_name)"),
     skip: int = Query(0, ge=0),
     limit: int = Query(100, ge=1, le=500),
-    session: AsyncSession = Depends(get_db)
+    session: AsyncSession = Depends(get_db),
+    current_user: str = Depends(security.get_current_user),
 ):
     """List all mutual funds with pagination and filtering."""
     total = await crud.get_fund_masters_count(
@@ -49,13 +50,20 @@ async def list_funds(
     }
 
 @router.get("/categories", response_model=List[str])
-async def list_categories(session: AsyncSession = Depends(get_db)):
+async def list_categories(
+    session: AsyncSession = Depends(get_db),
+    current_user: str = Depends(security.get_current_user),
+):
     """Return distinct scheme_category values from active funds."""
     return await crud.get_distinct_categories(session)
 
 
 @router.get("/categories/{category}/subcategories", response_model=List[str])
-async def list_subcategories(category: str, session: AsyncSession = Depends(get_db)):
+async def list_subcategories(
+    category: str,
+    session: AsyncSession = Depends(get_db),
+    current_user: str = Depends(security.get_current_user),
+):
     """Return distinct subcategories for a given category."""
     return await crud.get_distinct_subcategories(session, category)
 
@@ -63,7 +71,8 @@ async def list_subcategories(category: str, session: AsyncSession = Depends(get_
 @router.get("/compare", response_model=schemas.ComparisonResponse)
 async def compare_funds(
     codes: str = Query(..., description="Comma-separated scheme codes for comparison"),
-    session: AsyncSession = Depends(get_db)
+    session: AsyncSession = Depends(get_db),
+    current_user: str = Depends(security.get_current_user),
 ):
     """Compare multiple funds (max 4). Enforces same category matching."""
     # 1. Parse and validate codes
@@ -115,7 +124,11 @@ async def compare_funds(
     return comparison_data
 
 @router.get("/{scheme_code}", response_model=schemas.FundMasterRead)
-async def read_fund(scheme_code: str, session: AsyncSession = Depends(get_db)):
+async def read_fund(
+    scheme_code: str,
+    session: AsyncSession = Depends(get_db),
+    current_user: str = Depends(security.get_current_user),
+):
     """Get details for a specific fund by its code."""
     fund = await crud.get_fund_master_by_code(session, scheme_code)
     if not fund:
@@ -123,7 +136,11 @@ async def read_fund(scheme_code: str, session: AsyncSession = Depends(get_db)):
     return fund
 
 @router.get("/{scheme_code}/similar", response_model=List[schemas.FundMasterRead])
-async def get_similar_funds(scheme_code: str, session: AsyncSession = Depends(get_db)):
+async def get_similar_funds(
+    scheme_code: str,
+    session: AsyncSession = Depends(get_db),
+    current_user: str = Depends(security.get_current_user),
+):
     """Get funds with the same category and subcategory."""
     return await crud.get_similar_funds(session, scheme_code)
 

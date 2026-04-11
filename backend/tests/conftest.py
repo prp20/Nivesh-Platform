@@ -4,13 +4,17 @@ Uses in-memory SQLite for isolation and speed.
 Note: Stock tables using PostgreSQL JSONB are skipped in test setup.
 """
 
+import os
+
+# Disable auth for all tests — must be set before app modules are imported
+os.environ["ENABLE_AUTH"] = "false"
+
 import pytest
 import asyncio
 from httpx import AsyncClient, ASGITransport
 from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession, async_sessionmaker
 from app.main import app
 from app.database import Base, get_db
-import os
 
 # Use in-memory SQLite for tests
 TEST_DATABASE_URL = "sqlite+aiosqlite:///:memory:"
