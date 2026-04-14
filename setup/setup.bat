@@ -40,48 +40,58 @@ echo   Project root: %PROJECT_ROOT%
 echo.
 
 :: =============================================================================
-:: STEP 1 — Check Python
+:: STEP 1 — Check Python and Install if missing
 :: =============================================================================
 echo [STEP 1] Checking Python...
 
 python --version >nul 2>&1
 if errorlevel 1 (
-  echo [ERROR] 'python' command not found. Install Python 3.10+ from https://python.org
-  echo         Ensure "Add Python to PATH" is checked during installation.
-  pause
-  exit /b 1
+  echo [WARN] 'python' command not found. Attempting to install Python via winget...
+  winget install --id Python.Python.3.11 -e --accept-package-agreements --accept-source-agreements
+  if errorlevel 1 (
+    echo [ERROR] Failed to install Python. Please install Python 3.10+ manually.
+    pause
+    exit /b 1
+  )
+  echo [OK] Python installed. Please restart this command prompt for PATH changes to take effect.
+) else (
+  for /f "tokens=2" %%v in ('python --version 2^>^&1') do set PY_VER=%%v
+  echo [OK]    Python !PY_VER! detected.
 )
-
-for /f "tokens=2" %%v in ('python --version 2^>^&1') do set PY_VER=%%v
-echo [OK]    Python %PY_VER% detected.
 
 :: Basic version check (major.minor >= 3.10)
 python -c "import sys; exit(0 if sys.version_info >= (3,10) else 1)" >nul 2>&1
 if errorlevel 1 (
-  echo [ERROR] Python 3.10+ is required. Found: %PY_VER%
+  echo [ERROR] Python 3.10+ is required.
   pause
   exit /b 1
 )
 
-:: Node.js
+:: =============================================================================
+:: STEP 2 — Check Nodejs and Install if missing
+:: =============================================================================
+echo.
+echo [STEP 2] Checking Node.js...
 node --version >nul 2>&1
 if errorlevel 1 (
-  echo [ERROR] Node.js not found. This is required for building the frontend.
-  echo         Install Node.js 18+ LTS from https://nodejs.org
-  echo         Or use Windows Package Manager: winget install OpenJS.NodeJS
-  echo         After installing, restart this script.
-  pause
-  exit /b 1
+  echo [WARN] Node.js not found. Attempting to install Node.js via winget...
+  winget install OpenJS.NodeJS.LTS -e --accept-package-agreements --accept-source-agreements
+  if errorlevel 1 (
+    echo [ERROR] Failed to install Node.js. Please install manually.
+    pause
+    exit /b 1
+  )
+  echo [OK] Node.js installed.
 ) else (
   for /f %%v in ('node --version 2^>^&1') do echo [OK]    Node.js %%v detected.
   for /f %%v in ('npm --version 2^>^&1') do echo [OK]    npm %%v detected.
 )
 
 :: =============================================================================
-:: STEP 2 — PostgreSQL setup
+:: STEP 3 — PostgreSQL setup
 :: =============================================================================
 echo.
-echo [STEP 2] PostgreSQL Setup
+echo [STEP 3] PostgreSQL Setup
 echo.
 echo   How do you want to connect to PostgreSQL?
 echo   [1] Docker  -- auto-managed, starts postgres:16-alpine (default)
@@ -118,20 +128,9 @@ if "%PG_CHOICE%"=="2" (
 )
 
 :: =============================================================================
-:: STEP 3 — ta-lib note
-:: =============================================================================
-echo.
-echo [STEP 3] ta-lib (Technical Analysis Library)
-echo.
-echo   TA-Lib ^>= 0.6.8 includes pre-built Windows wheels.
-echo   pip install will be attempted. If it fails, you have these options:
-echo   A) Conda:  conda install -c conda-forge ta-lib
-echo   B) WSL:    Run setup\setup.sh inside Windows Subsystem for Linux
-echo.
-
-:: =============================================================================
 :: STEP 4 — Python virtual environment + dependencies
 :: =============================================================================
+echo.
 echo [STEP 4] Python Virtual Environment
 echo.
 
@@ -162,21 +161,20 @@ echo [OK]    Virtual environment activated.
 echo [INFO]  Upgrading pip...
 pip install --upgrade pip --quiet
 
-echo [INFO]  Installing Python dependencies...
-pip install -r "%BACKEND_DIR%\requirements.txt"
+echo [INFO]  Installing Python dependencies (excluding ta-lib)...
+findstr /v /i "TA-Lib" "%BACKEND_DIR%\requirements.txt" > "%TEMP%\req_temp.txt"
+pip install -r "%TEMP%\req_temp.txt"
 if errorlevel 1 (
   echo.
   echo [ERROR] pip install failed.
-  echo         If the error is about TA-Lib, install it via conda:
-  echo           conda install -c conda-forge ta-lib
-  echo         Then rerun this script.
   pause
   exit /b 1
 )
+del "%TEMP%\req_temp.txt" /q
 echo [OK]    Python dependencies installed.
 
 :: =============================================================================
-:: STEP 5 — Write backend\.env
+:: STEP 5 — Environment Configuration
 :: =============================================================================
 echo.
 echo [STEP 5] Environment Configuration
@@ -185,7 +183,7 @@ echo.
 :: Generate random SECRET_KEY (using timestamp + random number)
 for /f "tokens=2-4 delims=/ " %%a in ('date /t') do (set mydate=%%c%%a%%b)
 for /f "tokens=1-2 delims=/:" %%a in ('time /t') do (set mytime=%%a%%b)
-set "SECRET_KEY=dev-secret-%mydate%-%mytime%"
+set "SECRET_KEY=dev-secret-%mydate%-%mytime%-%RANDOM%"
 
 :: Backend .env
 set WRITE_BACKEND_ENV=1
@@ -208,7 +206,7 @@ if "%WRITE_BACKEND_ENV%"=="1" (
     echo PROJECT_NAME=Nivesh API
     echo.
     echo # -- Security - CHANGE IN PRODUCTION ------------------------------------------
-    echo ENABLE_AUTH=false
+    echo ENABLE_AUTH=true
     echo SECRET_KEY=%SECRET_KEY%
     echo ACCESS_TOKEN_EXPIRE_MINUTES=30
     echo.
@@ -221,7 +219,6 @@ if "%WRITE_BACKEND_ENV%"=="1" (
     echo # SUPABASE_PASSWORD=your_password_here
   ) > "%BACKEND_ENV_FILE%"
   echo [OK]    backend\.env written to %BACKEND_ENV_FILE%
-  echo [WARN]  ENABLE_AUTH=false -- write endpoints are unprotected. Set to true for production.
 )
 
 :: ── Admin credentials ─────────────────────────────────────────────────────────
@@ -232,36 +229,44 @@ echo.
 :: Write a temporary Python helper to prompt for credentials and patch the .env
 set "HELPER=%TEMP%\nivesh_admin_setup.py"
 (
-  echo import getpass, re, sys
+  echo import sys, getpass, re, os, datetime
   echo from passlib.context import CryptContext
+  echo from jose import jwt
   echo env_file = sys.argv[1]
-  echo username = input("  Admin username [admin]: ").strip() or "admin"
+  echo secret_key = sys.argv[2]
+  echo username = input("  Admin username [admin]: "^).strip(^) or "admin"
   echo while True:
-  echo     pw = getpass.getpass("  Admin password: ")
+  echo     pw = getpass.getpass("  Admin password: "^)
   echo     if not pw:
-  echo         print("  [WARN] Password cannot be empty.")
+  echo         print("  [WARN] Password cannot be empty."^)
   echo         continue
-  echo     pw2 = getpass.getpass("  Confirm password: ")
+  echo     pw2 = getpass.getpass("  Confirm password: "^)
   echo     if pw != pw2:
-  echo         print("  [WARN] Passwords do not match.")
+  echo         print("  [WARN] Passwords do not match."^)
   echo         continue
   echo     break
-  echo hash_ = CryptContext(schemes=["bcrypt"], deprecated="auto").hash(pw^)
+  echo hash_ = CryptContext(schemes=["bcrypt"], deprecated="auto"^).hash(pw^)
   echo content = open(env_file^).read(^)
   echo content = re.sub(r"ADMIN_USERNAME=.*", "ADMIN_USERNAME=" + username, content^)
   echo content = re.sub(r"ADMIN_PASSWORD_HASH=.*", "ADMIN_PASSWORD_HASH=" + hash_, content^)
   echo open(env_file, "w"^).write(content^)
+  echo exp = datetime.datetime.now(datetime.timezone.utc^) + datetime.timedelta(days=3650^)
+  echo token = jwt.encode({"sub": username, "exp": exp}, secret_key, algorithm="HS256"^)
+  echo open(sys.argv[3], "w"^).write(token^)
   echo print("[OK]    Admin credentials saved (username: " + username + ")"^)
 ) > "%HELPER%"
 
-python "%HELPER%" "%BACKEND_ENV_FILE%"
+set "TOKEN_FILE=%TEMP%\admin_jwt_token.txt"
+python "%HELPER%" "%BACKEND_ENV_FILE%" "%SECRET_KEY%" "%TOKEN_FILE%"
 if errorlevel 1 (
   echo [ERROR] Failed to set admin credentials.
   del "%HELPER%" >nul 2>&1
   pause
   exit /b 1
 )
+set /p ADMIN_JWT_TOKEN=<"%TOKEN_FILE%"
 del "%HELPER%" >nul 2>&1
+del "%TOKEN_FILE%" >nul 2>&1
 
 :: Frontend .env
 set WRITE_FRONTEND_ENV=1
@@ -280,6 +285,10 @@ if "%WRITE_FRONTEND_ENV%"=="1" (
     echo # For development: http://localhost:8000/api/v1
     echo # For production: /api/v1 (same origin -- backend serves frontend)
     echo VITE_API_URL=/api/v1
+    echo.
+    echo # -- API Bypass Token ----------------------------------------------------------
+    echo # Embedded JWT token allowing frontend clients to bypass the standard login loop.
+    echo VITE_API_TOKEN=!ADMIN_JWT_TOKEN!
   ) > "%FRONTEND_ENV_FILE%"
   echo [OK]    frontend\.env written to %FRONTEND_ENV_FILE%
 )
@@ -420,7 +429,29 @@ if not exist "%FRONTEND_DIR%\dist" (
 echo [OK]    Frontend built and ready at %FRONTEND_DIR%\dist
 
 :: =============================================================================
-:: STEP 10 — Start API server
+:: STEP 10 — Install Ta-lib (Moved to last)
+:: =============================================================================
+echo.
+echo [STEP 10] Install Ta-lib
+echo.
+echo   TA-Lib ^>= 0.6.8 includes pre-built Windows wheels.
+echo   pip install will be attempted. If it fails, you have these options:
+echo   A) Conda:  conda install -c conda-forge ta-lib
+echo   B) WSL:    Run setup\setup.sh inside Windows Subsystem for Linux
+echo.
+
+pip install TA-Lib>=0.6.8
+if errorlevel 1 (
+  echo [ERROR] pip install TA-Lib failed.
+  echo         Install it via conda: conda install -c conda-forge ta-lib
+  echo         Then rerun this script.
+  pause
+  exit /b 1
+)
+echo [OK]    TA-Lib installed.
+
+:: =============================================================================
+:: STEP 11 — Start API server
 :: =============================================================================
 echo.
 echo [STEP 10] Starting FastAPI Server
