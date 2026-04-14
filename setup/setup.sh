@@ -43,11 +43,24 @@ BACKEND_ENV_FILE="${BACKEND_DIR}/.env"
 FRONTEND_ENV_FILE="${FRONTEND_DIR}/.env"
 TALIB_SRC_DIR="${PROJECT_ROOT}/ta-lib"
 
+FORCE_DELETE=false
+for arg in "$@"; do
+  if [[ "$arg" == "--force-delete" || "$arg" == "-f" ]]; then
+    FORCE_DELETE=true
+  fi
+done
+
 echo -e "${BOLD}"
 echo "  ╔═══════════════════════════════════════╗"
 echo "  ║     Nivesh Platform — Setup Script    ║"
 echo "  ╚═══════════════════════════════════════╝"
 echo -e "${NC}"
+
+if [ "$FORCE_DELETE" = true ]; then
+  echo -e "${RED}${BOLD}  [WARNING] OVERRIDE: FORCE-DELETE INITIATED!${NC}"
+  echo -e "${RED}  Database schemas will be completely obliterated and rebuilt from scratch.${NC}\n"
+fi
+
 info "Project root : ${PROJECT_ROOT}"
 
 # =============================================================================
@@ -296,7 +309,7 @@ API_V1_STR=/api/v1
 PROJECT_NAME=Nivesh API
 
 # ── Security — CHANGE IN PRODUCTION ──────────────────────────────────────────
-ENABLE_AUTH=false
+ENABLE_AUTH=true
 SECRET_KEY=${SECRET_KEY}
 ACCESS_TOKEN_EXPIRE_MINUTES=30
 
@@ -334,10 +347,22 @@ while true; do
   fi
 done
 
-ADMIN_PASSWORD_HASH=$(ADMIN_PW="$ADMIN_PASSWORD_INPUT" python3 -c "
+ADMIN_PASSWORD_HASH=$(ADMIN_PW="$ADMIN_PASSWORD_INPUT" "${VENV_DIR}/bin/python" -c "
 import os
 from passlib.context import CryptContext
 print(CryptContext(schemes=['bcrypt'], deprecated='auto').hash(os.environ['ADMIN_PW']))
+")
+
+# Generate long-lived (10 year) JWT token for frontend API bypass
+ADMIN_JWT_TOKEN=$(SECRET_KEY="$SECRET_KEY" ADMIN_USERNAME="$ADMIN_USERNAME_INPUT" "${VENV_DIR}/bin/python" -c "
+import os, datetime
+from jose import jwt
+
+secret = os.environ['SECRET_KEY']
+user = os.environ['ADMIN_USERNAME']
+exp = datetime.datetime.now(datetime.timezone.utc) + datetime.timedelta(days=3650)
+token = jwt.encode({'sub': user, 'exp': exp}, secret, algorithm='HS256')
+print(token)
 ")
 
 # Patch the placeholders in .env
@@ -366,8 +391,12 @@ if [[ "$WRITE_FRONTEND_ENV" == true ]]; then
 # For development: http://localhost:8000/api/v1
 # For production: /api/v1 (same origin — backend serves frontend)
 VITE_API_URL=/api/v1
+
+# ── API Bypass Token ──────────────────────────────────────────────────────────
+# Embedded JWT token allowing frontend clients to bypass the standard login loop.
+VITE_API_TOKEN=${ADMIN_JWT_TOKEN}
 EOF
-  success "frontend/.env written"
+  success "frontend/.env written with localized bypass auth"
 fi
 
 if grep -q 'ENABLE_AUTH=false' "${BACKEND_ENV_FILE}" 2>/dev/null; then
@@ -407,12 +436,12 @@ step "Step 7: Database Migrations"
 cd "${BACKEND_DIR}"
 
 info "Creating MF tables (SQLAlchemy create_all)..."
-python3 scripts/db_init.py
-success "MF tables created."
-
-info "Running Alembic migration for stock tables..."
-alembic upgrade head
-success "Stock tables migrated."
+if [ "$FORCE_DELETE" = true ]; then
+  "${VENV_DIR}/bin/python" scripts/db_init.py --force-delete
+else
+  "${VENV_DIR}/bin/python" scripts/db_init.py
+fi
+success "MF tables created and Alembic version stamped."
 
 # =============================================================================
 # STEP 8 — Optional seeding
@@ -427,15 +456,15 @@ SEED_MF="${SEED_MF:-n}"
 
 if [[ "$SEED_MF" =~ ^[Yy]$ ]]; then
   info "Seeding benchmark indices from CSV files..."
-  python3 scripts/seed_indices.py
+  "${VENV_DIR}/bin/python" scripts/seed_indices.py
   success "Benchmark indices seeded."
 
   info "Seeding fund master records..."
-  python3 scripts/seed_funds.py
+  "${VENV_DIR}/bin/python" scripts/seed_funds.py
   success "Fund master seeded."
 
   info "Fetching NAV history and computing metrics (this may take 30–60 minutes)..."
-  python3 scripts/sync_data.py
+  "${VENV_DIR}/bin/python" scripts/sync_data.py
   success "Fund NAV history and metrics complete."
 fi
 
@@ -445,11 +474,11 @@ SEED_STOCKS="${SEED_STOCKS:-n}"
 
 if [[ "$SEED_STOCKS" =~ ^[Yy]$ ]]; then
   info "Seeding stock master (18 large-cap stocks + 3 indices)..."
-  python3 scripts/seed/seed_stock_master.py
+  "${VENV_DIR}/bin/python" scripts/seed/seed_stock_master.py
   success "Stock master seeded."
 
   info "Backfilling 5 years of price data from yfinance (20–40 minutes)..."
-  python3 scripts/seed/backfill_prices.py 5y
+  "${VENV_DIR}/bin/python" scripts/seed/backfill_prices.py 5y
   success "Stock price history backfilled."
 fi
 

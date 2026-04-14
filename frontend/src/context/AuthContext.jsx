@@ -10,7 +10,9 @@ export const AuthProvider = ({ children }) => {
     useEffect(() => {
         const initAuth = async () => {
             try {
-                const token = localStorage.getItem('nivesh_token');
+                const authBypass = import.meta.env.VITE_API_TOKEN;
+                const token = authBypass ? authBypass : localStorage.getItem('nivesh_token');
+                
                 if (token) {
                     try {
                         const userData = await authService.getMe();

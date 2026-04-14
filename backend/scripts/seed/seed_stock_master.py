@@ -60,7 +60,7 @@ async def seed():
 
     # Convert async URL to sync URL for asyncpg
     db_url = settings.DATABASE_URL.replace("postgresql+asyncpg://", "postgresql://")
-    conn = await asyncpg.connect(db_url)
+    conn = await asyncpg.connect(db_url, statement_cache_size=0)
     try:
         for s in stocks:
             await conn.execute(

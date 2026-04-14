@@ -251,6 +251,10 @@ class ShareholdingPattern(Base):
 
 class FinancialRatio(Base):
     __tablename__ = "financial_ratios"
+    __table_args__ = (
+        UniqueConstraint('stock_id', 'period_end', 'period_type',
+                         name='uq_financial_ratios_stock_period_type'),
+    )
 
     id             = Column(Integer, primary_key=True)
     stock_id       = Column(Integer, ForeignKey("stocks.id", ondelete="CASCADE"), nullable=False)

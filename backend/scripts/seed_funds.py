@@ -4,6 +4,7 @@ import sys
 import os
 from datetime import datetime
 from pathlib import Path
+from tqdm import tqdm
 
 # Add project root to sys.path
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
@@ -63,21 +64,21 @@ async def seed_funds():
     
     async with AsyncSessionLocal() as session:
         created_count = 0
-        for fund in funds_to_create:
+        for fund in tqdm(funds_to_create, desc="Seeding Mutual Funds", unit="fund"):
             existing = await crud.get_fund_master_by_code(session, fund.scheme_code)
             if not existing:
                 try:
                     await crud.create_fund_master(session, fund)
                     created_count += 1
                 except Exception as e:
-                    print(f"Error creating fund {fund.scheme_code}: {e}")
+                    print(f"\nError creating fund {fund.scheme_code}: {e}")
                     await session.rollback()
             else:
                 # Optional: Update existing records if needed
                 # For now, we skip to save time as requested
                 pass
         
-        print(f"Seeding complete. Created {created_count} new fund records.")
+        print(f"\nSeeding complete. Created {created_count} new fund records.")
 
 if __name__ == "__main__":
     asyncio.run(seed_funds())

@@ -1,3 +1,9 @@
 requests
 beautifulsoup4
 typing
+tqdm
+pandas
+asyncpg
+sqlalchemy
+python-dotenv
+fastapi
