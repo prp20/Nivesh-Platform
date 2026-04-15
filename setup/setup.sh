@@ -7,14 +7,17 @@
 #   ./setup/setup.sh
 #
 # What this script does:
-#   1. Checks prerequisites (Python 3.10+, Node.js, Docker)
-#   2. Prompts for PostgreSQL: Docker (auto) or external URL
-#   3. Installs ta-lib C library
-#   4. Creates Python virtual environment and installs dependencies
-#   5. Writes backend/.env
-#   6. Runs database migrations
-#   7. Optionally seeds data
-#   8. Starts the FastAPI server
+#   1.  Check Python 3.10+
+#   2.  Check Node.js 18+ (nvm auto-install if missing)
+#   3.  PostgreSQL setup — Docker (auto) or external URL
+#   4.  Python virtual environment + dependencies (excluding TA-Lib)
+#   5.  Environment configuration + Admin JWT
+#   6.  Start Docker PostgreSQL (if chosen)
+#   7.  Database migrations
+#   8.  Optional data seeding
+#   9.  Frontend build
+#   10. TA-Lib installation (C library + pip install)
+#   11. Start FastAPI server
 # =============================================================================
 
 set -euo pipefail
@@ -43,32 +46,18 @@ BACKEND_ENV_FILE="${BACKEND_DIR}/.env"
 FRONTEND_ENV_FILE="${FRONTEND_DIR}/.env"
 TALIB_SRC_DIR="${PROJECT_ROOT}/ta-lib"
 
-FORCE_DELETE=false
-for arg in "$@"; do
-  if [[ "$arg" == "--force-delete" || "$arg" == "-f" ]]; then
-    FORCE_DELETE=true
-  fi
-done
-
 echo -e "${BOLD}"
 echo "  ╔═══════════════════════════════════════╗"
 echo "  ║     Nivesh Platform — Setup Script    ║"
 echo "  ╚═══════════════════════════════════════╝"
 echo -e "${NC}"
-
-if [ "$FORCE_DELETE" = true ]; then
-  echo -e "${RED}${BOLD}  [WARNING] OVERRIDE: FORCE-DELETE INITIATED!${NC}"
-  echo -e "${RED}  Database schemas will be completely obliterated and rebuilt from scratch.${NC}\n"
-fi
-
 info "Project root : ${PROJECT_ROOT}"
 
 # =============================================================================
-# STEP 1 — Check prerequisites
+# STEP 1 — Check Python
 # =============================================================================
-step "Step 1: Checking Prerequisites"
+step "Step 1: Checking Python"
 
-# Python 3.10+
 if ! command -v python3 &>/dev/null; then
   error "python3 not found. Please install Python 3.10+ from https://python.org and try again."
 fi
@@ -79,7 +68,11 @@ else
   error "Python ${PY_VERSION} is too old. Python 3.10+ is required."
 fi
 
-# Node.js / nvm
+# =============================================================================
+# STEP 2 — Check Node.js
+# =============================================================================
+step "Step 2: Checking Node.js"
+
 if command -v node &>/dev/null; then
   NODE_VERSION=$(node --version)
   NODE_MAJOR=$(echo "$NODE_VERSION" | cut -d'v' -f2 | cut -d'.' -f1)
@@ -92,8 +85,8 @@ if command -v node &>/dev/null; then
   success "npm ${NPM_VERSION} detected."
 else
   warn "Node.js not found. Installing nvm and Node.js 20..."
-  if [[ "$OS" == "Darwin" ]]; then
-    # macOS
+  OS_TYPE="$(uname -s)"
+  if [[ "$OS_TYPE" == "Darwin" ]]; then
     if command -v brew &>/dev/null; then
       brew install nvm
       NVM_DIR="$HOME/.nvm"
@@ -106,23 +99,20 @@ else
       [ -s "$NVM_DIR/nvm.sh" ] && . "$NVM_DIR/nvm.sh"
     fi
   else
-    # Linux
     curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.39.0/install.sh | bash
     NVM_DIR="$HOME/.nvm"
     # shellcheck disable=SC1091
     [ -s "$NVM_DIR/nvm.sh" ] && . "$NVM_DIR/nvm.sh"
   fi
-
-  # Install Node.js 20
   nvm install 20
   nvm use 20
   success "Node.js 20 installed and activated."
 fi
 
 # =============================================================================
-# STEP 2 — PostgreSQL setup
+# STEP 3 — PostgreSQL setup
 # =============================================================================
-step "Step 2: PostgreSQL Setup"
+step "Step 3: PostgreSQL Setup"
 
 echo ""
 echo "  How do you want to connect to PostgreSQL?"
@@ -164,88 +154,7 @@ if [[ "$USE_DOCKER" == true ]]; then
 fi
 
 # =============================================================================
-# STEP 3 — Install ta-lib C library
-# =============================================================================
-step "Step 3: Installing ta-lib C Library"
-
-OS="$(uname -s)"
-TALIB_INSTALLED=false
-
-# ── Universal pre-check: is ta-lib already present on the system? ─────────────
-# Covers: prior source installs, apt/brew installs, custom prefix installs.
-_talib_already_present() {
-  # 1. pkg-config knows about it
-  if command -v pkg-config &>/dev/null && pkg-config --exists ta-lib 2>/dev/null; then
-    return 0
-  fi
-  # 2. The shared library is visible to the dynamic linker
-  if ldconfig -p 2>/dev/null | grep -q 'libta_lib'; then
-    return 0
-  fi
-  # 3. The header file exists at common install prefixes
-  for _h in /usr/include/ta-lib/ta_libc.h \
-             /usr/local/include/ta-lib/ta_libc.h \
-             /opt/homebrew/include/ta-lib/ta_libc.h; do
-    [[ -f "$_h" ]] && return 0
-  done
-  return 1
-}
-
-if _talib_already_present; then
-  success "ta-lib C library already installed — skipping installation."
-  TALIB_INSTALLED=true
-elif [[ "$OS" == "Darwin" ]]; then
-  # macOS
-  if command -v brew &>/dev/null; then
-    info "Installing ta-lib via Homebrew..."
-    brew install ta-lib
-    success "ta-lib installed via Homebrew."
-    TALIB_INSTALLED=true
-  else
-    warn "Homebrew not found. Install Homebrew first: https://brew.sh"
-    warn "Then run: brew install ta-lib"
-    warn "Continuing — pip install may fail if ta-lib C library is missing."
-  fi
-
-elif [[ "$OS" == "Linux" ]]; then
-  # Try apt-get first (Ubuntu/Debian)
-  if command -v apt-get &>/dev/null; then
-    info "Installing ta-lib via apt-get (requires sudo)..."
-    sudo apt-get update -qq
-    if sudo apt-get install -y libta-lib-dev &>/dev/null 2>&1; then
-      success "ta-lib installed via apt-get."
-      TALIB_INSTALLED=true
-    else
-      warn "apt-get install failed. Falling back to source compile."
-    fi
-  fi
-
-  # Fallback: compile from bundled source in repo root
-  if [[ "$TALIB_INSTALLED" == false ]]; then
-    if [[ -d "${TALIB_SRC_DIR}" ]] && [[ -f "${TALIB_SRC_DIR}/configure" ]]; then
-      info "Compiling ta-lib from source at ${TALIB_SRC_DIR}..."
-      cd "${TALIB_SRC_DIR}"
-      ./configure --prefix=/usr/local
-      make -j"$(nproc 2>/dev/null || echo 2)"
-      sudo make install
-      sudo ldconfig
-      cd "${PROJECT_ROOT}"
-      success "ta-lib compiled and installed from source."
-      TALIB_INSTALLED=true
-    else
-      warn "ta-lib source directory not found at ${TALIB_SRC_DIR}."
-      warn "Continuing — pip install may fail if ta-lib C library is missing."
-      warn "Manual install: sudo apt-get install libta-lib-dev"
-    fi
-  fi
-
-else
-  warn "Unknown OS '${OS}'. Skipping ta-lib C library install."
-  warn "Install ta-lib manually before running pip install."
-fi
-
-# =============================================================================
-# STEP 4 — Python virtual environment + dependencies
+# STEP 4 — Python virtual environment + dependencies (excluding TA-Lib)
 # =============================================================================
 step "Step 4: Python Virtual Environment"
 
@@ -266,23 +175,23 @@ success "Virtual environment activated."
 info "Upgrading pip..."
 pip install --upgrade pip --quiet
 
-info "Installing Python dependencies from requirements.txt..."
-if pip install -r "${BACKEND_DIR}/requirements.txt" --quiet; then
-  success "Python dependencies installed."
+info "Installing Python dependencies (excluding TA-Lib)..."
+TEMP_REQ=$(mktemp)
+grep -iv 'ta.lib\|ta-lib' "${BACKEND_DIR}/requirements.txt" > "$TEMP_REQ" || true
+if pip install -r "$TEMP_REQ" --quiet; then
+  success "Python dependencies installed (TA-Lib excluded — installed in Step 10)."
 else
-  if [[ "$TALIB_INSTALLED" == false ]]; then
-    error "pip install failed. This is likely because the ta-lib C library is missing.\nInstall it manually (e.g. sudo apt-get install libta-lib-dev) and rerun this script."
-  else
-    error "pip install failed. Check the output above for details."
-  fi
+  rm -f "$TEMP_REQ"
+  error "pip install failed. Check the output above for details."
 fi
+rm -f "$TEMP_REQ"
 
 # =============================================================================
-# STEP 5 — Write backend/.env
+# STEP 5 — Environment Configuration & Admin JWT
 # =============================================================================
 step "Step 5: Environment Configuration"
 
-# Generate a random SECRET_KEY if needed
+# Generate a random SECRET_KEY
 SECRET_KEY=$(python3 -c "import secrets; print(secrets.token_urlsafe(32))" 2>/dev/null || echo "change-me-to-a-random-string")
 
 # Backend .env
@@ -301,23 +210,23 @@ fi
 
 if [[ "$WRITE_BACKEND_ENV" == true ]]; then
   cat > "${BACKEND_ENV_FILE}" <<EOF
-# ── Database ──────────────────────────────────────────────────────────────────
+# -- Database -----------------------------------------------------------------
 DATABASE_URL=${DATABASE_URL}
 
-# ── API ───────────────────────────────────────────────────────────────────────
+# -- API ----------------------------------------------------------------------
 API_V1_STR=/api/v1
 PROJECT_NAME=Nivesh API
 
-# ── Security — CHANGE IN PRODUCTION ──────────────────────────────────────────
+# -- Security - CHANGE IN PRODUCTION ------------------------------------------
 ENABLE_AUTH=true
 SECRET_KEY=${SECRET_KEY}
 ACCESS_TOKEN_EXPIRE_MINUTES=30
 
-# ── Admin portal credentials (set below) ─────────────────────────────────────
+# -- Admin portal credentials (set below) -------------------------------------
 ADMIN_USERNAME=
 ADMIN_PASSWORD_HASH=
 
-# ── Third-party APIs (if needed) ──────────────────────────────────────────────
+# -- Third-party APIs (if needed) --------------------------------------------
 # ALPHA_VANTAGE_APIKEY=your_key_here
 # SUPABASE_PASSWORD=your_password_here
 EOF
@@ -327,49 +236,42 @@ fi
 # ── Admin credentials ─────────────────────────────────────────────────────────
 echo ""
 info "Set up your admin login credentials for the Nivesh portal."
+echo ""
 
-read -rp "  Admin username [admin]: " ADMIN_USERNAME_INPUT
-ADMIN_USERNAME_INPUT="${ADMIN_USERNAME_INPUT:-admin}"
+HELPER=$(mktemp --suffix=.py)
+TOKEN_FILE=$(mktemp)
 
-while true; do
-  read -rsp "  Admin password: " ADMIN_PASSWORD_INPUT
-  echo ""
-  if [[ -z "$ADMIN_PASSWORD_INPUT" ]]; then
-    warn "Password cannot be empty. Please try again."
-    continue
-  fi
-  read -rsp "  Confirm password: " ADMIN_PASSWORD_CONFIRM
-  echo ""
-  if [[ "$ADMIN_PASSWORD_INPUT" != "$ADMIN_PASSWORD_CONFIRM" ]]; then
-    warn "Passwords do not match. Please try again."
-  else
-    break
-  fi
-done
-
-ADMIN_PASSWORD_HASH=$(ADMIN_PW="$ADMIN_PASSWORD_INPUT" "${VENV_DIR}/bin/python" -c "
-import os
+cat > "$HELPER" <<'PYEOF'
+import sys, getpass, re, os, datetime
 from passlib.context import CryptContext
-print(CryptContext(schemes=['bcrypt'], deprecated='auto').hash(os.environ['ADMIN_PW']))
-")
-
-# Generate long-lived (10 year) JWT token for frontend API bypass
-ADMIN_JWT_TOKEN=$(SECRET_KEY="$SECRET_KEY" ADMIN_USERNAME="$ADMIN_USERNAME_INPUT" "${VENV_DIR}/bin/python" -c "
-import os, datetime
 from jose import jwt
-
-secret = os.environ['SECRET_KEY']
-user = os.environ['ADMIN_USERNAME']
+env_file = sys.argv[1]
+secret_key = sys.argv[2]
+username = input("  Admin username [admin]: ").strip() or "admin"
+while True:
+    pw = getpass.getpass("  Admin password: ")
+    if not pw:
+        print("  [WARN] Password cannot be empty.")
+        continue
+    pw2 = getpass.getpass("  Confirm password: ")
+    if pw != pw2:
+        print("  [WARN] Passwords do not match.")
+        continue
+    break
+hash_ = CryptContext(schemes=["bcrypt"], deprecated="auto").hash(pw)
+content = open(env_file).read()
+content = re.sub(r"ADMIN_USERNAME=.*", "ADMIN_USERNAME=" + username, content)
+content = re.sub(r"ADMIN_PASSWORD_HASH=.*", "ADMIN_PASSWORD_HASH=" + hash_, content)
+open(env_file, "w").write(content)
 exp = datetime.datetime.now(datetime.timezone.utc) + datetime.timedelta(days=3650)
-token = jwt.encode({'sub': user, 'exp': exp}, secret, algorithm='HS256')
-print(token)
-")
+token = jwt.encode({"sub": username, "exp": exp}, secret_key, algorithm="HS256")
+open(sys.argv[3], "w").write(token)
+print("[OK]    Admin credentials saved (username: " + username + ")")
+PYEOF
 
-# Patch the placeholders in .env
-sed -i "s|^ADMIN_USERNAME=.*|ADMIN_USERNAME=${ADMIN_USERNAME_INPUT}|" "${BACKEND_ENV_FILE}"
-sed -i "s|^ADMIN_PASSWORD_HASH=.*|ADMIN_PASSWORD_HASH=${ADMIN_PASSWORD_HASH}|" "${BACKEND_ENV_FILE}"
-
-success "Admin credentials saved (username: ${ADMIN_USERNAME_INPUT})"
+python3 "$HELPER" "$BACKEND_ENV_FILE" "$SECRET_KEY" "$TOKEN_FILE"
+ADMIN_JWT_TOKEN=$(cat "$TOKEN_FILE")
+rm -f "$HELPER" "$TOKEN_FILE"
 
 # Frontend .env
 WRITE_FRONTEND_ENV=true
@@ -387,20 +289,16 @@ fi
 
 if [[ "$WRITE_FRONTEND_ENV" == true ]]; then
   cat > "${FRONTEND_ENV_FILE}" <<EOF
-# ── API URL ──────────────────────────────────────────────────────────────────
+# -- API URL ------------------------------------------------------------------
 # For development: http://localhost:8000/api/v1
 # For production: /api/v1 (same origin — backend serves frontend)
 VITE_API_URL=/api/v1
 
-# ── API Bypass Token ──────────────────────────────────────────────────────────
+# -- API Bypass Token ----------------------------------------------------------
 # Embedded JWT token allowing frontend clients to bypass the standard login loop.
 VITE_API_TOKEN=${ADMIN_JWT_TOKEN}
 EOF
-  success "frontend/.env written with localized bypass auth"
-fi
-
-if grep -q 'ENABLE_AUTH=false' "${BACKEND_ENV_FILE}" 2>/dev/null; then
-  warn "ENABLE_AUTH=false — write endpoints are unprotected. Set to true for production."
+  success "frontend/.env written"
 fi
 
 # =============================================================================
@@ -429,19 +327,47 @@ else
 fi
 
 # =============================================================================
-# STEP 7 — Database migrations
+# STEP 7 — Database setup
 # =============================================================================
-step "Step 7: Database Migrations"
+step "Step 7: Database Setup"
 
 cd "${BACKEND_DIR}"
 
-info "Creating MF tables (SQLAlchemy create_all)..."
-if [ "$FORCE_DELETE" = true ]; then
-  "${VENV_DIR}/bin/python" scripts/db_init.py --force-delete
+info "Checking existing database state..."
+if python3 scripts/db_setup.py --check 2>/dev/null; then
+  # Tables already exist — ask user what to do
+  echo ""
+  warn "Existing database tables detected."
+  echo ""
+  echo "  [1] Keep all data — update schema only  (safe, recommended)"
+  echo "  [2] Erase EVERYTHING and start fresh    (destructive, all data lost)"
+  echo ""
+  read -rp "  Enter choice [1]: " DB_ACTION
+  DB_ACTION="${DB_ACTION:-1}"
+
+  if [[ "$DB_ACTION" == "2" ]]; then
+    echo ""
+    warn "This will PERMANENTLY DELETE all data in the database."
+    read -rp "  Type YES to confirm: " DROP_CONFIRM
+    if [[ "$DROP_CONFIRM" == "YES" ]]; then
+      info "Dropping all tables..."
+      python3 scripts/db_setup.py --drop-all
+      success "All tables dropped."
+    else
+      info "Cancelled. Keeping existing data."
+    fi
+  fi
 else
-  "${VENV_DIR}/bin/python" scripts/db_init.py
+  info "No existing tables found. Fresh installation."
 fi
-success "MF tables created and Alembic version stamped."
+
+info "Creating MF tables and enabling pg_trgm (SQLAlchemy create_all)..."
+python3 scripts/db_init.py
+success "MF tables ready."
+
+info "Running Alembic migration for stock tables (idempotent)..."
+"${VENV_DIR}/bin/alembic" upgrade head
+success "Stock tables ready."
 
 # =============================================================================
 # STEP 8 — Optional seeding
@@ -449,36 +375,47 @@ success "MF tables created and Alembic version stamped."
 step "Step 8: Data Seeding (Optional)"
 
 echo ""
-warn "Seeding fetches live data from AMFI and yfinance — this can take 30–90 minutes."
+warn "Seeding fetches live data from AMFI and yfinance — this can take 30-90 minutes."
 echo ""
-read -rp "  Seed mutual fund data (benchmarks + funds + NAV history)? (y/N): " SEED_MF
-SEED_MF="${SEED_MF:-n}"
+echo "  What data would you like to seed?"
+echo "  [1] Mutual Fund data only   (benchmarks + funds + NAV history,  30-60 min)"
+echo "  [2] Stock data only         (18 stocks + 5y price history,      20-40 min)"
+echo "  [3] Both                    (recommended for full platform,     50-100 min)"
+echo "  [4] Skip seeding            (run seed scripts manually later)"
+echo ""
+read -rp "  Enter choice [4]: " SEED_CHOICE
+SEED_CHOICE="${SEED_CHOICE:-4}"
 
-if [[ "$SEED_MF" =~ ^[Yy]$ ]]; then
+SEED_MF=false
+SEED_STOCKS=false
+case "$SEED_CHOICE" in
+  1) SEED_MF=true ;;
+  2) SEED_STOCKS=true ;;
+  3) SEED_MF=true; SEED_STOCKS=true ;;
+  *) info "Skipping seeding." ;;
+esac
+
+if [[ "$SEED_MF" == true ]]; then
   info "Seeding benchmark indices from CSV files..."
-  "${VENV_DIR}/bin/python" scripts/seed_indices.py
+  python3 scripts/seed_indices.py
   success "Benchmark indices seeded."
 
   info "Seeding fund master records..."
-  "${VENV_DIR}/bin/python" scripts/seed_funds.py
+  python3 scripts/seed_funds.py
   success "Fund master seeded."
 
-  info "Fetching NAV history and computing metrics (this may take 30–60 minutes)..."
-  "${VENV_DIR}/bin/python" scripts/sync_data.py
+  info "Fetching NAV history and computing metrics (this may take 30-60 minutes)..."
+  python3 scripts/sync_data.py
   success "Fund NAV history and metrics complete."
 fi
 
-echo ""
-read -rp "  Also seed stock master + 5y price history from yfinance? (y/N): " SEED_STOCKS
-SEED_STOCKS="${SEED_STOCKS:-n}"
-
-if [[ "$SEED_STOCKS" =~ ^[Yy]$ ]]; then
+if [[ "$SEED_STOCKS" == true ]]; then
   info "Seeding stock master (18 large-cap stocks + 3 indices)..."
-  "${VENV_DIR}/bin/python" scripts/seed/seed_stock_master.py
+  python3 scripts/seed/seed_stock_master.py
   success "Stock master seeded."
 
-  info "Backfilling 5 years of price data from yfinance (20–40 minutes)..."
-  "${VENV_DIR}/bin/python" scripts/seed/backfill_prices.py 5y
+  info "Backfilling 5 years of price data from yfinance (20-40 minutes)..."
+  python3 scripts/seed/backfill_prices.py 5y
   success "Stock price history backfilled."
 fi
 
@@ -501,9 +438,93 @@ fi
 success "Frontend built and ready at ${FRONTEND_DIR}/dist/"
 
 # =============================================================================
-# STEP 10 — Start API server
+# STEP 10 — TA-Lib Installation
 # =============================================================================
-step "Step 10: Starting FastAPI Server"
+step "Step 10: TA-Lib Installation"
+
+cd "${BACKEND_DIR}"
+
+OS="$(uname -s)"
+TALIB_INSTALLED=false
+
+# ── Universal pre-check: is ta-lib already present on the system? ─────────────
+_talib_already_present() {
+  if command -v pkg-config &>/dev/null && pkg-config --exists ta-lib 2>/dev/null; then
+    return 0
+  fi
+  if ldconfig -p 2>/dev/null | grep -q 'libta_lib'; then
+    return 0
+  fi
+  for _h in /usr/include/ta-lib/ta_libc.h \
+             /usr/local/include/ta-lib/ta_libc.h \
+             /opt/homebrew/include/ta-lib/ta_libc.h; do
+    [[ -f "$_h" ]] && return 0
+  done
+  return 1
+}
+
+if _talib_already_present; then
+  success "ta-lib C library already installed — skipping C library installation."
+  TALIB_INSTALLED=true
+elif [[ "$OS" == "Darwin" ]]; then
+  if command -v brew &>/dev/null; then
+    info "Installing ta-lib C library via Homebrew..."
+    brew install ta-lib
+    success "ta-lib C library installed via Homebrew."
+    TALIB_INSTALLED=true
+  else
+    warn "Homebrew not found. Install Homebrew first: https://brew.sh"
+    warn "Then run: brew install ta-lib"
+    warn "Continuing — pip install may fail if ta-lib C library is missing."
+  fi
+elif [[ "$OS" == "Linux" ]]; then
+  if command -v apt-get &>/dev/null; then
+    info "Installing ta-lib C library via apt-get (requires sudo)..."
+    sudo apt-get update -qq
+    if sudo apt-get install -y libta-lib-dev &>/dev/null 2>&1; then
+      success "ta-lib C library installed via apt-get."
+      TALIB_INSTALLED=true
+    else
+      warn "apt-get install failed. Falling back to source compile."
+    fi
+  fi
+
+  if [[ "$TALIB_INSTALLED" == false ]]; then
+    if [[ -d "${TALIB_SRC_DIR}" ]] && [[ -f "${TALIB_SRC_DIR}/configure" ]]; then
+      info "Compiling ta-lib from source at ${TALIB_SRC_DIR}..."
+      cd "${TALIB_SRC_DIR}"
+      ./configure --prefix=/usr/local
+      make -j"$(nproc 2>/dev/null || echo 2)"
+      sudo make install
+      sudo ldconfig
+      cd "${BACKEND_DIR}"
+      success "ta-lib compiled and installed from source."
+      TALIB_INSTALLED=true
+    else
+      warn "ta-lib source directory not found at ${TALIB_SRC_DIR}."
+      warn "Manual install: sudo apt-get install libta-lib-dev"
+    fi
+  fi
+else
+  warn "Unknown OS '${OS}'. Skipping ta-lib C library install."
+  warn "Install ta-lib manually before running pip install."
+fi
+
+info "Installing TA-Lib Python package..."
+if pip install "TA-Lib>=0.6.8" --quiet; then
+  success "TA-Lib Python package installed."
+else
+  if [[ "$TALIB_INSTALLED" == false ]]; then
+    error "pip install TA-Lib failed. This is likely because the ta-lib C library is missing.\nInstall it manually (e.g. sudo apt-get install libta-lib-dev) and rerun this script."
+  else
+    error "pip install TA-Lib failed. Check the output above for details."
+  fi
+fi
+
+# =============================================================================
+# STEP 11 — Start API server
+# =============================================================================
+step "Step 11: Starting FastAPI Server"
 
 echo ""
 echo -e "${GREEN}${BOLD}  Setup complete! Starting Nivesh API...${NC}"

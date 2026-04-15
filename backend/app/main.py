@@ -6,6 +6,7 @@ from fastapi import FastAPI, Request
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
+from sqlalchemy import text
 
 from .config import settings
 from .routers import funds, benchmarks, navs, benchmark_navs, metrics, sync, auth, stocks, screener, pipeline
@@ -21,7 +22,8 @@ async def lifespan(app: FastAPI):
     """Startup and shutdown logic for the FastAPI application."""
     # Startup logic
     async with engine.begin() as conn:
-        from sqlalchemy import text
+        # pg_trgm is required for GIN trigram indexes on fund_master and stocks.
+        # Must be created before create_all, otherwise index creation fails.
         await conn.execute(text("CREATE EXTENSION IF NOT EXISTS pg_trgm;"))
         await conn.run_sync(Base.metadata.create_all)
 
