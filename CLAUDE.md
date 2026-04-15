@@ -38,16 +38,40 @@ npm run build    # production build (output: frontend/dist/)
 npm run lint     # ESLint
 ```
 
+### Tests
+
+```bash
+cd backend
+source venv/bin/activate
+
+pytest                                        # run all tests (in-memory SQLite, no DB needed)
+pytest tests/test_funds.py                   # run a single test file
+pytest tests/test_funds.py::test_list_funds  # run a single test function
+pytest -x                                    # stop on first failure
+pytest -v                                    # verbose output
+```
+
+Tests use in-memory SQLite via `conftest.py`. Stock table tests that require PostgreSQL JSONB are skipped automatically. `asyncio_mode = auto` (pytest-asyncio) — no `@pytest.mark.asyncio` needed.
+
 ### Database / Migrations
 
-**MF tables** (fund_master, benchmark_master, nav_history, metrics, sync_jobs): managed via `Base.metadata.create_all` on startup — no migration files.
+**MF tables** (fund_master, benchmark_master, nav_history, metrics, sync_jobs): managed via `Base.metadata.create_all` on startup — `pg_trgm` extension is created automatically before `create_all` runs.
 
-**Stock tables** (stocks, price_data, financial_statements, etc.): managed via Alembic. On first checkout run:
+**Stock tables** (stocks, price_data, financial_statements, etc.): managed via Alembic. The migration is idempotent — safe to run even if tables already exist (created by `create_all`):
 
 ```bash
 cd backend
 source venv/bin/activate
 alembic upgrade head    # runs 001_add_stock_tables.py — creates all stock tables + indexes
+```
+
+**DB setup utility** (used by setup scripts, also available standalone):
+
+```bash
+python3 scripts/db_setup.py --check         # exit 0 if any tables exist, 1 if none
+python3 scripts/db_setup.py --drop-all      # drop ALL tables + alembic_version
+python3 scripts/db_setup.py --drop-mf       # drop only MF tables
+python3 scripts/db_setup.py --drop-stocks   # drop stock tables + reset alembic_version
 ```
 
 To reset MF benchmark data (destructive):
@@ -77,6 +101,16 @@ python3 scripts/rebuild_data.py                  # trigger price backfill via pi
 python3 scripts/demo_fundamental_sync.py         # test run fundamental scraper for one stock
 python3 scripts/db_init.py                       # initialise DB tables (alternative to alembic)
 ```
+
+### Setup Scripts (cross-platform, interactive)
+
+```bash
+./setup/setup.sh          # Linux / macOS
+.\setup\setup.ps1         # Windows PowerShell (recommended on Windows)
+setup\setup.bat           # Windows CMD
+```
+
+Each script walks through PostgreSQL setup, venv, env file generation, DB migrations, optional seeding (MF only / Stocks only / Both), and frontend build.
 
 ### Required Environment Variables
 
@@ -115,10 +149,10 @@ Admin trigger endpoints (all require JWT) at `POST /api/v1/pipeline/*` — see `
 ### Project layout
 
 ```
-stock_nivesh_platform/
+Nivesh-Platform/
 ├── backend/               # FastAPI application
 │   ├── app/
-│   │   ├── main.py        # FastAPI app, CORS, lifespan (create_all), SPA fallback routing
+│   │   ├── main.py        # FastAPI app, CORS, lifespan (pg_trgm + create_all), SPA fallback routing
 │   │   ├── config.py      # pydantic-settings; startup ValueError if ENABLE_AUTH+dev SECRET_KEY
 │   │   ├── database.py    # async engine, session_factory, get_db dependency
 │   │   ├── models.py      # SQLAlchemy ORM (16 tables: 7 MF + 9 stocks)
@@ -127,6 +161,7 @@ stock_nivesh_platform/
 │   │   ├── analytics.py   # pure-Python financial metric computation (pandas/numpy)
 │   │   ├── sync.py        # NAV fetch + metric pipeline; sync_fund_data(), sync_all_funds()
 │   │   ├── security.py    # JWT (HS256), bcrypt, get_current_user dependency
+│   │   ├── rate_limiting.py  # in-memory per-user/per-endpoint rate limiter (middleware)
 │   │   └── routers/       # one file per resource: funds, benchmarks, navs, benchmark_navs,
 │   │                      #   metrics, sync, auth, stocks, screener, pipeline
 │   ├── pipeline/          # Background job scheduling & data ingestion
@@ -139,13 +174,13 @@ stock_nivesh_platform/
 │   │   ├── metric_recompute.py   # price-dependent ratios (PE/PB/PS) after daily price load
 │   │   ├── technical_analysis.py # ta-lib indicators (SMA, EMA, RSI, MACD, Bollinger, ATR, ADX, Stoch)
 │   │   └── rating_engine.py      # composite stock rating (0–100 score across 5 pillars)
-│   ├── scripts/           # standalone ETL/seed scripts (call HTTP API or use ORM directly)
+│   ├── scripts/           # standalone ETL/seed scripts
+│   │   ├── db_setup.py    # DB utility: --check / --drop-all / --drop-mf / --drop-stocks
 │   │   └── seed/
 │   │       ├── seed_stock_master.py    # seed 18 stocks + 3 indices
 │   │       └── backfill_prices.py      # yfinance historical OHLCV backfill
 │   ├── alembic/           # Database migration system (PostgreSQL schema management)
-│   │   ├── versions/      # versioned migration files
-│   │   └── env.py         # Alembic runtime configuration
+│   │   └── versions/001_add_stock_tables.py  # idempotent — skips if stocks already exists
 │   ├── data/Nifty_indices/ # CSV files for benchmark NAV history
 │   ├── docker-compose.yml # PostgreSQL 16-alpine
 │   ├── migrate.py         # destructive benchmark table reset (requires --force)
@@ -153,16 +188,18 @@ stock_nivesh_platform/
 │   └── requirements.txt
 ├── frontend/              # React 19 + Vite + Tailwind
 │   └── src/
-│       ├── api/           # Axios client + per-resource service modules
-│       │   └── services/  # stockService.js, fundService.js, etc.
+│       ├── api/services/  # Axios service modules (stockService.js, fundService.js, etc.)
 │       ├── store/slices/  # Redux Toolkit: fundsSlice, syncSlice, compareSlice, indicesSlice,
 │       │                  #   stocksSlice, stockCompareSlice, fundDetailSlice, dashboardSlice
 │       ├── context/       # AuthContext (JWT storage), ThemeContext
 │       └── pages/         # Dashboard, MFListing, MFDetail, MFCompare, StockListing, StockDetail,
 │                          #   StockCompare, Screener, IndicesListing, IndexDetail, Portfolio, Admin, Login
-├── docs/                  # architecture, API reference, migration plans
-├── TODO.md                # prioritised audit backlog (P0–P3)
-└── start.sh               # one-shot startup script
+├── setup/                 # Cross-platform interactive setup scripts (sh / ps1 / bat)
+├── docs/                  # Architecture docs, API reference, DB schema, frontend guide
+├── memory/                # Session memory — changelog.md is the source of truth for changes
+├── phases/                # Phase planning documents for feature rollouts
+├── TODO.md                # Prioritised audit backlog (P0–P3)
+└── start.sh               # One-shot startup script
 ```
 
 ### Three-tier architecture
@@ -179,7 +216,6 @@ stock_nivesh_platform/
 - SPA deployed to `frontend/dist/`
 - Redux Toolkit for server state (funds, metrics, comparisons)
 - React Context for session state (auth JWT, theme)
-- Pages: Dashboard, MF Listing/Detail/Compare, Stock Listing/Detail/Compare, Screener, Indices Listing/Detail, Portfolio, Admin, Login
 - Axios client auto-injects `Authorization` header from AuthContext
 - JIT (just-in-time) sync polling: when metrics needed, polls `/api/v1/metrics/{code}/status` every 3s until completion
 
@@ -210,7 +246,7 @@ Full API endpoint reference (all phases): see [`docs/API_REFERENCE.md`](docs/API
 
 ### Analytics formulas (analytics.py)
 
-- **Risk-free rate:** 6.5% annualised (hardcoded `0.065` throughout)
+- **Risk-free rate:** 6.5% annualised (hardcoded `0.065` throughout, sourced from `app/constants.py`)
 - **Trading days per year:** 252
 - **Sortino:** `sqrt(252) × mean(excess_ret) / sqrt(mean(min(excess_ret, 0)²))` — downside deviation, not std
 - **Information Ratio:** `(active_daily.mean() / active_daily.std()) × sqrt(252)` — daily active returns
@@ -232,8 +268,8 @@ Frontend state management and design system: see [`docs/FRONTEND.md`](docs/FRONT
 - **ESLint `motion` errors**: Pre-existing lint errors for `motion` (from `framer-motion`) are **not regressions** — `eslint-plugin-react` is not installed so the linter can't resolve JSX namespace usage (`motion.div`, `motion.section`). `npm run build` still succeeds. Do not remove `motion` imports to fix these.
 
 ### Mandatory Task: Maintain Changelog
-- Ensure a file exists at memory/changelog.md. Create it if it does not exist.
+- Ensure a file exists at `memory/changelog.md`. Create it if it does not exist.
 - At the end of each session, update this file with all changes made.
 - For each modified file, add a one-line summary describing the change.
 - Use this file as the single source of truth to track all historical changes.
-- Always review memory/changelog.md before making new changes to understand prior updates.
+- Always review `memory/changelog.md` before making new changes to understand prior updates.

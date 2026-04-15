@@ -8,14 +8,17 @@
 #   Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope CurrentUser
 #
 # What this script does:
-#   1. Checks prerequisites (Python 3.10+, Node.js, Docker)
-#   2. Prompts for PostgreSQL: Docker (auto) or external URL
-#   3. Attempts ta-lib install (pre-built wheel); shows fallback instructions if it fails
-#   4. Creates Python virtual environment and installs dependencies
-#   5. Writes backend\.env
-#   6. Runs database migrations
-#   7. Optionally seeds data
-#   8. Starts the FastAPI server
+#   1.  Check Python 3.10+ (winget auto-install if missing)
+#   2.  Check Node.js 18+ (winget auto-install if missing)
+#   3.  PostgreSQL setup — Docker (auto) or external URL
+#   4.  Python virtual environment + dependencies (excluding TA-Lib)
+#   5.  Environment configuration + Admin JWT
+#   6.  Start Docker PostgreSQL (if chosen)
+#   7.  Database migrations
+#   8.  Optional data seeding
+#   9.  Frontend build
+#   10. TA-Lib installation
+#   11. Start FastAPI server
 # =============================================================================
 
 #Requires -Version 5.1
@@ -49,11 +52,10 @@ Write-Host ""
 Write-Info "Project root : $ProjectRoot"
 
 # =============================================================================
-# STEP 1 — Check prerequisites
+# STEP 1 — Check Python
 # =============================================================================
-Write-Step "Step 1: Checking Prerequisites"
+Write-Step "Step 1: Checking Python"
 
-# Python
 $PythonCmd = $null
 foreach ($cmd in @("python", "python3", "py")) {
   if (Get-Command $cmd -ErrorAction SilentlyContinue) {
@@ -70,27 +72,39 @@ foreach ($cmd in @("python", "python3", "py")) {
   }
 }
 if (-not $PythonCmd) {
-  Write-Fatal "Python 3.10+ not found. Download from https://python.org and ensure it is in PATH."
+  Write-Warn "Python 3.10+ not found. Attempting to install via winget..."
+  & winget install --id Python.Python.3.11 -e --accept-package-agreements --accept-source-agreements
+  if ($LASTEXITCODE -ne 0) {
+    Write-Fatal "Failed to install Python. Please install Python 3.10+ from https://python.org and re-run this script."
+  }
+  Write-Warn "Python installed. Please restart this PowerShell window for PATH changes to take effect, then re-run this script."
+  exit 0
 }
 
-# Node.js
+# =============================================================================
+# STEP 2 — Check Node.js
+# =============================================================================
+Write-Step "Step 2: Checking Node.js"
+
 if (Get-Command node -ErrorAction SilentlyContinue) {
   $nodeVer = & node --version
   Write-Success "Node.js $nodeVer detected."
   $npmVer = & npm --version
   Write-Success "npm $npmVer detected."
 } else {
-  Write-Warn "Node.js not found."
-  Write-Warn "Install Node.js 18+ LTS from https://nodejs.org"
-  Write-Warn "Or use Windows Package Manager: winget install OpenJS.NodeJS"
-  Write-Warn "After installing Node.js, please restart this script."
-  Write-Fatal "Node.js is required for frontend setup."
+  Write-Warn "Node.js not found. Attempting to install via winget..."
+  & winget install OpenJS.NodeJS.LTS -e --accept-package-agreements --accept-source-agreements
+  if ($LASTEXITCODE -ne 0) {
+    Write-Fatal "Failed to install Node.js. Please install Node.js 18+ from https://nodejs.org and re-run this script."
+  }
+  Write-Warn "Node.js installed. Please restart this PowerShell window for PATH changes to take effect, then re-run this script."
+  exit 0
 }
 
 # =============================================================================
-# STEP 2 — PostgreSQL setup
+# STEP 3 — PostgreSQL setup
 # =============================================================================
-Write-Step "Step 2: PostgreSQL Setup"
+Write-Step "Step 3: PostgreSQL Setup"
 
 Write-Host ""
 Write-Host "  How do you want to connect to PostgreSQL?" -ForegroundColor White
@@ -136,25 +150,7 @@ if ($UseDocker) {
 }
 
 # =============================================================================
-# STEP 3 — ta-lib
-# =============================================================================
-Write-Step "Step 3: ta-lib (Technical Analysis Library)"
-
-Write-Info "Attempting to install TA-Lib Python wheel..."
-Write-Info "Note: TA-Lib >= 0.6.8 includes pre-built Windows wheels — this may succeed without extra steps."
-Write-Host ""
-
-# We'll try pip install after creating the venv. Just note the fallback here.
-Write-Warn "If pip install fails for TA-Lib, you have these options:"
-Write-Host "  A) Conda (recommended for Windows):"
-Write-Host "       conda install -c conda-forge ta-lib"
-Write-Host "  B) WSL (Windows Subsystem for Linux):"
-Write-Host "       Run this script inside WSL with Ubuntu"
-Write-Host "  C) Pre-built wheel from unofficial sources (use at your own risk)"
-Write-Host ""
-
-# =============================================================================
-# STEP 4 — Python virtual environment + dependencies
+# STEP 4 — Python virtual environment + dependencies (excluding TA-Lib)
 # =============================================================================
 Write-Step "Step 4: Python Virtual Environment"
 
@@ -178,22 +174,22 @@ Write-Success "Virtual environment activated."
 Write-Info "Upgrading pip..."
 & pip install --upgrade pip --quiet
 
-Write-Info "Installing Python dependencies from requirements.txt..."
+Write-Info "Installing Python dependencies (excluding TA-Lib)..."
 $ReqFile = Join-Path $BackendDir "requirements.txt"
+$TempReq = [System.IO.Path]::GetTempFileName()
 try {
-  & pip install -r $ReqFile
-  Write-Success "Python dependencies installed."
-} catch {
-  Write-Host ""
-  Write-Warn "pip install encountered an error."
-  Write-Warn "If the error is about TA-Lib, install it via conda first:"
-  Write-Warn "  conda install -c conda-forge ta-lib"
-  Write-Warn "Then rerun this script with --skip-deps or install remaining deps manually."
-  Write-Fatal "Dependency installation failed. See above for details."
+  Get-Content $ReqFile | Where-Object { $_ -notmatch '(?i)ta.?lib' } | Set-Content $TempReq
+  & pip install -r $TempReq
+  if ($LASTEXITCODE -ne 0) {
+    Write-Fatal "pip install failed. Check the error output above."
+  }
+  Write-Success "Python dependencies installed (TA-Lib excluded — installed in Step 10)."
+} finally {
+  Remove-Item $TempReq -Force -ErrorAction SilentlyContinue
 }
 
 # =============================================================================
-# STEP 5 — Write backend\.env
+# STEP 5 — Environment Configuration & Admin JWT
 # =============================================================================
 Write-Step "Step 5: Environment Configuration"
 
@@ -213,28 +209,28 @@ if (Test-Path $BackendEnvFile) {
 
 if ($WriteBackendEnv) {
   $BackendEnvContent = @"
-# ── Database ──────────────────────────────────────────────────────────────────
+# -- Database -----------------------------------------------------------------
 DATABASE_URL=$DatabaseUrl
 
-# ── API ───────────────────────────────────────────────────────────────────────
+# -- API ----------------------------------------------------------------------
 API_V1_STR=/api/v1
 PROJECT_NAME=Nivesh API
 
-# ── Security — CHANGE IN PRODUCTION ──────────────────────────────────────────
-ENABLE_AUTH=false
+# -- Security - CHANGE IN PRODUCTION ------------------------------------------
+ENABLE_AUTH=true
 SECRET_KEY=$SecretKey
 ACCESS_TOKEN_EXPIRE_MINUTES=30
 
-# ── Admin portal credentials (set below) ─────────────────────────────────────
+# -- Admin portal credentials (set below) -------------------------------------
 ADMIN_USERNAME=
 ADMIN_PASSWORD_HASH=
 
-# ── Third-party APIs (if needed) ──────────────────────────────────────────────
+# -- Third-party APIs (if needed) --------------------------------------------
 # ALPHA_VANTAGE_APIKEY=your_key_here
 # SUPABASE_PASSWORD=your_password_here
 "@
   Set-Content -Path $BackendEnvFile -Value $BackendEnvContent -Encoding UTF8
-  Write-Success "backend\.env written with generated SECRET_KEY"
+  Write-Success "backend\.env written to $BackendEnvFile"
 }
 
 # ── Admin credentials ─────────────────────────────────────────────────────────
@@ -242,42 +238,48 @@ Write-Host ""
 Write-Info "Set up your admin login credentials for the Nivesh portal."
 Write-Host ""
 
-$AdminUsername = Read-Host "  Admin username [admin]"
-if ([string]::IsNullOrWhiteSpace($AdminUsername)) { $AdminUsername = "admin" }
+$HelperPath = [System.IO.Path]::GetTempFileName() + ".py"
+$TokenFile  = [System.IO.Path]::GetTempFileName()
 
-while ($true) {
-  $AdminPasswordSecure = Read-Host "  Admin password" -AsSecureString
-  $AdminPassword = [Runtime.InteropServices.Marshal]::PtrToStringAuto(
-    [Runtime.InteropServices.Marshal]::SecureStringToBSTR($AdminPasswordSecure)
-  )
-  if ([string]::IsNullOrEmpty($AdminPassword)) {
-    Write-Warn "Password cannot be empty. Please try again."
-    continue
-  }
-  $ConfirmSecure = Read-Host "  Confirm password" -AsSecureString
-  $ConfirmPassword = [Runtime.InteropServices.Marshal]::PtrToStringAuto(
-    [Runtime.InteropServices.Marshal]::SecureStringToBSTR($ConfirmSecure)
-  )
-  if ($AdminPassword -ne $ConfirmPassword) {
-    Write-Warn "Passwords do not match. Please try again."
-  } else {
-    break
-  }
-}
-
-$AdminPasswordHash = & $PythonCmd -c @"
-import sys
+$HelperScript = @'
+import sys, getpass, re, os, datetime
 from passlib.context import CryptContext
-pw = sys.argv[1]
-print(CryptContext(schemes=['bcrypt'], deprecated='auto').hash(pw))
-"@ $AdminPassword
+from jose import jwt
+env_file = sys.argv[1]
+secret_key = sys.argv[2]
+username = input("  Admin username [admin]: ").strip() or "admin"
+while True:
+    pw = getpass.getpass("  Admin password: ")
+    if not pw:
+        print("  [WARN] Password cannot be empty.")
+        continue
+    pw2 = getpass.getpass("  Confirm password: ")
+    if pw != pw2:
+        print("  [WARN] Passwords do not match.")
+        continue
+    break
+hash_ = CryptContext(schemes=["bcrypt"], deprecated="auto").hash(pw)
+content = open(env_file).read()
+content = re.sub(r"ADMIN_USERNAME=.*", "ADMIN_USERNAME=" + username, content)
+content = re.sub(r"ADMIN_PASSWORD_HASH=.*", "ADMIN_PASSWORD_HASH=" + hash_, content)
+open(env_file, "w").write(content)
+exp = datetime.datetime.now(datetime.timezone.utc) + datetime.timedelta(days=3650)
+token = jwt.encode({"sub": username, "exp": exp}, secret_key, algorithm="HS256")
+open(sys.argv[3], "w").write(token)
+print("[OK]    Admin credentials saved (username: " + username + ")")
+'@
 
-$EnvContent = Get-Content $BackendEnvFile -Raw
-$EnvContent = $EnvContent -replace 'ADMIN_USERNAME=.*', "ADMIN_USERNAME=$AdminUsername"
-$EnvContent = $EnvContent -replace 'ADMIN_PASSWORD_HASH=.*', "ADMIN_PASSWORD_HASH=$AdminPasswordHash"
-Set-Content -Path $BackendEnvFile -Value $EnvContent -Encoding UTF8 -NoNewline
+Set-Content -Path $HelperPath -Value $HelperScript -Encoding UTF8
 
-Write-Success "Admin credentials saved (username: $AdminUsername)"
+& $PythonCmd $HelperPath $BackendEnvFile $SecretKey $TokenFile
+if ($LASTEXITCODE -ne 0) {
+  Remove-Item $HelperPath -Force -ErrorAction SilentlyContinue
+  Remove-Item $TokenFile  -Force -ErrorAction SilentlyContinue
+  Write-Fatal "Failed to set admin credentials."
+}
+$AdminJwtToken = Get-Content $TokenFile -Raw
+Remove-Item $HelperPath -Force -ErrorAction SilentlyContinue
+Remove-Item $TokenFile  -Force -ErrorAction SilentlyContinue
 
 # Frontend .env
 $WriteFrontendEnv = $true
@@ -292,18 +294,17 @@ if (Test-Path $FrontendEnvFile) {
 
 if ($WriteFrontendEnv) {
   $FrontendEnvContent = @"
-# ── API URL ──────────────────────────────────────────────────────────────────
+# -- API URL ------------------------------------------------------------------
 # For development: http://localhost:8000/api/v1
-# For production: /api/v1 (same origin — backend serves frontend)
+# For production: /api/v1 (same origin -- backend serves frontend)
 VITE_API_URL=/api/v1
+
+# -- API Bypass Token ----------------------------------------------------------
+# Embedded JWT token allowing frontend clients to bypass the standard login loop.
+VITE_API_TOKEN=$AdminJwtToken
 "@
   Set-Content -Path $FrontendEnvFile -Value $FrontendEnvContent -Encoding UTF8
-  Write-Success "frontend\.env written"
-}
-
-$BackendEnvContents = Get-Content $BackendEnvFile -Raw
-if ($BackendEnvContents -match "ENABLE_AUTH=false") {
-  Write-Warn "ENABLE_AUTH=false — write endpoints are unprotected. Set to true for production."
+  Write-Success "frontend\.env written to $FrontendEnvFile"
 }
 
 # =============================================================================
@@ -336,19 +337,52 @@ if ($UseDocker) {
 }
 
 # =============================================================================
-# STEP 7 — Database migrations
+# STEP 7 — Database Setup
 # =============================================================================
-Write-Step "Step 7: Database Migrations"
+Write-Step "Step 7: Database Setup"
 
 Set-Location $BackendDir
 
-Write-Info "Creating MF tables (SQLAlchemy create_all)..."
-& python scripts\db_init.py
-Write-Success "MF tables created."
+Write-Info "Checking existing database state..."
+& $PythonCmd scripts\db_setup.py --check 2>$null
+$TablesExist = ($LASTEXITCODE -eq 0)
 
-Write-Info "Running Alembic migration for stock tables..."
-& alembic upgrade head
-Write-Success "Stock tables migrated."
+if ($TablesExist) {
+  Write-Host ""
+  Write-Warn "Existing database tables detected."
+  Write-Host ""
+  Write-Host "  [1] Keep all data -- update schema only  (safe, recommended)"
+  Write-Host "  [2] Erase EVERYTHING and start fresh     (destructive, all data lost)"
+  Write-Host ""
+  $DbAction = Read-Host "  Enter choice [1]"
+  if ([string]::IsNullOrWhiteSpace($DbAction)) { $DbAction = "1" }
+
+  if ($DbAction -eq "2") {
+    Write-Host ""
+    Write-Warn "This will PERMANENTLY DELETE all data in the database."
+    $DropConfirm = Read-Host "  Type YES to confirm"
+    if ($DropConfirm -eq "YES") {
+      Write-Info "Dropping all tables..."
+      & $PythonCmd scripts\db_setup.py --drop-all
+      if ($LASTEXITCODE -ne 0) { Write-Fatal "Failed to drop tables. Check database connectivity." }
+      Write-Success "All tables dropped."
+    } else {
+      Write-Info "Cancelled. Keeping existing data."
+    }
+  }
+} else {
+  Write-Info "No existing tables found. Fresh installation."
+}
+
+Write-Info "Creating MF tables and enabling pg_trgm (SQLAlchemy create_all)..."
+& $PythonCmd scripts\db_init.py
+if ($LASTEXITCODE -ne 0) { Write-Fatal "db_init.py failed. Check database connectivity." }
+Write-Success "MF tables ready."
+
+Write-Info "Running Alembic migration for stock tables (idempotent)..."
+& "$VenvDir\Scripts\alembic" upgrade head
+if ($LASTEXITCODE -ne 0) { Write-Fatal "alembic upgrade head failed. Check database connectivity and alembic.ini." }
+Write-Success "Stock tables ready."
 
 # =============================================================================
 # STEP 8 — Optional seeding
@@ -356,34 +390,45 @@ Write-Success "Stock tables migrated."
 Write-Step "Step 8: Data Seeding (Optional)"
 
 Write-Host ""
-Write-Warn "Seeding fetches live data from AMFI and yfinance — this can take 30–90 minutes."
+Write-Warn "Seeding fetches live data from AMFI and yfinance — this can take 30-90 minutes."
 Write-Host ""
-$SeedMf = Read-Host "  Seed mutual fund data (benchmarks + funds + NAV history)? (y/N)"
+Write-Host "  What data would you like to seed?"
+Write-Host "  [1] Mutual Fund data only   (benchmarks + funds + NAV history,  30-60 min)"
+Write-Host "  [2] Stock data only         (18 stocks + 5y price history,      20-40 min)"
+Write-Host "  [3] Both                    (recommended for full platform,     50-100 min)"
+Write-Host "  [4] Skip seeding            (run seed scripts manually later)"
+Write-Host ""
+$SeedChoice = Read-Host "  Enter choice [4]"
+if ([string]::IsNullOrWhiteSpace($SeedChoice)) { $SeedChoice = "4" }
 
-if ($SeedMf -match "^[Yy]$") {
+$SeedMf     = $SeedChoice -eq "1" -or $SeedChoice -eq "3"
+$SeedStocks = $SeedChoice -eq "2" -or $SeedChoice -eq "3"
+
+if (-not ($SeedMf -or $SeedStocks)) {
+  Write-Info "Skipping seeding."
+}
+
+if ($SeedMf) {
   Write-Info "Seeding benchmark indices from CSV files..."
-  & python scripts\seed_indices.py
+  & $PythonCmd scripts\seed_indices.py
   Write-Success "Benchmark indices seeded."
 
   Write-Info "Seeding fund master records..."
-  & python scripts\seed_funds.py
+  & $PythonCmd scripts\seed_funds.py
   Write-Success "Fund master seeded."
 
-  Write-Info "Fetching NAV history and computing metrics (30–60 minutes)..."
-  & python scripts\sync_data.py
+  Write-Info "Fetching NAV history and computing metrics (30-60 minutes)..."
+  & $PythonCmd scripts\sync_data.py
   Write-Success "Fund NAV history and metrics complete."
 }
 
-Write-Host ""
-$SeedStocks = Read-Host "  Also seed stock master + 5y price history from yfinance? (y/N)"
-
-if ($SeedStocks -match "^[Yy]$") {
+if ($SeedStocks) {
   Write-Info "Seeding stock master (18 large-cap stocks + 3 indices)..."
-  & python scripts\seed\seed_stock_master.py
+  & $PythonCmd scripts\seed\seed_stock_master.py
   Write-Success "Stock master seeded."
 
-  Write-Info "Backfilling 5 years of price data from yfinance (20–40 minutes)..."
-  & python scripts\seed\backfill_prices.py 5y
+  Write-Info "Backfilling 5 years of price data from yfinance (20-40 minutes)..."
+  & $PythonCmd scripts\seed\backfill_prices.py 5y
   Write-Success "Stock price history backfilled."
 }
 
@@ -413,9 +458,31 @@ if (-not (Test-Path $DistDir)) {
 Write-Success "Frontend built and ready at $DistDir"
 
 # =============================================================================
-# STEP 10 — Start API server
+# STEP 10 — TA-Lib Installation
 # =============================================================================
-Write-Step "Step 10: Starting FastAPI Server"
+Write-Step "Step 10: TA-Lib Installation"
+
+Write-Info "TA-Lib >= 0.6.8 includes pre-built Windows wheels — attempting pip install..."
+Write-Host ""
+
+Set-Location $BackendDir
+
+& pip install "TA-Lib>=0.6.8"
+if ($LASTEXITCODE -ne 0) {
+  Write-Host ""
+  Write-Warn "pip install TA-Lib failed. You have these options:"
+  Write-Host "  A) Conda (recommended for Windows):"
+  Write-Host "       conda install -c conda-forge ta-lib"
+  Write-Host "  B) WSL (Windows Subsystem for Linux):"
+  Write-Host "       Run setup\setup.sh inside WSL with Ubuntu"
+  Write-Fatal "TA-Lib installation failed. Install it manually and re-run this script."
+}
+Write-Success "TA-Lib installed."
+
+# =============================================================================
+# STEP 11 — Start API server
+# =============================================================================
+Write-Step "Step 11: Starting FastAPI Server"
 
 Write-Host ""
 Write-Host "  Setup complete! Starting Nivesh API..." -ForegroundColor Green

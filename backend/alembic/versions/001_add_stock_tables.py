@@ -20,6 +20,16 @@ def upgrade() -> None:
     # Create pg_trgm extension for trigram search support
     op.execute("CREATE EXTENSION IF NOT EXISTS pg_trgm;")
 
+    # Idempotency guard: if stock tables were already created by Base.metadata.create_all
+    # (e.g. via main.py lifespan or db_init.py), skip all CREATE TABLE/INDEX statements.
+    # Alembic will still stamp revision '001' in alembic_version because upgrade() returns
+    # without raising, so subsequent `alembic upgrade head` calls will be no-ops.
+    connection = op.get_bind()
+    inspector = sa.inspect(connection)
+    existing_tables = set(inspector.get_table_names())
+    if 'stocks' in existing_tables:
+        return
+
     # Table 1: stocks
     op.create_table(
         'stocks',
