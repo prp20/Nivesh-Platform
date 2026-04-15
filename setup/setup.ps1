@@ -179,7 +179,7 @@ $ReqFile = Join-Path $BackendDir "requirements.txt"
 $TempReq = [System.IO.Path]::GetTempFileName()
 try {
   Get-Content $ReqFile | Where-Object { $_ -notmatch '(?i)ta.?lib' } | Set-Content $TempReq
-  & pip install -r $TempReq
+  & pip install --prefer-binary -r $TempReq
   if ($LASTEXITCODE -ne 0) {
     Write-Fatal "pip install failed. Check the error output above."
   }

@@ -163,7 +163,7 @@ pip install --upgrade pip --quiet
 
 echo [INFO]  Installing Python dependencies (excluding ta-lib)...
 findstr /v /i "TA-Lib" "%BACKEND_DIR%\requirements.txt" > "%TEMP%\req_temp.txt"
-pip install -r "%TEMP%\req_temp.txt"
+pip install --prefer-binary -r "%TEMP%\req_temp.txt"
 if errorlevel 1 (
   echo.
   echo [ERROR] pip install failed.
