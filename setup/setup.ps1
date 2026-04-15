@@ -243,7 +243,7 @@ $TokenFile  = [System.IO.Path]::GetTempFileName()
 
 $HelperScript = @'
 import sys, getpass, re, os, datetime
-from passlib.context import CryptContext
+import bcrypt as _bcrypt
 from jose import jwt
 env_file = sys.argv[1]
 secret_key = sys.argv[2]
@@ -258,7 +258,7 @@ while True:
         print("  [WARN] Passwords do not match.")
         continue
     break
-hash_ = CryptContext(schemes=["bcrypt"], deprecated="auto").hash(pw)
+hash_ = _bcrypt.hashpw(pw.encode("utf-8"), _bcrypt.gensalt()).decode("utf-8")
 content = open(env_file).read()
 content = re.sub(r"ADMIN_USERNAME=.*", "ADMIN_USERNAME=" + username, content)
 content = re.sub(r"ADMIN_PASSWORD_HASH=.*", "ADMIN_PASSWORD_HASH=" + hash_, content)
