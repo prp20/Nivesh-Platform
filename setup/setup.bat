@@ -163,7 +163,7 @@ pip install --upgrade pip --quiet
 
 echo [INFO]  Installing Python dependencies (excluding ta-lib)...
 findstr /v /i "TA-Lib" "%BACKEND_DIR%\requirements.txt" > "%TEMP%\req_temp.txt"
-pip install --prefer-binary -r "%TEMP%\req_temp.txt"
+pip install --no-cache-dir --prefer-binary -r "%TEMP%\req_temp.txt"
 if errorlevel 1 (
   echo.
   echo [ERROR] pip install failed.
@@ -233,7 +233,6 @@ set "HELPER=%TEMP%\nivesh_admin_setup.py"
 setlocal disabledelayedexpansion
 del "%HELPER%" >nul 2>&1
 echo import sys, getpass, re, os, datetime > "%HELPER%"
-echo from passlib.context import CryptContext >> "%HELPER%"
 echo from jose import jwt >> "%HELPER%"
 echo env_file = sys.argv[1] >> "%HELPER%"
 echo secret_key = sys.argv[2] >> "%HELPER%"
@@ -248,7 +247,8 @@ echo     if pw != pw2: >> "%HELPER%"
 echo         print("  [WARN] Passwords do not match.") >> "%HELPER%"
 echo         continue >> "%HELPER%"
 echo     break >> "%HELPER%"
-echo hash_ = CryptContext(schemes=["bcrypt"], deprecated="auto").hash(pw) >> "%HELPER%"
+echo import bcrypt as _bcrypt >> "%HELPER%"
+echo hash_ = _bcrypt.hashpw(pw.encode("utf-8"), _bcrypt.gensalt()).decode("utf-8") >> "%HELPER%"
 echo content = open(env_file).read() >> "%HELPER%"
 echo content = re.sub(r"ADMIN_USERNAME=.*", "ADMIN_USERNAME=" + username, content) >> "%HELPER%"
 echo content = re.sub(r"ADMIN_PASSWORD_HASH=.*", "ADMIN_PASSWORD_HASH=" + hash_, content) >> "%HELPER%"
