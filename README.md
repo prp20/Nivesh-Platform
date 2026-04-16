@@ -58,7 +58,9 @@ The setup script will install dependencies, configure the database, build the fr
 | **[Frontend Architecture](./docs/FRONTEND.md)** | React components, state management, design system |
 | **[Backend Architecture](./docs/BACKEND.md)** | FastAPI structure, async patterns, analytics engine |
 | **[Development Workflow](./docs/WORKFLOW.md)** | Git workflow, branching strategy, commit conventions |
+| **[Free PGSQL DB SETUP](./docs/SUPABASE_SETUP_DOCS.md)** | Free Database setup using Supabase |
 | **[Developer Guidelines](./CLAUDE.md)** | Code style, project structure, common commands |
+| **[Release Notes](./docs/RELEASE_NOTES.md)** | Code style, project structure, common commands |
 
 ---
 
