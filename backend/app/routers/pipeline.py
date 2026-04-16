@@ -214,17 +214,16 @@ async def trigger_screener_scrape_all(
 @router.post("/screener/{symbol}", summary="Trigger screener.in scrape for a single stock")
 async def trigger_screener_scrape_one(
     symbol: str,
+    background_tasks: BackgroundTasks,
     force: bool = Query(False, description="Bypass checksum and force re-scrape"),
     admin: str = Depends(require_admin),
 ):
     """
-    Scrapes screener.in for a single stock synchronously.
+    Starts a screener.in scrape for a single stock as a background task.
+    Returns immediately — poll GET /pipeline/status to track progress.
     Set force=true to bypass the checksum deduplication check.
     After a successful scrape, ratio recompute is triggered automatically.
     """
-    from pipeline.fundamental_scraper import run_fundamental_scrape_one
-    from pipeline.ratio_engine import compute_ratios_for_stock
-    from pipeline.metric_recompute import _get_latest_close
     from app.database import raw_connection
 
     sym = symbol.upper()
@@ -235,22 +234,27 @@ async def trigger_screener_scrape_one(
     if not row:
         raise HTTPException(status_code=404, detail=f"Stock '{sym}' not found or inactive")
 
-    try:
-        await run_fundamental_scrape_one(sym, force=force)
-        # Chain: ratio recompute for this stock
-        stock_id = row["id"]
-        close = await _get_latest_close(stock_id)
-        await compute_ratios_for_stock(stock_id, close)
-        return {
-            "symbol": sym,
-            "message": "Scrape and ratio recompute completed successfully",
-            "force_rescrape": force,
-        }
-    except ValueError as e:
-        raise HTTPException(status_code=404, detail=str(e))
-    except Exception as e:
-        logger.error(f"Screener scrape failed for {sym}: {e}")
-        raise HTTPException(status_code=500, detail=f"Scrape failed: {e}")
+    stock_id = row["id"]
+
+    async def _run_scrape_and_ratios():
+        from pipeline.fundamental_scraper import run_fundamental_scrape_one
+        from pipeline.ratio_engine import compute_ratios_for_stock
+        from pipeline.metric_recompute import _get_latest_close
+        try:
+            await run_fundamental_scrape_one(sym, force=force)
+            close = await _get_latest_close(stock_id)
+            await compute_ratios_for_stock(stock_id, close)
+        except Exception as e:
+            logger.error(f"Background screener scrape failed for {sym}: {e}")
+
+    background_tasks.add_task(_run_scrape_and_ratios)
+    return {
+        "symbol": sym,
+        "message": "Fundamental scrape started in background. Poll GET /pipeline/status to track progress.",
+        "job_name": "fundamental_scrape_single",
+        "status": "STARTED",
+        "force_rescrape": force,
+    }
 
 
 @router.get("/screener/status", summary="Show last scrape date and overdue stocks")

@@ -193,8 +193,14 @@ try {
 # =============================================================================
 Write-Step "Step 5: Environment Configuration"
 
-# Generate random SECRET_KEY
-$SecretKey = [Convert]::ToBase64String([System.Text.Encoding]::UTF8.GetBytes((Get-Random -Minimum 100000000 -Maximum 999999999).ToString() + (Get-Date).Ticks))
+# Generate cryptographically secure SECRET_KEY
+$SecretKey = & $PythonCmd -c "import secrets; print(secrets.token_urlsafe(32))"
+if ($LASTEXITCODE -ne 0 -or -not $SecretKey) {
+  $SecretKey = [System.Web.Security.Membership]::GeneratePassword(32, 8)
+  if (-not $SecretKey) {
+    $SecretKey = [Convert]::ToBase64String([System.Security.Cryptography.RandomNumberGenerator]::GetBytes(32))
+  }
+}
 
 # Backend .env
 $WriteBackendEnv = $true
@@ -238,48 +244,11 @@ Write-Host ""
 Write-Info "Set up your admin login credentials for the Nivesh portal."
 Write-Host ""
 
-$HelperPath = [System.IO.Path]::GetTempFileName() + ".py"
-$TokenFile  = [System.IO.Path]::GetTempFileName()
-
-$HelperScript = @'
-import sys, getpass, re, os, datetime
-import bcrypt as _bcrypt
-from jose import jwt
-env_file = sys.argv[1]
-secret_key = sys.argv[2]
-username = input("  Admin username [admin]: ").strip() or "admin"
-while True:
-    pw = getpass.getpass("  Admin password: ")
-    if not pw:
-        print("  [WARN] Password cannot be empty.")
-        continue
-    pw2 = getpass.getpass("  Confirm password: ")
-    if pw != pw2:
-        print("  [WARN] Passwords do not match.")
-        continue
-    break
-hash_ = _bcrypt.hashpw(pw.encode("utf-8"), _bcrypt.gensalt()).decode("utf-8")
-content = open(env_file).read()
-content = re.sub(r"ADMIN_USERNAME=.*", "ADMIN_USERNAME=" + username, content)
-content = re.sub(r"ADMIN_PASSWORD_HASH=.*", "ADMIN_PASSWORD_HASH=" + hash_, content)
-open(env_file, "w").write(content)
-exp = datetime.datetime.now(datetime.timezone.utc) + datetime.timedelta(days=3650)
-token = jwt.encode({"sub": username, "exp": exp}, secret_key, algorithm="HS256")
-open(sys.argv[3], "w").write(token)
-print("[OK]    Admin credentials saved (username: " + username + ")")
-'@
-
-Set-Content -Path $HelperPath -Value $HelperScript -Encoding UTF8
-
-& $PythonCmd $HelperPath $BackendEnvFile $SecretKey $TokenFile
+$AdminHelperPath = Join-Path $ScriptDir "admin_helper.py"
+& $PythonCmd $AdminHelperPath $BackendEnvFile
 if ($LASTEXITCODE -ne 0) {
-  Remove-Item $HelperPath -Force -ErrorAction SilentlyContinue
-  Remove-Item $TokenFile  -Force -ErrorAction SilentlyContinue
-  Write-Fatal "Failed to set admin credentials."
+  Write-Fatal "Failed to set admin credentials. Check the output above."
 }
-$AdminJwtToken = Get-Content $TokenFile -Raw
-Remove-Item $HelperPath -Force -ErrorAction SilentlyContinue
-Remove-Item $TokenFile  -Force -ErrorAction SilentlyContinue
 
 # Frontend .env
 $WriteFrontendEnv = $true
@@ -295,13 +264,9 @@ if (Test-Path $FrontendEnvFile) {
 if ($WriteFrontendEnv) {
   $FrontendEnvContent = @"
 # -- API URL ------------------------------------------------------------------
-# For development: http://localhost:8000/api/v1
+# For development: http://localhost:8000/api/v1  (set in .env.development)
 # For production: /api/v1 (same origin -- backend serves frontend)
 VITE_API_URL=/api/v1
-
-# -- API Bypass Token ----------------------------------------------------------
-# Embedded JWT token allowing frontend clients to bypass the standard login loop.
-VITE_API_TOKEN=$AdminJwtToken
 "@
   Set-Content -Path $FrontendEnvFile -Value $FrontendEnvContent -Encoding UTF8
   Write-Success "frontend\.env written to $FrontendEnvFile"
@@ -390,21 +355,24 @@ Write-Success "Stock tables ready."
 Write-Step "Step 8: Data Seeding (Optional)"
 
 Write-Host ""
-Write-Warn "Seeding fetches live data from AMFI and yfinance — this can take 30-90 minutes."
+Write-Warn "Seeding fetches live data from AMFI, yfinance, and screener.in — this can take 30-120 minutes."
 Write-Host ""
 Write-Host "  What data would you like to seed?"
-Write-Host "  [1] Mutual Fund data only   (benchmarks + funds + NAV history,  30-60 min)"
-Write-Host "  [2] Stock data only         (18 stocks + 5y price history,      20-40 min)"
-Write-Host "  [3] Both                    (recommended for full platform,     50-100 min)"
-Write-Host "  [4] Skip seeding            (run seed scripts manually later)"
+Write-Host "  [1] Mutual Fund data only          (benchmarks + funds + NAV history,  30-60 min)"
+Write-Host "  [2] Stock data only                (18 stocks + 5y price history,      20-40 min)"
+Write-Host "  [3] Stock data + Fundamentals      (stocks + screener.in data,         35-55 min)"
+Write-Host "  [4] Both MF + Stocks               (recommended for full platform,     50-100 min)"
+Write-Host "  [5] All  (MF + Stocks + Fundamentals)                                  65-115 min"
+Write-Host "  [6] Skip seeding                   (run seed scripts manually later)"
 Write-Host ""
-$SeedChoice = Read-Host "  Enter choice [4]"
-if ([string]::IsNullOrWhiteSpace($SeedChoice)) { $SeedChoice = "4" }
+$SeedChoice = Read-Host "  Enter choice [6]"
+if ([string]::IsNullOrWhiteSpace($SeedChoice)) { $SeedChoice = "6" }
 
-$SeedMf     = $SeedChoice -eq "1" -or $SeedChoice -eq "3"
-$SeedStocks = $SeedChoice -eq "2" -or $SeedChoice -eq "3"
+$SeedMf           = $SeedChoice -in @("1","4","5")
+$SeedStocks       = $SeedChoice -in @("2","3","4","5")
+$SeedFundamentals = $SeedChoice -in @("3","5")
 
-if (-not ($SeedMf -or $SeedStocks)) {
+if (-not ($SeedMf -or $SeedStocks -or $SeedFundamentals)) {
   Write-Info "Skipping seeding."
 }
 
@@ -430,6 +398,12 @@ if ($SeedStocks) {
   Write-Info "Backfilling 5 years of price data from yfinance (20-40 minutes)..."
   & $PythonCmd scripts\seed\backfill_prices.py 5y
   Write-Success "Stock price history backfilled."
+}
+
+if ($SeedFundamentals) {
+  Write-Info "Seeding fundamental data from screener.in (5-15 minutes)..."
+  & $PythonCmd scripts\seed\seed_fundamentals.py
+  Write-Success "Fundamental data seeded."
 }
 
 # =============================================================================

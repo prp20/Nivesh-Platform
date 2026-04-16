@@ -11,16 +11,8 @@ const apiClient = axios.create({
 apiClient.interceptors.request.use(
     (config) => {
         try {
-            // Favor the permanent bypass token generated dynamically, then fallback to localized localstorage
-            const authBypass = import.meta.env.VITE_API_TOKEN;
-            const token = authBypass ? authBypass : localStorage.getItem('nivesh_token');
-            const isAdminPath = config.url?.includes('/pipeline/');
-            const devAdminToken = import.meta.env.VITE_ADMIN_TOKEN;
-
-            // In development, pipeline endpoints require a specific ADMIN_TOKEN
-            if (isAdminPath && devAdminToken) {
-                config.headers.Authorization = `Bearer ${devAdminToken}`;
-            } else if (token) {
+            const token = localStorage.getItem('nivesh_token');
+            if (token) {
                 config.headers.Authorization = `Bearer ${token}`;
             }
         } catch (storageError) {

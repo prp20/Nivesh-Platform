@@ -268,7 +268,7 @@ Frontend state management and design system: see [`docs/FRONTEND.md`](docs/FRONT
 - **ESLint `motion` errors**: Pre-existing lint errors for `motion` (from `framer-motion`) are **not regressions** — `eslint-plugin-react` is not installed so the linter can't resolve JSX namespace usage (`motion.div`, `motion.section`). `npm run build` still succeeds. Do not remove `motion` imports to fix these.
 
 ### Mandatory Task: Maintain Changelog
-- Ensure a file exists at `memory/changelog.md`. Create it if it does not exist.
+- Ensure a file exists at `memory/changelog.md`. Create it if it does not exist. you can only append with date and time of update, but not modify any existing data.
 - At the end of each session, update this file with all changes made.
 - For each modified file, add a one-line summary describing the change.
 - Use this file as the single source of truth to track all historical changes.

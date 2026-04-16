@@ -180,10 +180,14 @@ echo.
 echo [STEP 5] Environment Configuration
 echo.
 
-:: Generate random SECRET_KEY (using timestamp + random number)
-for /f "tokens=2-4 delims=/ " %%a in ('date /t') do (set mydate=%%c%%a%%b)
-for /f "tokens=1-2 delims=/:" %%a in ('time /t') do (set mytime=%%a%%b)
-set "SECRET_KEY=dev-secret-%mydate%-%mytime%-%RANDOM%"
+:: Generate cryptographically secure SECRET_KEY using Python
+for /f "delims=" %%s in ('python -c "import secrets; print(secrets.token_urlsafe(32))" 2^>nul') do set "SECRET_KEY=%%s"
+if "!SECRET_KEY!"=="" (
+  echo [WARN]  Could not generate SECRET_KEY via Python. Using fallback.
+  for /f "tokens=2-4 delims=/ " %%a in ('date /t') do (set mydate=%%c%%a%%b)
+  for /f "tokens=1-2 delims=/:" %%a in ('time /t') do (set mytime=%%a%%b)
+  set "SECRET_KEY=dev-secret-%mydate%-%mytime%-%RANDOM%-%RANDOM%"
+)
 
 :: Backend .env
 set WRITE_BACKEND_ENV=1
@@ -226,50 +230,12 @@ echo.
 echo [INFO]  Set up your admin login credentials for the Nivesh portal.
 echo.
 
-:: Write a temporary Python helper to prompt for credentials and patch the .env
-set "HELPER=%TEMP%\nivesh_admin_setup.py"
-
-:: Disable delayed expansion just for writing the helper to avoid ! conflicts with !=
-setlocal disabledelayedexpansion
-del "%HELPER%" >nul 2>&1
-echo import sys, getpass, re, os, datetime > "%HELPER%"
-echo from jose import jwt >> "%HELPER%"
-echo env_file = sys.argv[1] >> "%HELPER%"
-echo secret_key = sys.argv[2] >> "%HELPER%"
-echo username = input("  Admin username [admin]: ").strip() or "admin" >> "%HELPER%"
-echo while True: >> "%HELPER%"
-echo     pw = getpass.getpass("  Admin password: ") >> "%HELPER%"
-echo     if not pw: >> "%HELPER%"
-echo         print("  [WARN] Password cannot be empty.") >> "%HELPER%"
-echo         continue >> "%HELPER%"
-echo     pw2 = getpass.getpass("  Confirm password: ") >> "%HELPER%"
-echo     if pw != pw2: >> "%HELPER%"
-echo         print("  [WARN] Passwords do not match.") >> "%HELPER%"
-echo         continue >> "%HELPER%"
-echo     break >> "%HELPER%"
-echo import bcrypt as _bcrypt >> "%HELPER%"
-echo hash_ = _bcrypt.hashpw(pw.encode("utf-8"), _bcrypt.gensalt()).decode("utf-8") >> "%HELPER%"
-echo content = open(env_file).read() >> "%HELPER%"
-echo content = re.sub(r"ADMIN_USERNAME=.*", "ADMIN_USERNAME=" + username, content) >> "%HELPER%"
-echo content = re.sub(r"ADMIN_PASSWORD_HASH=.*", "ADMIN_PASSWORD_HASH=" + hash_, content) >> "%HELPER%"
-echo open(env_file, "w").write(content) >> "%HELPER%"
-echo exp = datetime.datetime.now(datetime.timezone.utc) + datetime.timedelta(days=3650) >> "%HELPER%"
-echo token = jwt.encode({"sub": username, "exp": exp}, secret_key, algorithm="HS256") >> "%HELPER%"
-echo open(sys.argv[3], "w").write(token) >> "%HELPER%"
-echo print("[OK]    Admin credentials saved (username: " + username + ")") >> "%HELPER%"
-endlocal
-
-set "TOKEN_FILE=%TEMP%\admin_jwt_token.txt"
-python "%HELPER%" "%BACKEND_ENV_FILE%" "%SECRET_KEY%" "%TOKEN_FILE%"
+python "%SCRIPT_DIR%admin_helper.py" "%BACKEND_ENV_FILE%"
 if errorlevel 1 (
-  echo [ERROR] Failed to set admin credentials.
-  del "%HELPER%" >nul 2>&1
+  echo [ERROR] Failed to set admin credentials. Check the output above.
   pause
   exit /b 1
 )
-set /p ADMIN_JWT_TOKEN=<"%TOKEN_FILE%"
-del "%HELPER%" >nul 2>&1
-del "%TOKEN_FILE%" >nul 2>&1
 
 :: Frontend .env
 set WRITE_FRONTEND_ENV=1
@@ -285,13 +251,9 @@ if exist "%FRONTEND_ENV_FILE%" (
 if "%WRITE_FRONTEND_ENV%"=="1" (
   (
     echo # -- API URL ------------------------------------------------------------------
-    echo # For development: http://localhost:8000/api/v1
+    echo # For development: http://localhost:8000/api/v1  (set in .env.development)
     echo # For production: /api/v1 (same origin -- backend serves frontend)
     echo VITE_API_URL=/api/v1
-    echo.
-    echo # -- API Bypass Token ----------------------------------------------------------
-    echo # Embedded JWT token allowing frontend clients to bypass the standard login loop.
-    echo VITE_API_TOKEN=!ADMIN_JWT_TOKEN!
   ) > "%FRONTEND_ENV_FILE%"
   echo [OK]    frontend\.env written to %FRONTEND_ENV_FILE%
 )
@@ -406,24 +368,36 @@ echo [OK]    Stock tables ready.
 echo.
 echo [STEP 8] Data Seeding (Optional)
 echo.
-echo [WARN]  Seeding fetches live data from AMFI and yfinance -- this can take 30-90 minutes.
+echo [WARN]  Seeding fetches live data from AMFI, yfinance, and screener.in -- this can take 30-120 minutes.
 echo.
 echo   What data would you like to seed?
-echo   [1] Mutual Fund data only   ^(benchmarks + funds + NAV history,  30-60 min^)
-echo   [2] Stock data only         ^(18 stocks + 5y price history,      20-40 min^)
-echo   [3] Both                    ^(recommended for full platform,     50-100 min^)
-echo   [4] Skip seeding            ^(run seed scripts manually later^)
+echo   [1] Mutual Fund data only          ^(benchmarks + funds + NAV history,  30-60 min^)
+echo   [2] Stock data only                ^(18 stocks + 5y price history,      20-40 min^)
+echo   [3] Stock data + Fundamentals      ^(stocks + screener.in data,         35-55 min^)
+echo   [4] Both MF + Stocks               ^(recommended for full platform,     50-100 min^)
+echo   [5] All ^(MF + Stocks + Fundamentals^)                                   65-115 min
+echo   [6] Skip seeding                   ^(run seed scripts manually later^)
 echo.
-set /p SEED_CHOICE="  Enter choice [4]: "
-if "!SEED_CHOICE!"=="" set SEED_CHOICE=4
+set /p SEED_CHOICE="  Enter choice [6]: "
+if "!SEED_CHOICE!"=="" set SEED_CHOICE=6
 
 set SEED_MF=0
 set SEED_STOCKS=0
+set SEED_FUNDAMENTALS=0
 if "!SEED_CHOICE!"=="1" set SEED_MF=1
 if "!SEED_CHOICE!"=="2" set SEED_STOCKS=1
 if "!SEED_CHOICE!"=="3" (
+  set SEED_STOCKS=1
+  set SEED_FUNDAMENTALS=1
+)
+if "!SEED_CHOICE!"=="4" (
   set SEED_MF=1
   set SEED_STOCKS=1
+)
+if "!SEED_CHOICE!"=="5" (
+  set SEED_MF=1
+  set SEED_STOCKS=1
+  set SEED_FUNDAMENTALS=1
 )
 
 if "!SEED_MF!"=="1" (
@@ -448,6 +422,12 @@ if "!SEED_STOCKS!"=="1" (
   echo [INFO]  Backfilling 5 years of price data ^(20-40 minutes^)...
   python scripts\seed\backfill_prices.py 5y
   echo [OK]    Stock price history backfilled.
+)
+
+if "!SEED_FUNDAMENTALS!"=="1" (
+  echo [INFO]  Seeding fundamental data from screener.in ^(5-15 minutes^)...
+  python scripts\seed\seed_fundamentals.py
+  echo [OK]    Fundamental data seeded.
 )
 
 :: =============================================================================

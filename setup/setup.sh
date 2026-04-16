@@ -238,40 +238,10 @@ echo ""
 info "Set up your admin login credentials for the Nivesh portal."
 echo ""
 
-HELPER=$(mktemp --suffix=.py)
-TOKEN_FILE=$(mktemp)
-
-cat > "$HELPER" <<'PYEOF'
-import sys, getpass, re, os, datetime
-import bcrypt as _bcrypt
-from jose import jwt
-env_file = sys.argv[1]
-secret_key = sys.argv[2]
-username = input("  Admin username [admin]: ").strip() or "admin"
-while True:
-    pw = getpass.getpass("  Admin password: ")
-    if not pw:
-        print("  [WARN] Password cannot be empty.")
-        continue
-    pw2 = getpass.getpass("  Confirm password: ")
-    if pw != pw2:
-        print("  [WARN] Passwords do not match.")
-        continue
-    break
-hash_ = _bcrypt.hashpw(pw.encode("utf-8"), _bcrypt.gensalt()).decode("utf-8")
-content = open(env_file).read()
-content = re.sub(r"ADMIN_USERNAME=.*", "ADMIN_USERNAME=" + username, content)
-content = re.sub(r"ADMIN_PASSWORD_HASH=.*", "ADMIN_PASSWORD_HASH=" + hash_, content)
-open(env_file, "w").write(content)
-exp = datetime.datetime.now(datetime.timezone.utc) + datetime.timedelta(days=3650)
-token = jwt.encode({"sub": username, "exp": exp}, secret_key, algorithm="HS256")
-open(sys.argv[3], "w").write(token)
-print("[OK]    Admin credentials saved (username: " + username + ")")
-PYEOF
-
-python3 "$HELPER" "$BACKEND_ENV_FILE" "$SECRET_KEY" "$TOKEN_FILE"
-ADMIN_JWT_TOKEN=$(cat "$TOKEN_FILE")
-rm -f "$HELPER" "$TOKEN_FILE"
+python3 "${SCRIPT_DIR}/admin_helper.py" "$BACKEND_ENV_FILE"
+if [[ $? -ne 0 ]]; then
+  error "Failed to configure admin credentials. Check the output above."
+fi
 
 # Frontend .env
 WRITE_FRONTEND_ENV=true
@@ -290,13 +260,9 @@ fi
 if [[ "$WRITE_FRONTEND_ENV" == true ]]; then
   cat > "${FRONTEND_ENV_FILE}" <<EOF
 # -- API URL ------------------------------------------------------------------
-# For development: http://localhost:8000/api/v1
+# For development: http://localhost:8000/api/v1  (set in .env.development)
 # For production: /api/v1 (same origin — backend serves frontend)
 VITE_API_URL=/api/v1
-
-# -- API Bypass Token ----------------------------------------------------------
-# Embedded JWT token allowing frontend clients to bypass the standard login loop.
-VITE_API_TOKEN=${ADMIN_JWT_TOKEN}
 EOF
   success "frontend/.env written"
 fi
@@ -375,23 +341,28 @@ success "Stock tables ready."
 step "Step 8: Data Seeding (Optional)"
 
 echo ""
-warn "Seeding fetches live data from AMFI and yfinance — this can take 30-90 minutes."
+warn "Seeding fetches live data from AMFI, yfinance, and screener.in — this can take 30-120 minutes."
 echo ""
 echo "  What data would you like to seed?"
-echo "  [1] Mutual Fund data only   (benchmarks + funds + NAV history,  30-60 min)"
-echo "  [2] Stock data only         (18 stocks + 5y price history,      20-40 min)"
-echo "  [3] Both                    (recommended for full platform,     50-100 min)"
-echo "  [4] Skip seeding            (run seed scripts manually later)"
+echo "  [1] Mutual Fund data only          (benchmarks + funds + NAV history,  30-60 min)"
+echo "  [2] Stock data only                (18 stocks + 5y price history,      20-40 min)"
+echo "  [3] Stock data + Fundamentals      (stocks + screener.in data,         35-55 min)"
+echo "  [4] Both MF + Stocks               (recommended for full platform,     50-100 min)"
+echo "  [5] All  (MF + Stocks + Fundamentals)                                  65-115 min"
+echo "  [6] Skip seeding                   (run seed scripts manually later)"
 echo ""
-read -rp "  Enter choice [4]: " SEED_CHOICE
-SEED_CHOICE="${SEED_CHOICE:-4}"
+read -rp "  Enter choice [6]: " SEED_CHOICE
+SEED_CHOICE="${SEED_CHOICE:-6}"
 
 SEED_MF=false
 SEED_STOCKS=false
+SEED_FUNDAMENTALS=false
 case "$SEED_CHOICE" in
   1) SEED_MF=true ;;
   2) SEED_STOCKS=true ;;
-  3) SEED_MF=true; SEED_STOCKS=true ;;
+  3) SEED_STOCKS=true; SEED_FUNDAMENTALS=true ;;
+  4) SEED_MF=true; SEED_STOCKS=true ;;
+  5) SEED_MF=true; SEED_STOCKS=true; SEED_FUNDAMENTALS=true ;;
   *) info "Skipping seeding." ;;
 esac
 
@@ -417,6 +388,12 @@ if [[ "$SEED_STOCKS" == true ]]; then
   info "Backfilling 5 years of price data from yfinance (20-40 minutes)..."
   python3 scripts/seed/backfill_prices.py 5y
   success "Stock price history backfilled."
+fi
+
+if [[ "$SEED_FUNDAMENTALS" == true ]]; then
+  info "Seeding fundamental data from screener.in (5-15 minutes)..."
+  python3 scripts/seed/seed_fundamentals.py
+  success "Fundamental data seeded."
 fi
 
 # =============================================================================
@@ -511,14 +488,22 @@ else
 fi
 
 info "Installing TA-Lib Python package..."
-if pip install "TA-Lib>=0.6.8" --quiet; then
+TALIB_PY_INSTALLED=false
+if pip install "TA-Lib>=0.6.8" --quiet 2>/dev/null; then
   success "TA-Lib Python package installed."
+  TALIB_PY_INSTALLED=true
 else
+  warn "TA-Lib Python package installation failed."
   if [[ "$TALIB_INSTALLED" == false ]]; then
-    error "pip install TA-Lib failed. This is likely because the ta-lib C library is missing.\nInstall it manually (e.g. sudo apt-get install libta-lib-dev) and rerun this script."
+    warn "The ta-lib C library is missing. Install it manually:"
+    warn "  Ubuntu/Debian: sudo apt-get install libta-lib-dev"
+    warn "  macOS:         brew install ta-lib"
+    warn "  Then rerun:    pip install TA-Lib"
   else
-    error "pip install TA-Lib failed. Check the output above for details."
+    warn "The C library is installed but pip install still failed. Check the output above."
   fi
+  warn "Continuing setup — the API will start but technical analysis features will be unavailable."
+  warn "Run 'pip install TA-Lib' inside the venv after resolving the C library to enable them."
 fi
 
 # =============================================================================
@@ -527,11 +512,21 @@ fi
 step "Step 11: Starting FastAPI Server"
 
 echo ""
-echo -e "${GREEN}${BOLD}  Setup complete! Starting Nivesh API...${NC}"
+echo -e "${GREEN}${BOLD}  ╔══════════════════════════════════════════╗${NC}"
+echo -e "${GREEN}${BOLD}  ║     Nivesh Platform — Setup Complete!    ║${NC}"
+echo -e "${GREEN}${BOLD}  ╚══════════════════════════════════════════╝${NC}"
 echo ""
-echo -e "${GREEN}  Frontend + API  :  http://localhost:8000${NC}"
-echo -e "${GREEN}  API docs        :  http://localhost:8000/docs${NC}"
-echo -e "${GREEN}  Health          :  http://localhost:8000/api/health${NC}"
+echo -e "${CYAN}  Frontend + API  :  http://localhost:8000${NC}"
+echo -e "${CYAN}  API docs        :  http://localhost:8000/docs${NC}"
+echo -e "${CYAN}  Health check    :  http://localhost:8000/api/health${NC}"
+echo ""
+echo -e "${YELLOW}  Login at        :  http://localhost:8000/login${NC}"
+echo -e "${YELLOW}  Use the admin username and password you set in Step 5.${NC}"
+if [[ "${TALIB_PY_INSTALLED:-false}" == false ]]; then
+  echo ""
+  echo -e "${YELLOW}  [NOTE] TA-Lib not installed — technical analysis features unavailable.${NC}"
+  echo -e "${YELLOW}         Run: pip install TA-Lib   (after installing the C library)${NC}"
+fi
 echo ""
 
 cd "${BACKEND_DIR}"

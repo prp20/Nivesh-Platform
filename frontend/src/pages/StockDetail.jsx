@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useState, useRef } from "react";
 import { useParams, Link, useNavigate } from "react-router-dom";
 import { useDispatch, useSelector } from "react-redux";
 import { fetchStockDetail, triggerFullStockSync } from "../store/slices/stocksSlice";
@@ -23,6 +23,7 @@ export default function StockDetail() {
   const [priceHistory, setPriceHistory] = useState([]);
   const [syncingPrices, setSyncingPrices] = useState(false);
   const [syncingFundamentals, setSyncingFundamentals] = useState(false);
+  const fundamentalsPollRef = useRef(null);
 
   const timeframes = [
     { id: '1M', interval: '1d', limit: 20 },
@@ -77,24 +78,80 @@ export default function StockDetail() {
   };
 
   const handleSyncFundamentals = async () => {
+    // Clear any existing poll
+    if (fundamentalsPollRef.current) {
+      clearInterval(fundamentalsPollRef.current);
+      fundamentalsPollRef.current = null;
+    }
+
     setSyncingFundamentals(true);
+    let timeoutId = null;
+
     try {
-      await stockService.triggerScreenerScrape(symbol, true);
-      const [rat, fund] = await Promise.all([
-        stockService.getRatios(symbol),
-        stockService.getFundamentals(symbol, { statement_type: stmtType, limit: 5 })
-      ]);
-      if (rat.records?.length > 0) setRatios(rat.records[0]);
-      setFundamentals(fund);
-      dispatch(fetchStockDetail(symbol));
-      toast.success('Fundamental data synced successfully');
+      const triggerTime = new Date();
+      await stockService.triggerScreenerScrape(symbol, true); // Returns immediately (background job)
+
+      const stopPolling = () => {
+        if (fundamentalsPollRef.current) {
+          clearInterval(fundamentalsPollRef.current);
+          fundamentalsPollRef.current = null;
+        }
+        if (timeoutId) {
+          clearTimeout(timeoutId);
+          timeoutId = null;
+        }
+      };
+
+      const poll = async () => {
+        try {
+          const statusRes = await stockService.getPipelineStatus();
+          const job = (statusRes.jobs || []).find(
+            j => j.job_name === 'fundamental_scrape_single' &&
+                 new Date(j.started_at) >= triggerTime
+          );
+          if (job?.status === 'SUCCESS') {
+            stopPolling();
+            const [rat, fund] = await Promise.all([
+              stockService.getRatios(symbol),
+              stockService.getFundamentals(symbol, { statement_type: stmtType, limit: 5 })
+            ]);
+            if (rat.records?.length > 0) setRatios(rat.records[0]);
+            setFundamentals(fund);
+            dispatch(fetchStockDetail(symbol));
+            toast.success('Fundamental data synced successfully');
+            setSyncingFundamentals(false);
+          } else if (job?.status === 'FAILED') {
+            stopPolling();
+            toast.error('Fundamental sync failed on the server. Check pipeline logs.');
+            setSyncingFundamentals(false);
+          }
+        } catch (pollErr) {
+          console.error('Status poll error:', pollErr);
+        }
+      };
+
+      fundamentalsPollRef.current = setInterval(poll, 5000);
+
+      // Safety timeout: reset button after 5 minutes regardless
+      timeoutId = setTimeout(() => {
+        stopPolling();
+        setSyncingFundamentals(false);
+        toast.error('Fundamental sync timed out. Check the Admin pipeline status page.');
+      }, 300000);
+
     } catch (error) {
-      console.error('Fundamental sync failed:', error);
-      toast.error('Failed to sync fundamental data. Please try again.');
-    } finally {
+      console.error('Failed to trigger fundamental sync:', error);
+      toast.error('Failed to start fundamental sync. Please try again.');
       setSyncingFundamentals(false);
     }
   };
+
+  // Cleanup polling on unmount
+  useEffect(() => {
+    return () => {
+      if (fundamentalsPollRef.current) clearInterval(fundamentalsPollRef.current);
+    };
+  }, []);
 
   useEffect(() => {
     if (symbol && activeTab === "fundamentals" && ["PL", "BS", "CF"].includes(stmtType)) {
