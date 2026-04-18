@@ -368,3 +368,44 @@ class PipelineAudit(Base):
     records_out = Column(Integer, default=0)
     error_msg   = Column(Text)
     metadata_   = Column("metadata", JSONB)
+
+
+class FundamentalScore(Base):
+    __tablename__ = "fundamental_scores"
+    __table_args__ = (
+        UniqueConstraint('stock_id', 'period_end', 'score_version', name='uq_stock_period_version'),
+        Index('ix_fundamental_scores_stock_id', 'stock_id'),
+    )
+
+    id                          = Column(Integer, primary_key=True)
+    stock_id                    = Column(Integer, ForeignKey("stocks.id", ondelete="CASCADE"), nullable=False)
+    period_end                  = Column(Date, nullable=False)
+    period_type                 = Column(String(10), nullable=False)
+    score_version               = Column(String(10), nullable=False, default="v1.0")
+    
+    # Statement Scores (0-10)
+    pl_score                    = Column(Numeric(6, 3))
+    bs_score                    = Column(Numeric(6, 3))
+    cf_score                    = Column(Numeric(6, 3))
+    
+    # Sub-component scores
+    pl_growth_score             = Column(Numeric(6, 3))
+    pl_margin_score             = Column(Numeric(6, 3))
+    pl_eps_score                = Column(Numeric(6, 3))
+    pl_consistency_score        = Column(Numeric(6, 3))
+    
+    bs_leverage_score           = Column(Numeric(6, 3))
+    bs_liquidity_score          = Column(Numeric(6, 3))
+    bs_asset_score              = Column(Numeric(6, 3))
+    bs_networth_score           = Column(Numeric(6, 3))
+    
+    cf_operating_score          = Column(Numeric(6, 3))
+    cf_capex_score              = Column(Numeric(6, 3))
+    cf_financing_score          = Column(Numeric(6, 3))
+    
+    # Composite Result
+    composite_fundamental_score = Column(Numeric(6, 3))
+    reasoning_label             = Column(String(50))
+    reasoning_text              = Column(Text)
+    
+    computed_at                 = Column(TIMESTAMP(timezone=True), server_default=func.now())

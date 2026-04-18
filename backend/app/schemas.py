@@ -410,3 +410,58 @@ class StockDetailResult(BaseModel):
     macd_hist: Optional[float] = None
     sma_200: Optional[float] = None
     sma_50: Optional[float] = None
+
+
+# ============================================================================
+# FUNDAMENTAL SCORING PIPELINE SCHEMAS
+# ============================================================================
+
+class FundamentalScoreRunRequest(BaseModel):
+    """Request to trigger fundamental scoring for a stock."""
+    symbol: str
+    period_type: str = "annual"
+    score_version: str = "v1.0"
+
+class BulkFundamentalScoreRequest(BaseModel):
+    """Request to trigger bulk fundamental scoring."""
+    symbols: Optional[List[str]] = None  # If None, run for all active stocks
+    period_type: str = "annual"
+    score_version: str = "v1.0"
+    recompute: bool = False
+
+class ScoringStateSchema(BaseModel):
+    """Pydantic representation of the LangGraph ScoringState."""
+    stock_id: int
+    symbol: str
+    period_type: str
+    score_version: str
+    statements_data: Dict[str, List[Dict[str, Any]]] = {}
+    pl_results: Optional[Dict[str, Any]] = None
+    bs_results: Optional[Dict[str, Any]] = None
+    cf_results: Optional[Dict[str, Any]] = None
+    composite_score: float = 0.0
+    reasoning_label: Optional[str] = None
+    reasoning_text: Optional[str] = None
+    status: str
+    error: Optional[str] = None
+    logs: List[str] = []
+
+class FundamentalScoreRead(BaseModel):
+    """Schema for reading a persisted fundamental score."""
+    id: int
+    stock_id: int
+    period_end: date
+    score_version: str
+    total_score: float
+    pl_score: float
+    bs_score: float
+    cf_score: float
+    pl_metrics: Optional[Dict[str, Any]] = None
+    bs_metrics: Optional[Dict[str, Any]] = None
+    cf_metrics: Optional[Dict[str, Any]] = None
+    ai_label: Optional[str] = None
+    ai_reasoning: Optional[str] = None
+    created_at: datetime
+    updated_at: datetime
+    model_config = ConfigDict(from_attributes=True)
+

@@ -20,6 +20,20 @@ logger = logging.getLogger(__name__)
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Startup and shutdown logic for the FastAPI application."""
+    # Export LangSmith and Groq variables to environment for underlying libraries
+    import os
+    if settings.LANGSMITH_TRACING:
+        os.environ["LANGCHAIN_TRACING_V2"] = "true"
+        trace_key = settings.LANGSMITH_API_KEY.get_secret_value()
+        if trace_key:
+            os.environ["LANGCHAIN_API_KEY"] = trace_key
+        os.environ["LANGCHAIN_PROJECT"] = settings.LANGSMITH_PROJECT
+        os.environ["LANGCHAIN_ENDPOINT"] = settings.LANGSMITH_ENDPOINT
+    
+    groq_key = settings.GROQ_API_KEY.get_secret_value()
+    if groq_key:
+        os.environ["GROQ_API_KEY"] = groq_key
+
     # Startup logic
     async with engine.begin() as conn:
         # pg_trgm is required for GIN trigram indexes on fund_master and stocks.
