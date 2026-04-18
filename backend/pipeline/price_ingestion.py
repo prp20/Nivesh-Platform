@@ -66,7 +66,7 @@ async def run_index_ingestion():
 
 # ─── Backfill (run once from seed script) ────────────────────────────────────
 
-async def run_backfill(period: str = "5y"):
+async def run_backfill(period: str = "5y", progress_callback=None):
     """
     Fetch full price history for all stocks.
 
@@ -90,6 +90,13 @@ async def run_backfill(period: str = "5y"):
             total_upserted += count
             stocks_processed += len(chunk)
             await audit.update_progress(stocks_processed)
+            
+            if progress_callback:
+                if asyncio.iscoroutinefunction(progress_callback):
+                    await progress_callback(len(chunk), stocks_processed, len(stocks))
+                else:
+                    progress_callback(len(chunk), stocks_processed, len(stocks))
+
             logger.info(
                 f"Backfill chunk {i+1}/{len(chunks)} ({stocks_processed}/{len(stocks)} stocks): {count} rows"
             )
@@ -128,7 +135,9 @@ async def _ingest_chunk(stocks: list, period: str) -> int:
     # Download with exponential backoff retry
     for attempt in range(MAX_API_RETRIES):
         try:
-            df = yf.download(
+            # yfinance is blocking, run in thread to keep event loop free
+            df = await asyncio.to_thread(
+                yf.download,
                 tickers_str,
                 period=period,
                 interval="1d",
