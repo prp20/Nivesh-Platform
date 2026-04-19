@@ -22,7 +22,14 @@ try:
 except ImportError:
     # Fallback if running from different directory
     sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../..")))
-    from fundamental_data_extractor import ScreenerScraper
+    # Add local_tests to path as it's a known location for the extractor
+    sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../../local_tests")))
+    try:
+        from fundamental_data_extractor import ScreenerScraper
+    except ImportError:
+        logger.warning("fundamental_data_extractor not found. Scraper functionality will be disabled.")
+        ScreenerScraper = None
+
 
 from pipeline.normalizer import (
     normalize_financial_table,

@@ -210,7 +210,7 @@ async def trigger_screener_scrape_all(
     from pipeline.fundamental_scraper import run_fundamental_scrape_all
 
     async def _scrape_then_ratios():
-        await run_fundamental_scrape_all()
+        await run_fundamental_scrape_all(days_since_last=days_since_last)
         from pipeline.ratio_engine import run_ratio_compute_all
         await run_ratio_compute_all()
 
@@ -512,7 +512,7 @@ async def trigger_fundamental_scoring_bulk(
     async def _run_bulk():
         async with AsyncSessionLocal() as db:
             if req.symbols:
-                rows = await db.execute(sa.text("SELECT id, symbol FROM stocks WHERE symbol IN :symbols"), {"symbols": tuple(req.symbols)})
+                rows = await db.execute(sa.text("SELECT id, symbol FROM stocks WHERE symbol = ANY(:symbols)"), {"symbols": list(req.symbols)})
                 stocks = rows.fetchall()
             else:
                 rows = await db.execute(sa.text("SELECT id, symbol FROM stocks WHERE is_active=TRUE"))

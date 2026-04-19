@@ -7,9 +7,13 @@ from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy import text
+from jose import jwt, JWTError
+
 
 from .config import settings
+from .database import engine, init_db_pool, close_db_pool
 from .routers import funds, benchmarks, navs, benchmark_navs, metrics, sync, auth, stocks, screener, pipeline
+
 from .database import engine, Base
 from .rate_limiting import get_rate_limiter
 from pipeline.scheduler import configure_scheduler, scheduler
@@ -49,6 +53,8 @@ async def lifespan(app: FastAPI):
     yield
     # Shutdown logic
     scheduler.shutdown(wait=False)
+    await close_db_pool()
+
     logger.info("Scheduler shut down")
 
 app = FastAPI(
@@ -77,8 +83,17 @@ async def rate_limit_middleware(request: Request, call_next):
     Uses user identifier from JWT token if available, falls back to IP address.
     Enforces per-endpoint rate limits defined in rate_limiting.py.
     """
-    # Get user identifier (prefer JWT user, fall back to IP)
-    user_id = request.headers.get("X-User-Id", request.client.host if request.client else "unknown")
+    # Get user identifier (prefer JWT sub, fall back to IP)
+    user_id = request.client.host if request.client else "unknown"
+    auth_header = request.headers.get("Authorization")
+    if auth_header and auth_header.startswith("Bearer "):
+        try:
+            token = auth_header.split(" ")[1]
+            payload = jwt.decode(token, settings.SECRET_KEY.get_secret_value() if hasattr(settings.SECRET_KEY, "get_secret_value") else settings.SECRET_KEY, algorithms=["HS256"])
+            user_id = payload.get("sub", user_id)
+        except (JWTError, Exception):
+            pass  # Fall back to IP on invalid tokens
+
 
     # Get endpoint path for rate limit lookup
     endpoint = request.url.path

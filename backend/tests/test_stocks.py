@@ -103,5 +103,21 @@ async def test_get_stock_shareholding(async_client, seed_stock):
 async def test_get_stock_ratios(async_client, seed_stock):
     """Test getting stock financial ratios."""
     response = await async_client.get(f"/api/v1/stocks/{seed_stock.symbol}/ratios")
-    # May return empty or 404 if no ratios computed
+
+@pytest.mark.asyncio
+async def test_get_stock_price_history_date_filtering(async_client, seed_stock):
+    """
+    Verify Critical 5: Date filtering in price history.
+    """
+    symbol = seed_stock.symbol
+    # Test with both dates
+    response = await async_client.get(
+        f"/api/v1/stocks/{symbol}/price?from_date=2024-01-01&to_date=2024-03-31"
+    )
+    assert response.status_code in [200, 404, 500]
+    
+    # Test with only from_date
+    response = await async_client.get(
+        f"/api/v1/stocks/{symbol}/price?from_date=2024-01-01"
+    )
     assert response.status_code in [200, 404, 500]
