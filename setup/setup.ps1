@@ -156,12 +156,22 @@ Write-Step "Step 4: Python Virtual Environment"
 
 Set-Location $ProjectRoot
 
-if (-not (Test-Path $VenvDir)) {
+if (Test-Path $VenvDir) {
+  Write-Warn "Virtual environment already exists at $VenvDir."
+  $DeleteVenv = Read-Host "  Do you want to delete it and create a fresh one? (y/N)"
+  if ($DeleteVenv -match "^[Yy]$") {
+    Write-Info "Deleting existing virtual environment..."
+    Remove-Item $VenvDir -Recurse -Force
+    Write-Info "Creating virtual environment at $VenvDir ..."
+    & $PythonCmd -m venv $VenvDir
+    Write-Success "Virtual environment created."
+  } else {
+    Write-Info "Proceeding with existing virtual environment."
+  }
+} else {
   Write-Info "Creating virtual environment at $VenvDir ..."
   & $PythonCmd -m venv $VenvDir
   Write-Success "Virtual environment created."
-} else {
-  Write-Info "Virtual environment already exists at $VenvDir."
 }
 
 $ActivateScript = Join-Path $VenvDir "Scripts\Activate.ps1"

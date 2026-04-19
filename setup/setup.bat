@@ -136,7 +136,24 @@ echo.
 
 cd /d "%PROJECT_ROOT%"
 
-if not exist "%VENV_DIR%" (
+if exist "%VENV_DIR%" (
+  echo [WARN]  Virtual environment already exists at %VENV_DIR%
+  set /p DELETE_VENV="  Do you want to delete it and create a fresh one? (y/N): "
+  if /i "!DELETE_VENV!"=="y" (
+    echo [INFO]  Deleting existing virtual environment...
+    rmdir /s /q "%VENV_DIR%"
+    echo [INFO]  Creating virtual environment at %VENV_DIR%...
+    python -m venv "%VENV_DIR%"
+    if errorlevel 1 (
+      echo [ERROR] Failed to create virtual environment.
+      pause
+      exit /b 1
+    )
+    echo [OK]    Virtual environment created.
+  ) else (
+    echo [INFO]  Proceeding with existing virtual environment.
+  )
+) else (
   echo [INFO]  Creating virtual environment at %VENV_DIR%...
   python -m venv "%VENV_DIR%"
   if errorlevel 1 (
@@ -145,8 +162,6 @@ if not exist "%VENV_DIR%" (
     exit /b 1
   )
   echo [OK]    Virtual environment created.
-) else (
-  echo [INFO]  Virtual environment already exists.
 )
 
 echo [INFO]  Activating virtual environment...

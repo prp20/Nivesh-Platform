@@ -160,12 +160,23 @@ step "Step 4: Python Virtual Environment"
 
 cd "${PROJECT_ROOT}"
 
-if [[ ! -d "${VENV_DIR}" ]]; then
+if [[ -d "${VENV_DIR}" ]]; then
+  warn "Virtual environment already exists at ${VENV_DIR}."
+  read -rp "  Do you want to delete it and create a fresh one? (y/N): " DELETE_VENV
+  DELETE_VENV="${DELETE_VENV:-n}"
+  if [[ "$DELETE_VENV" =~ ^[Yy]$ ]]; then
+    info "Deleting existing virtual environment..."
+    rm -rf "${VENV_DIR}"
+    info "Creating virtual environment at ${VENV_DIR}..."
+    python3 -m venv "${VENV_DIR}"
+    success "Virtual environment created."
+  else
+    info "Proceeding with existing virtual environment."
+  fi
+else
   info "Creating virtual environment at ${VENV_DIR}..."
   python3 -m venv "${VENV_DIR}"
   success "Virtual environment created."
-else
-  info "Virtual environment already exists at ${VENV_DIR}."
 fi
 
 # shellcheck disable=SC1091
