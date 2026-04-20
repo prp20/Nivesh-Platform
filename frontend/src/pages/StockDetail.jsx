@@ -23,6 +23,8 @@ export default function StockDetail() {
   const [priceHistory, setPriceHistory] = useState([]);
   const [syncingPrices, setSyncingPrices] = useState(false);
   const [syncingFundamentals, setSyncingFundamentals] = useState(false);
+  const [agentInsights, setAgentInsights] = useState(null);
+  const [loadingInsights, setLoadingInsights] = useState(false);
   const fundamentalsPollRef = useRef(null);
 
   const timeframes = [
@@ -146,6 +148,20 @@ export default function StockDetail() {
     }
   };
 
+  const fetchInsights = async () => {
+    if (!symbol) return;
+    setLoadingInsights(true);
+    try {
+      const data = await stockService.getAgentInsights(symbol);
+      setAgentInsights(data);
+    } catch (err) {
+      console.error("Failed to fetch agent insights:", err);
+      toast.error("Cloud resonance failure: Could not synthesize AI insights.");
+    } finally {
+      setLoadingInsights(false);
+    }
+  };
+
   // Cleanup polling on unmount
   useEffect(() => {
     return () => {
@@ -174,6 +190,12 @@ export default function StockDetail() {
         .finally(() => setLoadingShareholding(false));
     }
   }, [symbol, activeTab, stmtType, shareholding]);
+
+  useEffect(() => {
+    if (activeTab === "agent_insights" && !agentInsights && !loadingInsights) {
+      fetchInsights();
+    }
+  }, [activeTab, symbol, agentInsights, loadingInsights]);
 
   if (status === "loading" || !detail) {
     return (
@@ -310,7 +332,8 @@ export default function StockDetail() {
         <div className="flex justify-center gap-8 mb-16 border-b border-outline-variant/20 overflow-x-auto no-scrollbar">
           {[
             { id: "oracle", label: "Intelligence" },
-            { id: "fundamentals", label: "Fundamental Lattice" }
+            { id: "fundamentals", label: "Fundamental Lattice" },
+            { id: "agent_insights", label: "Agent Insights" }
           ].map(tab => (
             <button
               key={tab.id}
@@ -504,6 +527,17 @@ export default function StockDetail() {
               />
             </motion.div>
           )}
+
+          {activeTab === "agent_insights" && (
+            <motion.div key="agent_insights" initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }}>
+              <AgentInsightsTab 
+                data={agentInsights} 
+                loading={loadingInsights} 
+                onRefresh={fetchInsights}
+                symbol={symbol}
+              />
+            </motion.div>
+          )}
         </AnimatePresence>
 
       </div>
@@ -639,4 +673,156 @@ function ShareholdingTab({ data, loading }) {
       </table>
     </div>
   );
+}
+
+function AgentInsightsTab({ data, loading, onRefresh, symbol }) {
+  if (loading) {
+    return (
+      <div className="flex flex-col items-center justify-center p-20 space-y-8 animate-pulse">
+        <div className="w-20 h-20 border-4 border-primary border-t-transparent rounded-full animate-spin"></div>
+        <p className="font-label text-xs uppercase tracking-[0.4em] text-primary">Synthesizing Neural Lattice...</p>
+      </div>
+    );
+  }
+
+  if (!data) {
+    return (
+      <div className="glass-panel p-20 text-center rounded-[3rem] border border-white/5">
+        <span className="material-symbols-outlined text-4xl text-slate-800 mb-4 block">smart_toy</span>
+        <p className="text-[10px] uppercase font-black tracking-widest text-slate-600 mb-8">No Intelligence Recovered</p>
+        <button 
+          onClick={onRefresh}
+          className="px-8 py-3 bg-primary text-black rounded-xl font-black text-[10px] tracking-[0.2em] uppercase hover:shadow-lg hover:shadow-primary/20 transition-all font-headline"
+        >
+          Initialize Agent Analysis
+        </button>
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-12 animate-fadeIn pb-20">
+      {/* Header Score & Reasoning */}
+      <div className="flex flex-col lg:flex-row gap-8">
+        <div className="lg:w-1/3 glass-panel p-10 rounded-[3rem] border border-white/5 flex flex-col items-center justify-center relative overflow-hidden">
+             <div className="absolute inset-0 bg-gradient-to-br from-primary/10 to-transparent pointer-events-none"></div>
+             <p className="text-[10px] text-slate-500 font-black uppercase tracking-[0.4em] mb-6 relative z-10">Composite Alpha Score</p>
+             <div className="relative w-48 h-48 flex items-center justify-center z-10">
+                <svg className="w-full h-full transform -rotate-90">
+                    <circle cx="96" cy="96" r="88" stroke="currentColor" strokeWidth="2" fill="transparent" className="text-white/5" />
+                    <circle 
+                        cx="96" cy="96" r="88" stroke="currentColor" strokeWidth="10" fill="transparent" 
+                        strokeDasharray={552.92} 
+                        strokeDashoffset={552.92 - (552.92 * (data.composite_score || 0)) / 100}
+                        className="text-primary drop-shadow-[0_0_10px_rgba(233,195,73,0.5)]" 
+                        strokeLinecap="round"
+                    />
+                </svg>
+                <div className="absolute inset-0 flex flex-col items-center justify-center">
+                    <span className="text-5xl font-headline font-black text-white">{data.composite_score?.toFixed(1) || '0.0'}</span>
+                    <span className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Quantum Rank</span>
+                </div>
+             </div>
+             <div className="mt-8 px-6 py-2 bg-primary/10 border border-primary/20 rounded-full z-10">
+                <span className="text-[10px] font-black text-primary uppercase tracking-widest">{data.reasoning_label}</span>
+             </div>
+        </div>
+
+        <div className="lg:flex-1 glass-panel p-10 rounded-[3rem] border border-white/5 relative overflow-hidden">
+             <div className="absolute top-0 right-0 p-8 opacity-10">
+                <span className="material-symbols-outlined text-8xl text-primary">format_quote</span>
+             </div>
+             <h4 className="text-[10px] font-black uppercase tracking-[0.4em] text-slate-500 mb-6">Neural Synthesis</h4>
+             <p className="text-xl md:text-2xl font-headline font-light italic leading-relaxed text-white/90 relative z-10">
+                "{data.reasoning_text}"
+             </p>
+             <div className="mt-12 flex justify-between items-center relative z-10">
+                <div className="flex items-center gap-3">
+                    <div className="w-2 h-2 rounded-full bg-secondary animate-pulse"></div>
+                    <span className="text-[9px] font-black text-slate-500 uppercase tracking-widest">Model Version {data.score_version}</span>
+                </div>
+                <button 
+                  onClick={onRefresh}
+                  className="flex items-center gap-2 px-6 py-2 rounded-xl border border-white/5 hover:bg-white/5 transition-all group"
+                >
+                    <span className="material-symbols-outlined text-sm group-hover:rotate-180 transition-transform duration-500 text-primary">sync</span>
+                    <span className="text-[9px] font-black text-slate-400 group-hover:text-white uppercase tracking-widest">Re-run Analysis</span>
+                </button>
+             </div>
+        </div>
+      </div>
+
+      {/* Granular Pillar Scores */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
+        <ScoreCard 
+            title="Profit & Loss" 
+            score={data.pl_results?.score} 
+            metrics={[
+                { label: 'Revenue CAGR', value: `${data.pl_results?.metrics?.rev_cagr?.toFixed(2)}%` },
+                { label: 'PAT CAGR', value: `${data.pl_results?.metrics?.pat_cagr?.toFixed(2)}%` },
+                { label: 'Latest OPM', value: `${data.pl_results?.metrics?.latest_opm?.toFixed(2)}%` }
+            ]} 
+            accent="primary"
+        />
+        <ScoreCard 
+            title="Balance Sheet" 
+            score={data.bs_results?.score} 
+            metrics={[
+                { label: 'Debt/Equity', value: data.bs_results?.metrics?.debt_to_equity?.toFixed(2) },
+                { label: 'Current Ratio', value: data.bs_results?.metrics?.current_ratio?.toFixed(2) },
+                { label: 'Reserves CAGR', value: `${data.bs_results?.metrics?.reserves_cagr?.toFixed(2)}%` }
+            ]} 
+            accent="secondary"
+        />
+        <ScoreCard 
+            title="Cash Flow" 
+            score={data.cf_results?.score} 
+            metrics={[
+                { label: 'CFO/PAT', value: data.cf_results?.metrics?.cfo_to_pat?.toFixed(2) },
+                { label: 'FCF +ve Years', value: data.cf_results?.metrics?.fcf_positive_years }
+            ]} 
+            accent="error"
+        />
+      </div>
+
+      {/* Pipeline Logs */}
+      <div className="glass-panel rounded-[2rem] border border-white/5 overflow-hidden">
+        <div className="px-8 py-4 bg-white/5 flex items-center justify-between">
+            <h5 className="text-[9px] font-black uppercase tracking-[0.4em] text-slate-500">Pipeline Execution Trace</h5>
+            <span className="text-[10px] font-bold text-secondary font-headline uppercase tracking-widest">{data.status}</span>
+        </div>
+        <div className="p-8 space-y-2 bg-black/20">
+            {data.logs?.map((log, i) => (
+                <div key={i} className="flex gap-4 font-mono text-[10px]">
+                    <span className="text-slate-700">[{i+1}]</span>
+                    <span className="text-slate-400">{log}</span>
+                </div>
+            ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function ScoreCard({ title, score, metrics, accent }) {
+    const accentColor = accent === 'primary' ? 'text-primary' : accent === 'secondary' ? 'text-secondary' : 'text-error';
+    const borderColor = accent === 'primary' ? 'group-hover:border-primary/20' : accent === 'secondary' ? 'group-hover:border-secondary/20' : 'group-hover:border-error/20';
+
+    return (
+        <div className={`glass-panel p-8 rounded-[2.5rem] border border-white/5 relative overflow-hidden group ${borderColor} transition-colors`}>
+            <h5 className="text-[10px] font-black text-slate-500 uppercase tracking-[0.3em] mb-6">{title}</h5>
+            <div className="flex items-baseline gap-2 mb-8">
+                <span className={`text-4xl font-headline font-black ${accentColor}`}>{score?.toFixed(1) || '0.0'}</span>
+                <span className="text-xs text-slate-600 font-bold uppercase tracking-tighter">/100</span>
+            </div>
+            <div className="space-y-4">
+                {metrics.map((m, i) => (
+                    <div key={i} className="flex justify-between items-center py-2 border-b border-white/[0.02]">
+                        <span className="text-[10px] text-slate-600 font-bold uppercase tracking-widest">{m.label}</span>
+                        <span className="text-sm font-headline font-bold text-white tracking-tighter">{m.value}</span>
+                    </div>
+                ))}
+            </div>
+        </div>
+    );
 }

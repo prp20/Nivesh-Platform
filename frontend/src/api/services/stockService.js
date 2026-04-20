@@ -120,6 +120,11 @@ const stockService = {
   deleteStock: async (symbol) => {
     console.log(`Mock deleteStock called for ${symbol}`);
     return Promise.resolve({ success: true, message: `Mock: Stock ${symbol} deleted.` });
+  },
+
+  getAgentInsights: async (symbol) => {
+    const response = await apiClient.post(`/pipeline/fundamentals/run/${symbol}`);
+    return response.data;
   }
 };
 
