@@ -22,11 +22,12 @@ const StockListing = () => {
         dispatch(fetchStocks({ ...filters, page: pagination.page, limit: 25 }));
     }, [filters, pagination.page, dispatch]);
 
-    const handleSearch = (e) => {
-        if (e.key === "Enter" && search.trim()) {
+    useEffect(() => {
+        const timer = setTimeout(() => {
             dispatch(fetchStocks({ ...filters, q: search, limit: 25, page: 1 }));
-        }
-    };
+        }, 500);
+        return () => clearTimeout(timer);
+    }, [search, dispatch, filters]);
 
     const handleDetailNavigation = (e, symbol) => {
         if (compareList.length > 0) {
@@ -57,7 +58,7 @@ const StockListing = () => {
     }
 
     return (
-        <div className="p-6 md:p-12 lg:p-16 xl:p-24 2xl:p-32 w-full animate-fadeIn flex flex-col gap-16 transition-all duration-500 relative pb-64 bg-surface text-on-surface">
+        <div className="p-6 md:p-10 lg:p-12 2xl:p-16 max-w-screen-2xl mx-auto w-full animate-fadeIn flex flex-col gap-16 transition-all duration-500 relative pb-64 bg-surface text-on-surface">
             {/* Header - Ultra Scale */}
             <header className="mb-12 flex flex-col xl:flex-row items-start xl:items-center justify-between gap-8 pt-8">
                 <div className="space-y-1">
@@ -76,7 +77,6 @@ const StockListing = () => {
                             placeholder="Identify Ticker..."
                             value={search}
                             onChange={(e) => setSearch(e.target.value)}
-                            onKeyDown={handleSearch}
                             className="w-full bg-transparent border-none pl-10 pr-4 py-2 text-[10px] font-label uppercase tracking-widest text-white placeholder-slate-600 focus:outline-none focus:ring-0"
                         />
                     </div>

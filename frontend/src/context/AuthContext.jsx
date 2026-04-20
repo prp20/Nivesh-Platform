@@ -32,13 +32,14 @@ export const AuthProvider = ({ children }) => {
     const login = async (username, password) => {
         try {
             const data = await authService.login(username, password);
+            const userData = await authService.getMe(data.access_token);
+            
             try {
                 localStorage.setItem('nivesh_token', data.access_token);
             } catch (storageError) {
                 console.warn("Failed to store token (possibly incognito mode)", storageError);
-                throw storageError;
             }
-            const userData = await authService.getMe();
+            
             setUser(userData);
             return userData;
         } catch (error) {

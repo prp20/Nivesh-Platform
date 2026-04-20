@@ -26,6 +26,7 @@ export default function StockDetail() {
   const [agentInsights, setAgentInsights] = useState(null);
   const [loadingInsights, setLoadingInsights] = useState(false);
   const fundamentalsPollRef = useRef(null);
+  const safetyTimeoutRef = useRef(null);
 
   const timeframes = [
     { id: '1M', interval: '1d', limit: 20 },
@@ -98,9 +99,9 @@ export default function StockDetail() {
           clearInterval(fundamentalsPollRef.current);
           fundamentalsPollRef.current = null;
         }
-        if (timeoutId) {
-          clearTimeout(timeoutId);
-          timeoutId = null;
+        if (safetyTimeoutRef.current) {
+          clearTimeout(safetyTimeoutRef.current);
+          safetyTimeoutRef.current = null;
         }
       };
 
@@ -135,7 +136,7 @@ export default function StockDetail() {
       fundamentalsPollRef.current = setInterval(poll, 5000);
 
       // Safety timeout: reset button after 5 minutes regardless
-      timeoutId = setTimeout(() => {
+      safetyTimeoutRef.current = setTimeout(() => {
         stopPolling();
         setSyncingFundamentals(false);
         toast.error('Fundamental sync timed out. Check the Admin pipeline status page.');
@@ -166,6 +167,7 @@ export default function StockDetail() {
   useEffect(() => {
     return () => {
       if (fundamentalsPollRef.current) clearInterval(fundamentalsPollRef.current);
+      if (safetyTimeoutRef.current) clearTimeout(safetyTimeoutRef.current);
     };
   }, []);
 
@@ -614,7 +616,7 @@ function FundamentalsTab({ data, stmtType, onStmtChange, loading, shareholdingDa
                           {key.replace(/_/g, " ")}
                         </span>
                         <span className="text-[9px] text-slate-600 font-medium uppercase tracking-widest group-hover:text-slate-400 transition-colors">
-                          Soverign Verified Metric
+                          Sovereign Verified Metric
                         </span>
                       </div>
                     </td>

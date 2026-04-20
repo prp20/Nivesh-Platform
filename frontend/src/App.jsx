@@ -1,4 +1,5 @@
 import React from 'react';
+import toast, { Toaster } from 'react-hot-toast';
 import { BrowserRouter as Router, Routes, Route, Navigate, useParams } from 'react-router-dom';
 import Dashboard from './pages/Dashboard';
 import Portfolio from './pages/Portfolio';
@@ -71,7 +72,7 @@ const AppContent = () => {
   );
 };
 
-import { Toaster } from 'react-hot-toast';
+
 
 function App() {
   return (

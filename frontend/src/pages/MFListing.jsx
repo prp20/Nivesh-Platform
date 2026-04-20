@@ -10,7 +10,7 @@ import CompareDock from '../components/Compare/CompareDock';
 const MFListing = () => {
     const dispatch = useDispatch();
     const navigate = useNavigate();
-    const { items, loading, error, currentPage, pageSize, categoryFilter, viewMode } = useSelector((state) => state.funds);
+    const { items, total, loading, error, currentPage, pageSize, categoryFilter, viewMode } = useSelector((state) => state.funds);
     const { compareList, selectedCategory, selectedSubcategory } = useSelector((state) => state.compare);
 
     useEffect(() => {
@@ -59,7 +59,7 @@ const MFListing = () => {
     }
 
     return (
-        <div className="p-6 md:p-12 lg:p-16 xl:p-24 2xl:p-32 w-full animate-fadeIn flex flex-col gap-16 transition-all duration-500 relative pb-64">
+        <div className="p-6 md:p-10 lg:p-12 2xl:p-16 max-w-screen-2xl mx-auto w-full animate-fadeIn flex flex-col gap-16 transition-all duration-500 relative pb-64 bg-surface text-on-surface">
             {/* Header - Ultra Scale */}
             <header className="mb-12 flex flex-col xl:flex-row items-start xl:items-center justify-between gap-8 pt-8">
                 <div className="space-y-1">
@@ -282,8 +282,9 @@ const MFListing = () => {
                 </button>
                 <div className="text-2xl font-black text-primary font-mono tracking-widest">L-{currentPage}</div>
                 <button 
+                    disabled={currentPage * pageSize >= total}
                     onClick={() => dispatch(setCurrentPage(currentPage + 1))}
-                    className="px-12 py-5 rounded-3xl border border-white/10 text-xs font-black uppercase tracking-widest hover:bg-white/5 transition-all font-mono"
+                    className="px-12 py-5 rounded-3xl border border-white/10 text-xs font-black uppercase tracking-widest hover:bg-white/5 disabled:opacity-20 transition-all font-mono"
                 >
                     NEXT_LEVEL
                 </button>
