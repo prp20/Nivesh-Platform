@@ -182,6 +182,7 @@ class Stock(Base):
     company_name   = Column(String(255), nullable=False)
     sector         = Column(String(100))
     industry       = Column(String(100))
+    summary        = Column(String(5000))
     market_cap_cat = Column(String(50))
     is_index       = Column(Boolean, default=False)
     is_active      = Column(Boolean, default=True)

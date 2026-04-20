@@ -147,7 +147,7 @@ async def screener(
     # Single WHERE clause definition, used in both main and count queries
     sql_main = f"""
         SELECT
-            s.symbol, s.company_name, s.sector, s.market_cap_cat,
+            s.symbol, s.company_name, s.sector, s.industry, s.summary, s.market_cap_cat,
             p.close        AS latest_close,
             p.price_date   AS latest_date,
             r.roe,         r.roce,        r.pat_margin,

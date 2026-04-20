@@ -31,5 +31,5 @@ async def main(period: str):
     print("\nBackfill complete.")
 
 if __name__ == "__main__":
-    period = sys.argv[1] if len(sys.argv) > 1 else "5y"
+    period = sys.argv[1] if len(sys.argv) > 1 else "max"
     asyncio.run(main(period))

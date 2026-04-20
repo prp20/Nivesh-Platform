@@ -356,7 +356,7 @@ warn "Seeding fetches live data from AMFI, yfinance, and screener.in — this ca
 echo ""
 echo "  What data would you like to seed?"
 echo "  [1] Mutual Fund data only          (benchmarks + funds + NAV history,  30-60 min)"
-echo "  [2] Stock data only                (18 stocks + 5y price history,      20-40 min)"
+echo "  [2] Stock data only                (18 stocks + max price history,      20-40 min)"
 echo "  [3] Stock data + Fundamentals      (stocks + screener.in data,         35-55 min)"
 echo "  [4] Both MF + Stocks               (recommended for full platform,     50-100 min)"
 echo "  [5] All  (MF + Stocks + Fundamentals)                                  65-115 min"
@@ -397,7 +397,7 @@ if [[ "$SEED_STOCKS" == true ]]; then
   success "Stock master seeded."
 
   info "Backfilling 5 years of price data from yfinance (20-40 minutes)..."
-  python3 scripts/seed/backfill_prices.py 5y
+  python3 scripts/seed/backfill_prices.py max
   success "Stock price history backfilled."
 fi
 

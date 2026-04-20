@@ -37,6 +37,8 @@ def load_stocks_from_csv() -> List[Dict]:
                 "symbol": row["symbol"],
                 "company_name": row["company_name"],
                 "sector": row.get("sector") or None,
+                "industry": row.get("industry") or None,
+                "summary": row.get("summary") or None,
                 "market_cap_cat": row.get("market_cap_category") or None,
                 "yf_symbol": row["yf_symbol"],
                 "is_index": row["is_index"].lower() == "true",
@@ -44,11 +46,13 @@ def load_stocks_from_csv() -> List[Dict]:
     return stocks
 
 INSERT_SQL = """
-    INSERT INTO stocks (symbol, nse_symbol, yf_symbol, screener_slug, company_name, sector, market_cap_cat, is_index, is_active)
-    VALUES ($1, $2, $3, $4, $5, $6, $7, $8, TRUE)
+    INSERT INTO stocks (symbol, nse_symbol, yf_symbol, screener_slug, company_name, sector, industry, summary, market_cap_cat, is_index, is_active)
+    VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, TRUE)
     ON CONFLICT (symbol) DO UPDATE SET
         company_name   = EXCLUDED.company_name,
         sector         = EXCLUDED.sector,
+        industry       = EXCLUDED.industry,
+        summary        = EXCLUDED.summary,
         market_cap_cat = EXCLUDED.market_cap_cat,
         updated_at     = NOW()
 """
@@ -71,6 +75,8 @@ async def seed():
                 s.get("screener_slug", s["symbol"]),
                 s["company_name"],
                 s.get("sector"),
+                s.get("industry"),
+                s.get("summary"),
                 s.get("market_cap_cat"),
                 s.get("is_index", False),
             )

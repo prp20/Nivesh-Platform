@@ -20,6 +20,13 @@ depends_on: Union[str, Sequence[str], None] = None
 
 def upgrade() -> None:
     """Upgrade schema."""
+    # Idempotency guard
+    connection = op.get_bind()
+    inspector = sa.inspect(connection)
+    existing_tables = set(inspector.get_table_names())
+    if 'fundamental_scores' in existing_tables:
+        return
+
     op.create_table(
         'fundamental_scores',
         sa.Column('id', sa.Integer(), nullable=False),

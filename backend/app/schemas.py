@@ -304,6 +304,8 @@ class StockScreenerResult(BaseModel):
     symbol: str
     company_name: str
     sector: Optional[str] = None
+    industry: Optional[str] = None
+    summary: Optional[str] = None
     market_cap_cat: Optional[str] = None
     latest_close: Optional[float] = None
     latest_date: Optional[date] = None
@@ -343,6 +345,8 @@ class StockListResult(BaseModel):
     symbol: str
     company_name: str
     sector: Optional[str] = None
+    industry: Optional[str] = None
+    summary: Optional[str] = None
     market_cap_cat: Optional[str] = None
     latest_close: Optional[float] = None
     latest_date: Optional[date] = None
@@ -373,6 +377,7 @@ class StockDetailResult(BaseModel):
     company_name: str
     sector: Optional[str] = None
     industry: Optional[str] = None
+    summary: Optional[str] = None
     market_cap_cat: Optional[str] = None
     latest_close: Optional[float] = None
     latest_high: Optional[float] = None

@@ -434,8 +434,8 @@ if "!SEED_STOCKS!"=="1" (
   python scripts\seed\seed_stock_master.py
   echo [OK]    Stock master seeded.
 
-  echo [INFO]  Backfilling 5 years of price data ^(20-40 minutes^)...
-  python scripts\seed\backfill_prices.py 5y
+  echo [INFO]  Backfilling OHLC price data ^(20-40 minutes^)...
+  python scripts\seed\backfill_prices.py max
   echo [OK]    Stock price history backfilled.
 )
 
