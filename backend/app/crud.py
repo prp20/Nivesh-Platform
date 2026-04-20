@@ -273,6 +273,17 @@ async def get_distinct_subcategories(session: AsyncSession, category: str) -> Li
     return sorted([row[0] for row in res.all() if row[0]])
 
 
+async def get_distinct_amcs(session: AsyncSession) -> List[str]:
+    """Return sorted distinct amc_name values from active funds."""
+    q = (
+        select(FundMaster.amc_name)
+        .where(FundMaster.is_active == True)
+        .distinct()
+    )
+    res = await session.execute(q)
+    return sorted([row[0] for row in res.all() if row[0]])
+
+
 async def update_fund_master(session: AsyncSession, scheme_code: str, fund_in: FundMasterUpdate):
     data = fund_in.model_dump(exclude_unset=True)
     if not data:

@@ -49,6 +49,15 @@ async def list_funds(
         "items": items
     }
 
+@router.get("/amcs", response_model=List[str])
+async def list_amcs(
+    session: AsyncSession = Depends(get_db),
+    current_user: str = Depends(security.get_current_user),
+):
+    """Return distinct amc_name values from active funds."""
+    return await crud.get_distinct_amcs(session)
+
+
 @router.get("/categories", response_model=List[str])
 async def list_categories(
     session: AsyncSession = Depends(get_db),

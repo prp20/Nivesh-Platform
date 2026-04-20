@@ -2,10 +2,10 @@ import apiClient from '../apiClient';
 
 const fundService = {
     // FUNDS
-    getFunds: async (skip = 0, limit = 100, category = null, amc = null, subcategory = null, plan_type = null, order_by = null, search = null) => {
+    getFunds: async (skip = 0, limit = 10, category = null, amc = null, subcategory = null, plan_type = null, order_by = null, search = null) => {
         let url = `/funds/?skip=${skip}&limit=${limit}`;
         if (category && category !== 'All') url += `&category=${encodeURIComponent(category)}`;
-        if (amc) url += `&amc=${encodeURIComponent(amc)}`;
+        if (amc && amc !== 'All') url += `&amc=${encodeURIComponent(amc)}`;
         if (subcategory) url += `&subcategory=${encodeURIComponent(subcategory)}`;
         if (plan_type) url += `&plan_type=${encodeURIComponent(plan_type)}`;
         if (order_by) url += `&order_by=${encodeURIComponent(order_by)}`;
@@ -13,6 +13,11 @@ const fundService = {
         
         const response = await apiClient.get(url);
         return response.data; // Now returns {total, skip, limit, items}
+    },
+
+    getAmcs: async () => {
+        const response = await apiClient.get('/funds/amcs');
+        return response.data;
     },
 
     compareFunds: async (codes) => {

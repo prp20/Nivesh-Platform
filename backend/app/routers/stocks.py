@@ -30,6 +30,7 @@ SORT_COLUMNS = SortColumnMap(
 @router.get("", response_model=StockListResponse)
 async def list_stocks(
     sector: Optional[str] = None,
+    industry: Optional[str] = None,
     market_cap_cat: Optional[str] = None,
     is_index: bool = False,
     page: int = Query(1, ge=1, le=10000),
@@ -44,6 +45,7 @@ async def list_stocks(
 
     Args:
         sector: Filter by sector name
+        industry: Filter by industry name
         market_cap_cat: Filter by market cap category (Large/Mid/Small)
         is_index: Filter by index flag (True for indices only, False for stocks)
         page: Page number (1-indexed)
@@ -58,7 +60,19 @@ async def list_stocks(
     builder = FilterBuilder(base_filters=["s.is_active = TRUE"])
     builder.add("s.is_index", "=", is_index, "is_index")
     builder.add("s.sector", "=", sector, "sector")
-    builder.add("s.market_cap_cat", "=", market_cap_cat, "market_cap_cat")
+    builder.add("s.industry", "=", industry, "industry")
+
+    # Handle unified Market Cap labels
+    mcap_mapping = {
+        "Large Cap": ["Large Cap", "largecap", "NIFTY 100", "LARGE CAP", "LargeCap"],
+        "Mid Cap": ["Mid Cap", "midcap", "NIFTY MIDCAP 150", "MID CAP", "MidCap"],
+        "Small Cap": ["Small Cap", "smallcap", "NIFTY SMALLCAP 250", "SMALL CAP", "SmallCap"],
+    }
+
+    if market_cap_cat in mcap_mapping:
+        builder.add_in("s.market_cap_cat", mcap_mapping[market_cap_cat], "market_cap_cat")
+    else:
+        builder.add("s.market_cap_cat", "=", market_cap_cat, "market_cap_cat")
 
     where_clause = builder.build_where()
     params = builder.get_params()

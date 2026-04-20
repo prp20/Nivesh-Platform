@@ -1,12 +1,90 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useRef } from 'react';
 import { useDispatch, useSelector } from "react-redux";
 import { Link, useNavigate } from "react-router-dom";
-import { fetchStocks, setFilter, setPage } from "../store/slices/stocksSlice";
+import { fetchStocks, setFilter, setPage, setLimit } from "../store/slices/stocksSlice";
 import { addStockToCompare, removeStockFromCompare, clearStockCompare } from "../store/slices/stockCompareSlice";
 import { motion, AnimatePresence } from 'framer-motion';
 import toast from 'react-hot-toast';
 
 const SECTORS = ["Banking", "IT", "Pharma", "Auto", "FMCG", "Energy", "Telecom"];
+const INDUSTRIES = [
+    "Banks - Regional", "Auto Manufacturers", "Specialty Chemicals", 
+    "Utilities - Renewable", "Medical Care Facilities", "Marine Shipping",
+    "Software", "Financial Services", "Energy"
+];
+const MARKET_CAPS = [
+    { label: "Large Cap", value: "Large Cap" },
+    { label: "Mid Cap", value: "Mid Cap" },
+    { label: "Small Cap", value: "Small Cap" }
+];
+
+const FilterDropdown = ({ label, options, value, onChange, placeholder }) => {
+    const [isOpen, setIsOpen] = useState(false);
+    const containerRef = useRef(null);
+
+    useEffect(() => {
+        const handleClickOutside = (event) => {
+            if (containerRef.current && !containerRef.current.contains(event.target)) {
+                setIsOpen(false);
+            }
+        };
+        document.addEventListener("mousedown", handleClickOutside);
+        return () => document.removeEventListener("mousedown", handleClickOutside);
+    }, []);
+
+    const selectedOption = options.find(o => (typeof o === 'string' ? o : o.value) === value);
+    const displayValue = selectedOption 
+        ? (typeof selectedOption === 'string' ? selectedOption : selectedOption.label).toUpperCase() 
+        : placeholder.toUpperCase();
+
+    return (
+        <div ref={containerRef} className="relative">
+            <button
+                onClick={() => setIsOpen(!isOpen)}
+                className={`flex items-center justify-between gap-4 bg-black/40 border border-outline-variant/20 rounded-xl px-5 py-3 text-[10px] font-black uppercase tracking-widest transition-all outline-none min-w-[160px] ${isOpen ? 'border-primary text-primary ring-1 ring-primary/20' : 'text-slate-400 focus:border-primary/50'}`}
+            >
+                <span className="truncate">{displayValue}</span>
+                <span className={`material-symbols-outlined text-lg transition-transform duration-300 ${isOpen ? 'rotate-180' : ''}`}>expand_more</span>
+            </button>
+
+            <AnimatePresence>
+                {isOpen && (
+                    <motion.div
+                        initial={{ opacity: 0, y: 10, scale: 0.95 }}
+                        animate={{ opacity: 1, y: 0, scale: 1 }}
+                        exit={{ opacity: 0, y: 10, scale: 0.95 }}
+                        transition={{ duration: 0.2, ease: "circOut" }}
+                        className="absolute z-[1000] top-full mt-2 left-0 w-full min-w-[200px] bg-surface-container-high/90 backdrop-blur-2xl border border-outline-variant/20 rounded-2xl shadow-[0_16px_32px_rgba(0,0,0,0.4)] overflow-hidden"
+                    >
+                        <div className="max-h-60 overflow-y-auto py-2 custom-scrollbar">
+                            <button
+                                onClick={() => { onChange(""); setIsOpen(false); }}
+                                className={`w-full text-left px-5 py-3 text-[10px] font-black uppercase tracking-widest transition-all hover:bg-white/5 ${!value ? 'text-primary bg-primary/10' : 'text-slate-400'}`}
+                            >
+                                {placeholder.toUpperCase()}
+                            </button>
+                            {options.map((opt) => {
+                                const val = typeof opt === 'string' ? opt : opt.value;
+                                const lbl = typeof opt === 'string' ? opt : opt.label;
+                                const isSelected = val === value;
+
+                                return (
+                                    <button
+                                        key={val}
+                                        onClick={() => { onChange(val); setIsOpen(false); }}
+                                        className={`w-full text-left px-5 py-3 text-[10px] font-black uppercase tracking-widest transition-all hover:bg-white/5 ${isSelected ? 'text-primary bg-primary/10' : 'text-slate-400 hover:text-white'}`}
+                                    >
+                                        {lbl.toUpperCase()}
+                                    </button>
+                                );
+                            })}
+                        </div>
+                    </motion.div>
+                )}
+            </AnimatePresence>
+        </div>
+    );
+};
 
 const StockListing = () => {
     const dispatch = useDispatch();
@@ -19,15 +97,15 @@ const StockListing = () => {
     const [viewMode, setViewMode] = useState('card');
 
     useEffect(() => {
-        dispatch(fetchStocks({ ...filters, page: pagination.page, limit: 25 }));
-    }, [filters, pagination.page, dispatch]);
+        dispatch(fetchStocks({ ...filters, page: pagination.page, limit: pagination.limit }));
+    }, [filters, pagination.page, pagination.limit, dispatch]);
 
     useEffect(() => {
         const timer = setTimeout(() => {
-            dispatch(fetchStocks({ ...filters, q: search, limit: 25, page: 1 }));
+            dispatch(fetchStocks({ ...filters, q: search, limit: pagination.limit, page: 1 }));
         }, 500);
         return () => clearTimeout(timer);
-    }, [search, dispatch, filters]);
+    }, [search, dispatch, filters, pagination.limit]);
 
     const handleDetailNavigation = (e, symbol) => {
         if (compareList.length > 0) {
@@ -60,63 +138,57 @@ const StockListing = () => {
     return (
         <div className="p-6 md:p-10 lg:p-12 2xl:p-16 max-w-screen-2xl mx-auto w-full animate-fadeIn flex flex-col gap-16 transition-all duration-500 relative pb-64 bg-surface text-on-surface">
             {/* Header - Ultra Scale */}
-            <header className="mb-12 flex flex-col xl:flex-row items-start xl:items-center justify-between gap-8 pt-8">
-                <div className="space-y-1">
-                    <p className="font-label text-xs font-semibold uppercase tracking-[0.3em] text-primary">Sovereign Asset Surveillance</p>
-                    <h2 className="font-headline text-5xl font-light tracking-tight text-white uppercase">
-                        Equity <span className="font-extrabold italic text-primary">Vault</span>
-                    </h2>
-                </div>
-
-                <div className="flex flex-wrap gap-4 items-center bg-surface-container-low p-2 rounded-2xl border border-outline-variant/10">
-                    {/* Search Field */}
-                    <div className="flex bg-black/20 p-1 rounded-xl border border-outline-variant/10 w-64 relative">
-                        <span className="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-slate-500 text-sm">search</span>
-                        <input
-                            type="text"
-                            placeholder="Identify Ticker..."
-                            value={search}
-                            onChange={(e) => setSearch(e.target.value)}
-                            className="w-full bg-transparent border-none pl-10 pr-4 py-2 text-[10px] font-label uppercase tracking-widest text-white placeholder-slate-600 focus:outline-none focus:ring-0"
+            {/* Center-aligned Filter Suite */}
+            <header className="mb-20 flex flex-col items-center gap-10 pt-4 relative z-50">
+                <div className="flex flex-wrap justify-center gap-6 items-center bg-surface-container-low/40 backdrop-blur-xl p-4 rounded-[2.5rem] border border-outline-variant/10 shadow-2xl w-full max-w-6xl">
+                    {/* Matrix Filters */}
+                    <div className="flex flex-wrap gap-4 items-center">
+                        <FilterDropdown 
+                            label="Sector"
+                            options={SECTORS}
+                            value={filters.sector}
+                            onChange={(val) => dispatch(setFilter({ key: "sector", val }))}
+                            placeholder="All Sectors"
                         />
+
+                        <FilterDropdown 
+                            label="Industry"
+                            options={INDUSTRIES}
+                            value={filters.industry}
+                            onChange={(val) => dispatch(setFilter({ key: "industry", val }))}
+                            placeholder="All Industries"
+                        />
+
+                        <FilterDropdown 
+                            label="Market Cap"
+                            options={MARKET_CAPS}
+                            value={filters.market_cap_cat}
+                            onChange={(val) => dispatch(setFilter({ key: "market_cap_cat", val }))}
+                            placeholder="All Caps"
+                        />
+
+                        <button 
+                            onClick={() => dispatch({ type: 'stocks/resetFilters' })}
+                            className="p-3.5 rounded-xl bg-white/5 border border-outline-variant/10 text-slate-500 hover:text-error hover:bg-error/5 transition-all flex items-center justify-center h-[46px] w-[46px]"
+                            title="Reset Protocols"
+                        >
+                            <span className="material-symbols-outlined text-xl">filter_alt_off</span>
+                        </button>
                     </div>
 
-                    <div className="h-8 w-px bg-outline-variant/20 hidden md:block"></div>
+                    <div className="h-10 w-px bg-outline-variant/20 hidden xl:block"></div>
 
-                    {/* Sector Filter Chips */}
-                    <div className="flex flex-wrap gap-1.5">
-                        {SECTORS.map(sector => (
-                            <button
-                                key={sector}
-                                onClick={() => dispatch(setFilter({
-                                    key: "sector",
-                                    val: filters.sector === sector ? "" : sector
-                                }))}
-                                className={`px-4 py-1.5 text-[9px] font-black tracking-widest uppercase rounded-lg transition-all ${filters.sector === sector
-                                        ? 'bg-primary text-on-primary shadow-lg shadow-primary/20'
-                                        : 'bg-white/5 border border-outline-variant/10 text-slate-500 hover:text-white'
-                                    }`}
-                            >
-                                {sector}
-                            </button>
-                        ))}
-                    </div>
-
-                    <div className="h-8 w-px bg-outline-variant/20 hidden xl:block"></div>
-
-                    {/* View Toggle */}
-                    <div className="flex bg-black/20 p-1 rounded-xl border border-outline-variant/10">
+                    {/* View Toggle - Micro Component */}
+                    <div className="flex bg-black/40 p-1 rounded-2xl border border-outline-variant/20">
                         <button
                             onClick={() => setViewMode('card')}
-                            className={`p-2 rounded-lg transition-all flex items-center gap-2 ${viewMode === 'card' ? 'bg-white/10 text-primary shadow-inner' : 'text-slate-500 hover:text-slate-300'}`}
-                            title="Grid Perspective"
+                            className={`p-3 rounded-xl transition-all flex items-center gap-2 ${viewMode === 'card' ? 'bg-primary text-on-primary shadow-lg shadow-primary/20' : 'text-slate-500 hover:text-white'}`}
                         >
                             <span className="material-symbols-outlined text-lg">grid_view</span>
                         </button>
                         <button
                             onClick={() => setViewMode('table')}
-                            className={`p-2 rounded-lg transition-all flex items-center gap-2 ${viewMode === 'table' ? 'bg-white/10 text-primary shadow-inner' : 'text-slate-500 hover:text-slate-300'}`}
-                            title="Analytical Ledger"
+                            className={`p-3 rounded-xl transition-all flex items-center gap-2 ${viewMode === 'table' ? 'bg-primary text-on-primary shadow-lg shadow-primary/20' : 'text-slate-500 hover:text-white'}`}
                         >
                             <span className="material-symbols-outlined text-lg">table_rows</span>
                         </button>
@@ -179,24 +251,18 @@ const StockListing = () => {
                                         {stock.company_name}
                                     </p>
 
-                                    <div className="grid grid-cols-2 gap-4 mb-6 py-4 border-y border-outline-variant/10 relative z-10">
+                                    <div className="grid grid-cols-1 gap-4 mb-6 py-4 border-y border-outline-variant/10 relative z-10">
                                         <div>
                                             <p className="text-[8px] uppercase tracking-widest text-slate-600 font-black mb-1">Market Presence</p>
                                             <p className="font-bold text-xs text-white uppercase tracking-wider">{stock.market_cap_cat || "—"}</p>
-                                        </div>
-                                        <div>
-                                            <p className="text-[8px] uppercase tracking-widest text-slate-600 font-black mb-1">Valuation</p>
-                                            <p className="font-bold text-sm text-white tracking-tighter">₹{stock.latest_close?.toFixed(2) ?? "—"}</p>
                                         </div>
                                     </div>
 
                                     <div className="flex justify-between items-end mt-auto relative z-10">
                                         <div>
-                                            <p className="text-[8px] uppercase tracking-widest text-slate-600 font-black mb-1">Session Delta</p>
-                                            <p className={`text-2xl font-black ${changeColor} tracking-tighter`}>
-                                                {stock.change_pct != null
-                                                    ? `${stock.change_pct > 0 ? "+" : ""}${stock.change_pct}%`
-                                                    : "—"}
+                                            <p className="text-[8px] uppercase tracking-widest text-slate-600 font-black mb-1">Latest Close</p>
+                                            <p className={`text-2xl font-black text-white tracking-tighter`}>
+                                                ₹{stock.latest_close?.toFixed(2) ?? "—"}
                                             </p>
                                         </div>
                                         {stock.rating_label && (
@@ -218,65 +284,58 @@ const StockListing = () => {
                         animate={{ opacity: 1, x: 0 }}
                         exit={{ opacity: 0, x: 50 }}
                         transition={{ duration: 0.5, ease: "circOut" }}
-                        className="bg-surface-container-low rounded-[4rem] overflow-hidden shadow-[0_64px_128px_rgba(0,0,0,0.6)] border border-outline-variant/10 mb-12"
+                        className="bg-surface-container-low rounded-[2.5rem] overflow-hidden shadow-2xl border border-outline-variant/10 mb-12"
                     >
-                        <div className="w-full overflow-x-auto border-collapse">
-                            <table className="w-full text-left min-w-[1200px]">
+                        <div className="w-full overflow-x-auto border-collapse no-scrollbar">
+                            <table className="w-full text-left min-w-[1000px]">
                                 <thead>
                                     <tr className="border-b border-outline-variant/20 bg-surface-container/50">
-                                        <th className="px-16 py-12 text-[11px] uppercase tracking-[0.5em] text-slate-500 font-black w-24 text-center">Matrix</th>
-                                        <th className="px-16 py-12 text-[11px] uppercase tracking-[0.5em] text-slate-500 font-black">Asset Identity</th>
-                                        <th className="px-16 py-12 text-[11px] uppercase tracking-[0.5em] text-slate-500 font-black text-center">Sector</th>
-                                        <th className="px-16 py-12 text-[11px] uppercase tracking-[0.5em] text-slate-500 font-black text-right">Latest Close</th>
-                                        <th className="px-16 py-12 text-[11px] uppercase tracking-[0.5em] text-slate-500 font-black text-right">Alpha Delta</th>
-                                        <th className="px-16 py-12 text-[11px] uppercase tracking-[0.5em] text-slate-500 font-black text-center">Analyst Rating</th>
+                                        <th className="px-8 py-6 text-[10px] uppercase tracking-[0.4em] text-slate-500 font-black">Ticker</th>
+                                        <th className="px-8 py-6 text-[10px] uppercase tracking-[0.4em] text-slate-500 font-black">Name</th>
+                                        <th className="px-8 py-6 text-[10px] uppercase tracking-[0.4em] text-slate-500 font-black text-center">Market Cap</th>
+                                        <th className="px-8 py-6 text-[10px] uppercase tracking-[0.4em] text-slate-500 font-black text-center">Sector</th>
+                                        <th className="px-8 py-6 text-[10px] uppercase tracking-[0.4em] text-slate-500 font-black text-right">Price</th>
+                                        <th className="px-8 py-6 text-[10px] uppercase tracking-[0.4em] text-slate-500 font-black text-center w-24">Actions</th>
                                     </tr>
                                 </thead>
                                 <tbody>
                                     {list.map((stock, i) => {
                                         const isComparing = compareList.some(s => s.symbol === stock.symbol);
-                                        const changeColor = stock.change_pct >= 0 ? "text-secondary" : "text-error";
-
                                         return (
-                                            <tr key={stock.symbol} className={`border-b border-outline-variant/10 hover:bg-white/[0.03] transition-all duration-500 group cursor-crosshair ${isComparing ? 'bg-primary/[0.03]' : ''}`}>
-                                                <td className="px-10 py-16 text-center">
+                                            <tr 
+                                                key={stock.symbol} 
+                                                onClick={() => navigate(`/stocks/${stock.symbol}`)}
+                                                className={`border-b border-outline-variant/10 hover:bg-white/[0.03] transition-all duration-500 group cursor-pointer ${isComparing ? 'bg-primary/[0.03]' : ''}`}
+                                            >
+                                                <td className="px-8 py-8">
+                                                    <div className={`font-headline font-bold text-2xl tracking-tighter transition-colors uppercase ${isComparing ? 'text-primary' : 'text-white group-hover:text-primary'}`}>
+                                                        {stock.symbol}
+                                                    </div>
+                                                </td>
+                                                <td className="px-8 py-8">
+                                                    <div className="text-[11px] text-slate-400 font-label font-bold tracking-widest uppercase truncate max-w-[250px]">
+                                                        {stock.company_name}
+                                                    </div>
+                                                </td>
+                                                <td className="px-8 py-8 text-center text-[11px] font-bold text-white uppercase tracking-widest">
+                                                    {stock.market_cap_cat || "—"}
+                                                </td>
+                                                <td className="px-8 py-8 text-center text-[10px] font-black text-primary/80 uppercase tracking-widest">
+                                                    {stock.sector}
+                                                </td>
+                                                <td className="px-8 py-8 text-right">
+                                                    <div className="text-2xl font-black text-white tracking-tighter">₹{stock.latest_close?.toFixed(2) ?? "—"}</div>
+                                                </td>
+                                                <td className="px-8 py-8 text-center">
                                                     <button
-                                                        onClick={() => isComparing ? dispatch(removeStockFromCompare(stock.symbol)) : handleAddToCompare(stock)}
-                                                        className={`p-3 rounded-full transition-all ${isComparing ? 'bg-primary text-on-primary shadow-[0_0_20px_rgba(233,195,73,0.3)]' : 'bg-white/5 text-slate-500 hover:text-white'}`}
+                                                        onClick={(e) => {
+                                                            e.stopPropagation();
+                                                            isComparing ? dispatch(removeStockFromCompare(stock.symbol)) : handleAddToCompare(stock);
+                                                        }}
+                                                        className={`p-2.5 rounded-xl transition-all ${isComparing ? 'bg-primary text-black shadow-lg scale-110' : 'bg-white/5 text-slate-500 hover:text-white'}`}
                                                     >
                                                         <span className="material-symbols-outlined text-xl">{isComparing ? 'check' : 'add'}</span>
                                                     </button>
-                                                </td>
-                                                <td className="px-16 py-16">
-                                                    <Link
-                                                        to={`/stocks/${stock.symbol}`}
-                                                        onClick={(e) => handleDetailNavigation(e, stock.symbol)}
-                                                        className="flex items-center gap-10"
-                                                    >
-                                                        <div className={`w-20 h-20 rounded-[1.5rem] flex items-center justify-center font-black text-2xl border shadow-2xl group-hover:scale-110 transition-transform tracking-widest uppercase ${isComparing ? 'bg-primary text-on-primary border-primary' : 'bg-gradient-to-br from-white/10 to-white/5 text-primary border-white/5'}`}>
-                                                            {stock.symbol.substring(0, 2)}
-                                                        </div>
-                                                        <div>
-                                                            <div className={`font-extrabold text-3xl mb-2 tracking-tighter truncate max-w-xl transition-colors uppercase ${isComparing ? 'text-primary' : 'text-white group-hover:text-primary'}`}>{stock.symbol}</div>
-                                                            <div className="text-[10px] text-slate-500 font-black tracking-[0.2em] uppercase opacity-80 whitespace-nowrap overflow-hidden text-ellipsis max-w-sm">{stock.company_name}</div>
-                                                        </div>
-                                                    </Link>
-                                                </td>
-                                                <td className="px-16 py-16 text-center">
-                                                    <span className="px-5 py-2 rounded-xl text-[10px] font-black tracking-widest bg-white/5 border border-white/5 text-secondary uppercase">
-                                                        {stock.sector}
-                                                    </span>
-                                                </td>
-                                                <td className="px-16 py-16 text-right">
-                                                    <div className="text-3xl font-extrabold text-white tracking-tighter">₹{stock.latest_close?.toFixed(2) ?? "—"}</div>
-                                                </td>
-                                                <td className="px-16 py-16 text-right">
-                                                    <div className={`text-4xl font-black ${changeColor} tracking-tighter`}>
-                                                        {stock.change_pct != null ? `${stock.change_pct > 0 ? "+" : ""}${stock.change_pct}%` : "—"}
-                                                    </div>
-                                                </td>
-                                                <td className="px-16 py-16 text-center">
-                                                    <RatingBadge label={stock.rating_label} />
                                                 </td>
                                             </tr>
                                         );
@@ -288,24 +347,68 @@ const StockListing = () => {
                 )}
             </AnimatePresence>
 
-            {/* Pagination */}
+            {/* Pagination Suite */}
             {list.length > 0 && (
-                <div className="flex justify-center items-center gap-10 mt-24 mb-20">
-                    <button
-                        disabled={pagination.page <= 1}
-                        onClick={() => dispatch(setPage(pagination.page - 1))}
-                        className="px-12 py-5 rounded-3xl border border-outline-variant/30 text-xs font-black uppercase tracking-widest hover:bg-white/5 disabled:opacity-20 transition-all font-mono"
-                    >
-                        PREV_LEVEL
-                    </button>
-                    <div className="text-2xl font-black text-primary font-mono tracking-widest">L-{pagination.page}</div>
-                    <button
-                        onClick={() => dispatch(setPage(pagination.page + 1))}
-                        disabled={pagination.page * pagination.limit >= pagination.total}
-                        className="px-12 py-5 rounded-3xl border border-outline-variant/30 text-xs font-black uppercase tracking-widest hover:bg-white/5 disabled:opacity-20 transition-all font-mono"
-                    >
-                        NEXT_LEVEL
-                    </button>
+                <div className="flex flex-col md:flex-row justify-between items-center gap-8 mt-24 mb-20 px-4">
+                    {/* Items Per Page */}
+                    <div className="flex items-center gap-4 bg-surface-container-low/40 p-2 rounded-2xl border border-outline-variant/10">
+                        <span className="text-[10px] font-black text-slate-500 uppercase tracking-widest pl-4">Show:</span>
+                        {[10, 20, 30, 50].map(size => (
+                            <button 
+                                key={size}
+                                onClick={() => dispatch(setLimit(size))}
+                                className={`px-4 py-2 rounded-xl text-[10px] font-black transition-all ${pagination.limit === size ? 'bg-primary text-on-primary' : 'text-slate-500 hover:text-white hover:bg-white/5'}`}
+                            >
+                                {size}
+                            </button>
+                        ))}
+                    </div>
+
+                    {/* Navigation Controls */}
+                    <div className="flex items-center gap-4">
+                        <button
+                            disabled={pagination.page <= 1}
+                            onClick={() => dispatch(setPage(1))}
+                            className="p-4 rounded-2xl border border-outline-variant/30 text-slate-500 hover:text-primary disabled:opacity-10 transition-all"
+                            title="First Page"
+                        >
+                            <span className="material-symbols-outlined">first_page</span>
+                        </button>
+                        
+                        <button
+                            disabled={pagination.page <= 1}
+                            onClick={() => dispatch(setPage(pagination.page - 1))}
+                            className="px-8 py-4 rounded-2xl border border-outline-variant/30 text-[10px] font-black uppercase tracking-[0.2em] text-slate-400 hover:text-white hover:bg-white/5 disabled:opacity-20 transition-all font-mono"
+                        >
+                            Previous
+                        </button>
+
+                        <div className="px-6 py-4 rounded-2xl bg-primary/10 border border-primary/20 text-primary font-black text-sm tracking-widest font-mono">
+                            {pagination.page} / {Math.ceil(pagination.total / pagination.limit)}
+                        </div>
+
+                        <button
+                            onClick={() => dispatch(setPage(pagination.page + 1))}
+                            disabled={pagination.page * pagination.limit >= pagination.total}
+                            className="px-8 py-4 rounded-2xl border border-outline-variant/30 text-[10px] font-black uppercase tracking-[0.2em] text-slate-400 hover:text-white hover:bg-white/5 disabled:opacity-20 transition-all font-mono"
+                        >
+                            Next
+                        </button>
+
+                        <button
+                            onClick={() => dispatch(setPage(Math.ceil(pagination.total / pagination.limit)))}
+                            disabled={pagination.page * pagination.limit >= pagination.total}
+                            className="p-4 rounded-2xl border border-outline-variant/30 text-slate-500 hover:text-primary disabled:opacity-10 transition-all"
+                            title="Last Page"
+                        >
+                            <span className="material-symbols-outlined">last_page</span>
+                        </button>
+                    </div>
+
+                    {/* Total Summary */}
+                    <div className="hidden lg:block text-[10px] font-black text-slate-600 uppercase tracking-widest italic font-label">
+                        Archiving {list.length} of {pagination.total} Assets
+                    </div>
                 </div>
             )}
 
@@ -374,7 +477,7 @@ const StockListing = () => {
             </AnimatePresence>
 
             <footer className="mt-20 py-16 border-t border-white/5 opacity-30 italic text-[11px] tracking-[0.6em] uppercase font-black text-center leading-relaxed">
-                Equity Consensus Protocol Active • Decentralized Market Surveillance • Epoch {new Date().getFullYear()}
+                NIVESH PLATFORM Copyright {new Date().getFullYear()}
             </footer>
         </div>
     );
