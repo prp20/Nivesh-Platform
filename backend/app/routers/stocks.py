@@ -217,16 +217,27 @@ async def get_price_history(
     if not stock:
         raise HTTPException(status_code=404, detail=f"Stock '{symbol}' not found")
 
+    # Build dynamic WHERE clause based on filters
+    where_clause = "WHERE stock_id = :sid"
+    params = {"sid": stock["id"], "limit": limit}
+
+    if from_date:
+        where_clause += " AND price_date >= :from_date"
+        params["from_date"] = from_date
+    if to_date:
+        where_clause += " AND price_date <= :to_date"
+        params["to_date"] = to_date
+
     if interval == "1d":
-        sql = """
+        sql = f"""
             SELECT price_date AS "time", open, high, low, adj_close AS close, volume
             FROM price_data
-            WHERE stock_id = :sid
+            {where_clause}
             ORDER BY price_date DESC
             LIMIT :limit
         """
     elif interval == "1w":
-        sql = """
+        sql = f"""
             SELECT
                 date_trunc('week', price_date)::date AS "time",
                 (ARRAY_AGG(open ORDER BY price_date))[1]  AS open,
@@ -235,13 +246,13 @@ async def get_price_history(
                 (ARRAY_AGG(adj_close ORDER BY price_date DESC))[1] AS close,
                 SUM(volume)                                AS volume
             FROM price_data
-            WHERE stock_id = :sid
+            {where_clause}
             GROUP BY date_trunc('week', price_date)
             ORDER BY "time" DESC
             LIMIT :limit
         """
     else:  # 1mo
-        sql = """
+        sql = f"""
         SELECT
             date_trunc('month', price_date)::date AS "time",
             (ARRAY_AGG(open ORDER BY price_date))[1]       AS open,
@@ -250,18 +261,14 @@ async def get_price_history(
             (ARRAY_AGG(adj_close ORDER BY price_date DESC))[1] AS close,
             SUM(volume)                                     AS volume
         FROM price_data
-        WHERE stock_id = :sid
+        {where_clause}
         GROUP BY date_trunc('month', price_date)
         ORDER BY "time" DESC
         LIMIT :limit
         """
 
-    result = await db.execute(text(sql), {
-        "sid":       stock["id"],
-        "from_date": from_date,
-        "to_date":   to_date,
-        "limit":     limit,
-    })
+    result = await db.execute(text(sql), params)
+
     rows = [dict(r._mapping) for r in result.fetchall()]
     rows.reverse()  # return chronological order
     return {"symbol": symbol.upper(), "interval": interval, "data": rows}

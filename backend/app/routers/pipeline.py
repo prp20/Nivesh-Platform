@@ -512,18 +512,29 @@ async def trigger_fundamental_scoring_bulk(
     async def _run_bulk():
         async with AsyncSessionLocal() as db:
             if req.symbols:
-                rows = await db.execute(sa.text("SELECT id, symbol FROM stocks WHERE symbol = ANY(:symbols)"), {"symbols": list(req.symbols)})
-                stocks = rows.fetchall()
+                rows = await db.execute(
+                    sa.text("SELECT id, symbol FROM stocks WHERE symbol = ANY(:symbols)"), 
+                    {"symbols": list(req.symbols)}
+                )
             else:
                 rows = await db.execute(sa.text("SELECT id, symbol FROM stocks WHERE is_active=TRUE"))
-                stocks = rows.fetchall()
-        
-        for stock in stocks:
-            async with AsyncSessionLocal() as db:
+            
+            stocks = rows.fetchall()
+            
+            for stock in stocks:
                 try:
-                    await run_fundamental_scorer(stock.id, stock.symbol, db, period_type=req.period_type, score_version=req.score_version)
+                    # Reuse the existing session for all stocks in this bulk run
+                    await run_fundamental_scorer(
+                        stock.id, stock.symbol, db, 
+                        period_type=req.period_type, 
+                        score_version=req.score_version
+                    )
+                    # Commit after each stock to persist progress
+                    await db.commit()
                 except Exception as e:
+                    await db.rollback()
                     logger.error(f"Bulk scoring failed for {stock.symbol}: {e}")
+
 
     background_tasks.add_task(_run_bulk)
     return {
@@ -552,10 +563,17 @@ async def get_pipeline_status(admin: str = Depends(require_admin)):
         FROM pipeline_audit
         ORDER BY job_name, started_at DESC
     """
-    async with raw_connection() as conn:
-        rows = await conn.fetch(sql)
+    rows = []
+    try:
+        async with raw_connection() as conn:
+            rows = await conn.fetch(sql)
+    except Exception as e:
+        # Graceful fallback for any connection/pool issues
+        logger.error(f"Failed to fetch pipeline status: {str(e)}", exc_info=True)
     
     jobs = []
+
+
     for r in rows:
         job = dict(r)
         # Calculate progress percentage if records_in is known

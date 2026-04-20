@@ -31,10 +31,7 @@ class BulkNavUpload(BaseModel):
 # FUND METRICS SCHEMAS
 # ============================================================================
 
-class FundMetricsBase(BaseModel):
-    scheme_code: str
-    current_nav: float
-    nav_date: date
+class FundMetricsFields(BaseModel):
     aum_in_crores: Optional[float] = None
     expense_ratio: Optional[float] = None
     fund_rating: Optional[float] = None
@@ -61,43 +58,24 @@ class FundMetricsBase(BaseModel):
     has_sufficient_data: bool = True
     data_completeness_percentage: Optional[float] = None
     final_verdict: Optional[str] = None
+
+class FundMetricsBase(FundMetricsFields):
+    scheme_code: str
+    current_nav: float
+    nav_date: date
+
 
 class FundMetricsRead(FundMetricsBase):
     metrics_calculated_at: datetime
     updated_at: datetime
     model_config = ConfigDict(from_attributes=True)
 
-class FundMetricsReadWithoutNav(BaseModel):
+class FundMetricsReadWithoutNav(FundMetricsFields):
     scheme_code: str
-    aum_in_crores: Optional[float] = None
-    expense_ratio: Optional[float] = None
-    fund_rating: Optional[float] = None
-    volatility: Optional[float] = None
-    cagr_3year: Optional[float] = None
-    cagr_5year: Optional[float] = None
-    absolute_return_1y: Optional[float] = None
-    absolute_return_3y: Optional[float] = None
-    absolute_return_5y: Optional[float] = None
-    absolute_return_10y: Optional[float] = None
-    short_term_return_6m: Optional[float] = None
-    upside_capture: Optional[float] = None
-    downside_capture: Optional[float] = None
-    sortino_ratio: Optional[float] = None
-    sharpe_ratio: Optional[float] = None
-    alpha: Optional[float] = None
-    beta: Optional[float] = None
-    standard_deviation: Optional[float] = None
-    maximum_drawdown: Optional[float] = None
-    tracking_error: Optional[float] = None
-    information_ratio: Optional[float] = None
-    calculation_period_start_date: Optional[date] = None
-    calculation_period_end_date: Optional[date] = None
-    has_sufficient_data: bool = True
-    data_completeness_percentage: Optional[float] = None
-    final_verdict: Optional[str] = None
     metrics_calculated_at: datetime
     updated_at: datetime
     model_config = ConfigDict(from_attributes=True)
+
 
 class FundMetricsResponse(BaseModel):
     metrics: Optional[FundMetricsReadWithoutNav] = None
@@ -451,17 +429,37 @@ class FundamentalScoreRead(BaseModel):
     id: int
     stock_id: int
     period_end: date
+    period_type: str
     score_version: str
-    total_score: float
+    
+    # Statement Scores (0-10)
     pl_score: float
     bs_score: float
     cf_score: float
-    pl_metrics: Optional[Dict[str, Any]] = None
-    bs_metrics: Optional[Dict[str, Any]] = None
-    cf_metrics: Optional[Dict[str, Any]] = None
-    ai_label: Optional[str] = None
-    ai_reasoning: Optional[str] = None
-    created_at: datetime
-    updated_at: datetime
+    
+    # Sub-component scores
+    pl_growth_score: Optional[float] = None
+    pl_margin_score: Optional[float] = None
+    pl_eps_score: Optional[float] = None
+    pl_consistency_score: Optional[float] = None
+    
+    bs_leverage_score: Optional[float] = None
+    bs_liquidity_score: Optional[float] = None
+    bs_asset_score: Optional[float] = None
+    bs_networth_score: Optional[float] = None
+    
+    cf_operating_score: Optional[float] = None
+    cf_capex_score: Optional[float] = None
+    cf_financing_score: Optional[float] = None
+    
+    # Composite Result
+    composite_fundamental_score: float
+    reasoning_label: Optional[str] = None
+    reasoning_text: Optional[str] = None
+    
+    created_at: datetime # Or computed_at depending on model? Model has computed_at.
+    # Check model again: model has computed_at. 
+    # But usually created_at is standard. I'll use computed_at to match model.
+    computed_at: datetime
     model_config = ConfigDict(from_attributes=True)
 

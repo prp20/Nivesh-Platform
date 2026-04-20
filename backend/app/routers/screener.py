@@ -252,8 +252,8 @@ async def compare_stocks(
     from app.routers.stocks import _get_stock_id
 
     symbol_list = [s.strip().upper() for s in symbols.split(",")][:5]
-    if not symbol_list:
-        raise HTTPException(400, "Provide at least one symbol")
+    if len(symbol_list) < 2:
+        raise HTTPException(400, "Provide at least two symbols to compare")
 
     result = []
     for sym in symbol_list:

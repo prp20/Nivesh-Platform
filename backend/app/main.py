@@ -40,10 +40,29 @@ async def lifespan(app: FastAPI):
 
     # Startup logic
     async with engine.begin() as conn:
-        # pg_trgm is required for GIN trigram indexes on fund_master and stocks.
-        # Must be created before create_all, otherwise index creation fails.
+        # Mutate DB state: create extensions, tables, and audit logs.
         await conn.execute(text("CREATE EXTENSION IF NOT EXISTS pg_trgm;"))
         await conn.run_sync(Base.metadata.create_all)
+        
+        # Create legacy audit_log table if it doesn't exist
+        audit_ddl = """
+        CREATE TABLE IF NOT EXISTS audit_log (
+            id BIGSERIAL PRIMARY KEY,
+            timestamp TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+            action VARCHAR(100) NOT NULL,
+            user_account VARCHAR(100) NOT NULL,
+            resource VARCHAR(500) NOT NULL,
+            details JSONB,
+            status VARCHAR(20) NOT NULL,
+            error_message TEXT,
+            created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+        );
+        CREATE INDEX IF NOT EXISTS ix_audit_log_user_timestamp
+            ON audit_log(user_account, created_at DESC);
+        CREATE INDEX IF NOT EXISTS ix_audit_log_action
+            ON audit_log(action, created_at DESC);
+        """
+        await conn.execute(text(audit_ddl))
 
     # Configure and start scheduler
     configure_scheduler()
