@@ -43,7 +43,7 @@ def get_aum_by_isin(isin: str) -> dict | None:
         return {
             "isin":           isin,
             "name":           fund.get("name"),
-            "aum_cr":         (float(fund.get("aum")) / 10.0) if fund.get("aum") else 0.0, # Convert Millions to Crores
+            "aum_cr":         float(fund.get("aum")) if fund.get("aum") else 0.0, # Captnemo API returns values in Crores
             "category":       fund.get("category"),
             "fund_type":      fund.get("fund_type"),
             "fund_category":  fund.get("fund_category"),

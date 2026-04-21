@@ -7,6 +7,7 @@ from pipeline.ratio_engine import run_ratio_compute_all
 from pipeline.metric_recompute import recompute_price_dependent_ratios_all
 from pipeline.technical_analysis import run_technical_analysis_all
 from pipeline.rating_engine import run_rating_compute_all
+from pipeline.stats_ingestion import sync_daily_stats, sync_fundamental_stats
 
 scheduler = AsyncIOScheduler(timezone="Asia/Kolkata")
 
@@ -24,15 +25,15 @@ def configure_scheduler():
         id="price_daily",
     )
 
-    # 2. Fetch OHLCV for indices (separate so stocks don't block indices)
+    # 3. Fetch live stats from yfinance (Market Cap, 52w range, P/B, Div Yield)
     scheduler.add_job(
-        run_index_ingestion,
-        CronTrigger(day_of_week="mon-fri", hour=18, minute=40),
+        sync_daily_stats,
+        CronTrigger(day_of_week="mon-fri", hour=18, minute=50),
         max_instances=1,
-        id="index_daily",
+        id="stats_daily_yf",
     )
 
-    # 3. Recompute price-dependent ratios (PE, PB, PS, dividend yield)
+    # 4. Recompute price-dependent ratios (PE, PS)
     #    Runs AFTER prices are ingested. Does NOT touch quarterly metrics.
     scheduler.add_job(
         recompute_price_dependent_ratios_all,
@@ -73,6 +74,13 @@ def configure_scheduler():
         CronTrigger(day_of_week="sun", hour=9, minute=0),
         max_instances=1,
         id="ratio_compute_weekly",
+    )
+    # 8. Sync deep fundamental stats from yfinance (ROE, ROA, Debt/Equity, etc.)
+    scheduler.add_job(
+        sync_fundamental_stats,
+        CronTrigger(day_of_week="sun", hour=10, minute=0),
+        max_instances=1,
+        id="stats_fundamental_yf_weekly",
     )
 
     # ── DEFERRED — Future Phase ───────────────────────────────────────────────

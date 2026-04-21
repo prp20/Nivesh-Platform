@@ -14,20 +14,28 @@ const Portfolio = () => {
         }
     }, [dispatch, items.length]);
 
-    // Simulate portfolio data from existing funds
-    const portfolioHoldings = items.slice(0, 5).map(fund => ({
-        ticker: fund.isin?.substring(0, 4) || 'ELTE',
-        name: fund.scheme_name,
-        allocation: fund.scheme_category,
-        value: `₹${(Math.random() * 500000 + 100000).toLocaleString(undefined, { maximumFractionDigits: 0 })}`,
-        return: fund.displayMetrics.change,
-        trend: fund.displayMetrics.change.startsWith('+') ? 'up' : 'down'
-    }));
+    // Stabilize portfolio data using useMemo to prevent re-randomization on every render
+    const { portfolioHoldings, totalPortfolioValue } = React.useMemo(() => {
+        const holdings = items.slice(0, 5).map(fund => ({
+            ticker: fund.isin?.substring(0, 4) || 'ELTE',
+            name: fund.scheme_name,
+            allocation: fund.scheme_category,
+            valueNum: Math.random() * 500000 + 100000,
+            weight: Math.floor(Math.random() * 20 + 5),
+            return: fund.displayMetrics.change,
+            trend: fund.displayMetrics.change.startsWith('+') ? 'up' : 'down'
+        }));
 
-    const totalPortfolioValue = portfolioHoldings.reduce((acc, curr) => {
-        const val = parseFloat(curr.value.replace(/[₹,]/g, ''));
-        return acc + val;
-    }, 0);
+        const total = holdings.reduce((acc, curr) => acc + curr.valueNum, 0);
+
+        return {
+            portfolioHoldings: holdings.map(h => ({
+                ...h,
+                value: `₹${h.valueNum.toLocaleString(undefined, { maximumFractionDigits: 0 })}`
+            })),
+            totalPortfolioValue: total
+        };
+    }, [items]);
 
     if (loading && items.length === 0) {
         return (
@@ -39,7 +47,7 @@ const Portfolio = () => {
     }
 
     return (
-        <div className="p-6 md:p-12 w-full animate-fadeIn flex flex-col gap-12 transition-all duration-500">
+        <div className="p-6 md:p-10 lg:p-12 2xl:p-16 w-full animate-fadeIn flex flex-col gap-12 transition-all duration-500">
             {/* Compact Header */}
             <header className="flex flex-col xl:flex-row items-start xl:items-center justify-between gap-8 pt-8">
                 <div className="space-y-1">
@@ -114,7 +122,7 @@ const Portfolio = () => {
                                     </td>
                                     <td className="px-8 py-6 text-center">
                                         <div className="text-lg font-black text-white tracking-widest">
-                                            {Math.floor(Math.random() * 20 + 5)}%
+                                            {asset.weight}%
                                         </div>
                                     </td>
                                     <td className="px-8 py-6 text-center">
@@ -141,9 +149,7 @@ const Portfolio = () => {
             </div>
 
 
-            <footer className="mt-20 py-16 border-t border-white/5 opacity-30 italic text-[11px] tracking-[0.6em] uppercase font-black text-center leading-relaxed">
-                Ledger Verification Hash: ELITE-P-4402X • Sovereign Protocol Active • Wealth Distribution Consensus Reached
-            </footer>
+
         </div>
     );
 };

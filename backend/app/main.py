@@ -7,9 +7,13 @@ from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy import text
+from jose import jwt, JWTError
+
 
 from .config import settings
+from .database import engine, init_db_pool, close_db_pool
 from .routers import funds, benchmarks, navs, benchmark_navs, metrics, sync, auth, stocks, screener, pipeline
+
 from .database import engine, Base
 from .rate_limiting import get_rate_limiter
 from pipeline.scheduler import configure_scheduler, scheduler
@@ -20,12 +24,48 @@ logger = logging.getLogger(__name__)
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Startup and shutdown logic for the FastAPI application."""
+    # Export LangSmith and Groq variables to environment for underlying libraries
+    import os
+    if settings.LANGSMITH_TRACING:
+        os.environ["LANGCHAIN_TRACING_V2"] = "true"
+        trace_key = settings.LANGSMITH_API_KEY.get_secret_value()
+        if trace_key:
+            os.environ["LANGCHAIN_API_KEY"] = trace_key
+        os.environ["LANGCHAIN_PROJECT"] = settings.LANGSMITH_PROJECT
+        os.environ["LANGCHAIN_ENDPOINT"] = settings.LANGSMITH_ENDPOINT
+    
+    groq_key = settings.GROQ_API_KEY.get_secret_value()
+    if groq_key:
+        os.environ["GROQ_API_KEY"] = groq_key
+
     # Startup logic
     async with engine.begin() as conn:
-        # pg_trgm is required for GIN trigram indexes on fund_master and stocks.
-        # Must be created before create_all, otherwise index creation fails.
+        # Mutate DB state: create extensions, tables, and audit logs.
         await conn.execute(text("CREATE EXTENSION IF NOT EXISTS pg_trgm;"))
         await conn.run_sync(Base.metadata.create_all)
+        
+        # Create legacy audit_log table if it doesn't exist
+        await conn.execute(text("""
+            CREATE TABLE IF NOT EXISTS audit_log (
+                id BIGSERIAL PRIMARY KEY,
+                timestamp TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+                action VARCHAR(100) NOT NULL,
+                user_account VARCHAR(100) NOT NULL,
+                resource VARCHAR(500) NOT NULL,
+                details JSONB,
+                status VARCHAR(20) NOT NULL,
+                error_message TEXT,
+                created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+            );
+        """))
+        await conn.execute(text("""
+            CREATE INDEX IF NOT EXISTS ix_audit_log_user_timestamp
+                ON audit_log(user_account, created_at DESC);
+        """))
+        await conn.execute(text("""
+            CREATE INDEX IF NOT EXISTS ix_audit_log_action
+                ON audit_log(action, created_at DESC);
+        """))
 
     # Configure and start scheduler
     configure_scheduler()
@@ -35,6 +75,8 @@ async def lifespan(app: FastAPI):
     yield
     # Shutdown logic
     scheduler.shutdown(wait=False)
+    await close_db_pool()
+
     logger.info("Scheduler shut down")
 
 app = FastAPI(
@@ -63,8 +105,17 @@ async def rate_limit_middleware(request: Request, call_next):
     Uses user identifier from JWT token if available, falls back to IP address.
     Enforces per-endpoint rate limits defined in rate_limiting.py.
     """
-    # Get user identifier (prefer JWT user, fall back to IP)
-    user_id = request.headers.get("X-User-Id", request.client.host if request.client else "unknown")
+    # Get user identifier (prefer JWT sub, fall back to IP)
+    user_id = request.client.host if request.client else "unknown"
+    auth_header = request.headers.get("Authorization")
+    if auth_header and auth_header.startswith("Bearer "):
+        try:
+            token = auth_header.split(" ")[1]
+            payload = jwt.decode(token, settings.SECRET_KEY.get_secret_value() if hasattr(settings.SECRET_KEY, "get_secret_value") else settings.SECRET_KEY, algorithms=["HS256"])
+            user_id = payload.get("sub", user_id)
+        except (JWTError, Exception):
+            pass  # Fall back to IP on invalid tokens
+
 
     # Get endpoint path for rate limit lookup
     endpoint = request.url.path

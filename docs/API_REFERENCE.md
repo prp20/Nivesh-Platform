@@ -44,6 +44,14 @@ curl -H "Authorization: Bearer <token>" http://localhost:8000/api/v1/funds/
 
 ---
 
+## 🚦 System
+
+| Method | Path | Auth | Description |
+|--------|------|------|-------------|
+| `GET`  | `/api/health` | None | System health, DB status & latency |
+
+---
+
 ## 📊 Mutual Funds
 
 **All endpoints require JWT.**
@@ -153,7 +161,7 @@ curl -H "Authorization: Bearer <token>" http://localhost:8000/api/v1/funds/
 
 ### `GET /api/v1/stocks/search`
 
-**Params:** `q` (1–50 chars) — matches symbol prefix and full-text company name  
+**Params:** `q` (1–50 chars) — matches symbol prefix and full-text company name, `limit` (default 10, max 20)  
 **Response:** Array of up to 20 matching stocks
 
 ### `GET /api/v1/stocks/{symbol}/price`
@@ -264,6 +272,17 @@ Non-admin requests return `403 Forbidden`.
 |--------|------|-------------|
 | `POST` | `/api/v1/pipeline/ratings/all` | Recompute composite ratings for all stocks |
 | `POST` | `/api/v1/pipeline/ratings/{symbol}` | Recompute for single stock |
+
+### Fundamental Scoring (LangGraph AI)
+
+| Method | Path | Description |
+|--------|------|-------------|
+| `POST` | `/api/v1/pipeline/fundamentals/run/{symbol}` | End-to-end scoring pipeline (Fetch → Compute → AI Reason → Persist) |
+| `POST` | `/api/v1/pipeline/fundamentals/bulk-run` | Background scoring for multiple symbols (or all active) |
+| `POST` | `/api/v1/pipeline/fundamentals/stage/fetch/{symbol}` | Stage 1: Fetch raw statements |
+| `POST` | `/api/v1/pipeline/fundamentals/stage/compute` | Stage 2: Deterministic scoring logic |
+| `POST` | `/api/v1/pipeline/fundamentals/stage/reason` | Stage 3: Qualitative AI reasoning |
+| `POST` | `/api/v1/pipeline/fundamentals/stage/persist` | Stage 4: Save results to DB |
 
 ### Pipeline Health
 

@@ -1,8 +1,13 @@
-from contextlib import asynccontextmanager
+import logging
 import asyncpg
+from contextlib import asynccontextmanager
+
 from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession
 from sqlalchemy.orm import sessionmaker, declarative_base
 from .config import settings
+ 
+logger = logging.getLogger(__name__)
+
 
 
 def _async_url(url: str) -> str:
@@ -26,6 +31,32 @@ AsyncSessionLocal = sessionmaker(engine, class_=AsyncSession, expire_on_commit=F
 session_factory = AsyncSessionLocal
 Base = declarative_base()
 
+_db_pool = None
+
+async def init_db_pool():
+    global _db_pool
+    if _db_pool is None:
+        # Check if we are in a PostgreSQL environment. asyncpg only supports postgres.
+        # Tests often use SQLite which would cause asyncpg.create_pool to hang or fail.
+        if not _sync_db_url.startswith(("postgresql://", "postgres://")):
+            logger.warning(f"Skipping asyncpg pool initialization: Unsupported protocol in {_sync_db_url.split('://')[0]}")
+            return None
+            
+        try:
+            _db_pool = await asyncpg.create_pool(_sync_db_url, min_size=5, max_size=20, timeout=10)
+        except Exception as e:
+            logger.error(f"Failed to initialize asyncpg pool: {e}")
+            _db_pool = None
+    return _db_pool
+
+
+async def close_db_pool():
+    global _db_pool
+    if _db_pool:
+        await _db_pool.close()
+        _db_pool = None
+
+
 
 async def get_db():
     async with AsyncSessionLocal() as session:
@@ -34,9 +65,18 @@ async def get_db():
 
 @asynccontextmanager
 async def raw_connection():
-    """Get a raw asyncpg connection for direct SQL operations."""
-    conn = await asyncpg.connect(_sync_db_url, statement_cache_size=0)
-    try:
-        yield conn
-    finally:
-        await conn.close()
+    """Get a raw asyncpg connection for direct SQL operations (from pool)."""
+    if _db_pool is None:
+        await init_db_pool()
+    
+    if _db_pool is None:
+        raise RuntimeError("Database connection pool is not initialized. Raw connection operations are unavailable.")
+
+    async with _db_pool.acquire() as conn:
+
+        try:
+            yield conn
+        finally:
+            # Connection is returned to pool by 'acquire' context manager
+            pass
+

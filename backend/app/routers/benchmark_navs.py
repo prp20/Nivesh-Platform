@@ -124,6 +124,6 @@ async def get_benchmark_nav_history(
     benchmark_code: str,
     limit: int = 100,
     session: AsyncSession = Depends(get_db),
-    current_user: str = Depends(security.get_current_user),
+    # Public access for index charts
 ):
     return await crud.get_benchmark_nav_history(session, benchmark_code, limit)

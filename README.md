@@ -42,7 +42,7 @@ setup\setup.bat
 
 The setup script will install dependencies, configure the database, build the frontend, and start the API server at **http://localhost:8000**.
 
-**Detailed setup guide:** See [Installation Guide](./docs/INSTALLATION.md)
+**Detailed setup guide:** See [Getting Started](./docs/GETTING_STARTED.md)
 
 ---
 
@@ -50,17 +50,15 @@ The setup script will install dependencies, configure the database, build the fr
 
 | Document | Purpose |
 |----------|---------|
-| **[Getting Started](./docs/SETUP.md)** | Installation, prerequisites, local development setup |
-| **[System Overview](./docs/OVERVIEW.md)** | Architecture, design decisions, data flow |
+| **[Getting Started](./docs/GETTING_STARTED.md)** | Installation, prerequisites, local development setup |
+| **[Architecture](./docs/ARCHITECTURE.md)** | System design, database schema, tech stack |
+| **[Core Features](./docs/FEATURES.md)** | Data pipeline, scoring engines, stock screener |
 | **[API Reference](./docs/API_REFERENCE.md)** | All REST endpoints with examples and authentication |
-| **[Database Schema](./docs/DATABASE.md)** | Database models, table relationships, storage patterns |
-| **[Testing Guide](./docs/TESTING.md)** | Unit tests (45+ cases), fixtures, running tests |
-| **[Frontend Architecture](./docs/FRONTEND.md)** | React components, state management, design system |
-| **[Backend Architecture](./docs/BACKEND.md)** | FastAPI structure, async patterns, analytics engine |
-| **[Development Workflow](./docs/WORKFLOW.md)** | Git workflow, branching strategy, commit conventions |
-| **[Free PGSQL DB SETUP](./docs/SUPABASE_SETUP_DOCS.md)** | Free Database setup using Supabase |
+| **[Contributing](./docs/CONTRIBUTING.md)** | Developer workflow, branching strategy, testing |
+| **[Fundamental Design](./docs/fundamental_scoring_design.md)** | Deep dive into financial scoring logic |
+| **[Sector Scoring](./docs/sector_specific_scoring.md)** | Sector-specific metric definitions |
 | **[Developer Guidelines](./CLAUDE.md)** | Code style, project structure, common commands |
-| **[Release Notes](./docs/RELEASE_NOTES.md)** | Code style, project structure, common commands |
+| **[Release Notes](./RELEASE_NOTES.md)** | Version history and change logs |
 
 ---
 
@@ -72,33 +70,6 @@ The setup script will install dependencies, configure the database, build the fr
 **Data Processing:** pandas, NumPy, TA-Lib  
 **Scheduling:** APScheduler (background jobs)  
 **Testing:** pytest + pytest-asyncio + in-memory SQLite
-
----
-
-## 🎯 Project Structure
-
-```
-stock_nivesh_platform/
-├── backend/              # FastAPI application
-│   ├── app/             # Core API logic
-│   ├── pipeline/        # Scheduled data jobs
-│   ├── scripts/         # Seed & ETL scripts
-│   ├── alembic/         # Database migrations
-│   └── requirements.txt
-├── frontend/            # React 19 + Vite SPA
-│   ├── src/
-│   │   ├── pages/      # Route components
-│   │   ├── components/ # Reusable UI
-│   │   ├── store/      # Redux state
-│   │   └── api/        # API service layer
-│   └── package.json
-├── setup/              # Installation scripts
-│   ├── setup.sh       # Linux/macOS
-│   ├── setup.ps1      # Windows PowerShell
-│   └── setup.bat      # Windows CMD
-├── docs/              # Comprehensive documentation
-└── CLAUDE.md          # Developer guidelines
-```
 
 ---
 
@@ -117,7 +88,7 @@ cd frontend
 npm run dev
 ```
 
-See [Development Workflow](./docs/WORKFLOW.md) for detailed guidelines.
+See [Contributing](./docs/CONTRIBUTING.md) for detailed guidelines.
 
 ---
 
@@ -135,7 +106,7 @@ pytest tests/ --cov=app            # With coverage
 - **45+ test cases** covering all API endpoints
 - Uses **in-memory SQLite** (no database needed)
 - ~52 seconds for full suite
-- See [Testing Guide](./docs/TESTING.md) for details
+- See [Contributing](./docs/CONTRIBUTING.md) for details
 
 ### Frontend Tests
 
@@ -165,7 +136,7 @@ SECRET_KEY=<use: secrets.token_urlsafe(32)>
 3. Push to your fork
 4. Open a Pull Request
 
-See [Development Workflow](./docs/WORKFLOW.md) for detailed guidelines.
+See [Contributing](./docs/CONTRIBUTING.md) for detailed guidelines.
 
 ---
 
@@ -177,10 +148,10 @@ Released under the **MIT License**. See individual file headers for attribution.
 
 ## 🆘 Need Help?
 
-- **Setup Issues** → See [Installation Guide](./docs/INSTALLATION.md#troubleshooting)
+- **Setup Issues** → See [Getting Started](./docs/GETTING_STARTED.md#troubleshooting)
 - **API Questions** → See [API Reference](./docs/API_REFERENCE.md)
-- **Architecture** → See [System Overview](./docs/OVERVIEW.md)
-- **Database** → See [Database Schema](./docs/DATABASE.md)
+- **Architecture** → See [Architecture](./docs/ARCHITECTURE.md)
+- **Database** → See [Architecture](./docs/ARCHITECTURE.md#database-schema)
 
 ---
 

@@ -8,17 +8,19 @@
 #   Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope CurrentUser
 #
 # What this script does:
-#   1.  Check Python 3.10+ (winget auto-install if missing)
-#   2.  Check Node.js 18+ (winget auto-install if missing)
-#   3.  PostgreSQL setup — Docker (auto) or external URL
-#   4.  Python virtual environment + dependencies (excluding TA-Lib)
-#   5.  Environment configuration + Admin JWT
-#   6.  Start Docker PostgreSQL (if chosen)
-#   7.  Database migrations
-#   8.  Optional data seeding
-#   9.  Frontend build
-#   10. TA-Lib installation
-#   11. Start FastAPI server
+#   1.  Check Git
+#   2.  Check Python 3.10+ (winget auto-install if missing)
+#   3.  Check Node.js 18+ (winget auto-install if missing)
+#   4.  Clone/Update repository
+#   5.  PostgreSQL setup — Docker (auto) or external URL
+#   6.  Python virtual environment + dependencies (excluding TA-Lib)
+#   7.  Environment configuration + Admin JWT
+#   8.  Start Docker PostgreSQL (if chosen)
+#   9.  Database migrations
+#   10. Optional data seeding
+#   11. Frontend build
+#   12. TA-Lib installation
+#   13. Start FastAPI server
 # =============================================================================
 
 #Requires -Version 5.1
@@ -33,6 +35,22 @@ function Write-Fatal   {
   param($msg)
   Write-Host "[ERROR] $msg" -ForegroundColor Red
   exit 1
+}
+
+# Ensure Python output is unbuffered so tqdm bars and prints stream in real time
+$env:PYTHONUNBUFFERED = "1"
+
+# ─── Timed runner helpers ─────────────────────────────────────────────────────
+function Start-TimedOp {
+  param([string]$Label)
+  $script:_op_label = $Label
+  $script:_op_sw = [System.Diagnostics.Stopwatch]::StartNew()
+  Write-Info "⏳ ${Label}...  (do not interrupt)"
+}
+function End-TimedOp {
+  $script:_op_sw.Stop()
+  $elapsed = [int]$script:_op_sw.Elapsed.TotalSeconds
+  Write-Success "$($script:_op_label) — done in ${elapsed}s"
 }
 
 # ─── Resolve paths ───────────────────────────────────────────────────────────
@@ -50,6 +68,24 @@ Write-Host "  ║     Nivesh Platform — Setup Script    ║" -ForegroundColor 
 Write-Host "  ╚═══════════════════════════════════════╝" -ForegroundColor Cyan
 Write-Host ""
 Write-Info "Project root : $ProjectRoot"
+
+# =============================================================================
+# STEP 0 — Check Git
+# =============================================================================
+Write-Step "Step 0: Checking Git"
+
+if (Get-Command git -ErrorAction SilentlyContinue) {
+    $gitVer = & git --version
+    Write-Success "$gitVer detected."
+} else {
+    Write-Warn "Git not found. Attempting to install via winget..."
+    & winget install --id Git.Git -e --source winget --accept-package-agreements --accept-source-agreements
+    if ($LASTEXITCODE -ne 0) {
+        Write-Fatal "Failed to install Git. Please install Git from https://git-scm.com and re-run this script."
+    }
+    Write-Warn "Git installed. Please restart this PowerShell window for PATH changes to take effect, then re-run this script."
+    exit 0
+}
 
 # =============================================================================
 # STEP 1 — Check Python
@@ -102,6 +138,64 @@ if (Get-Command node -ErrorAction SilentlyContinue) {
 }
 
 # =============================================================================
+# STEP 2.5 — Clone Project Repository (Optional)
+# =============================================================================
+Write-Step "Step 2.5: Clone Project Repository"
+
+$DoClone = Read-Host "  Do you want to clone or update the repository? (y/N)"
+if ($DoClone -notmatch "^[Yy]$") {
+    Write-Info "Skipping repository cloning/update."
+} else {
+    $RepoUrl = "https://github.com/prp20/Nivesh-Platform"
+    $BranchName = Read-Host "    Enter branch to clone/update [main]"
+    if ([string]::IsNullOrWhiteSpace($BranchName)) { $BranchName = "main" }
+
+    # Define clone_repo BEFORE any branch that calls it
+    function clone_repo {
+        Write-Info "Cloning $RepoUrl (branch: $BranchName)..."
+        & git clone -b $BranchName $RepoUrl nivesh-cloned
+        if ($LASTEXITCODE -ne 0) { Write-Fatal "git clone failed. Check network and repo URL." }
+        Set-Location nivesh-cloned
+        $clonedRoot = (Get-Item .).FullName
+        # Re-resolve all paths relative to the cloned directory
+        $script:BackendDir      = Join-Path $clonedRoot "backend"
+        $script:FrontendDir     = Join-Path $clonedRoot "frontend"
+        $script:VenvDir         = Join-Path $script:BackendDir "venv"
+        $script:BackendEnvFile  = Join-Path $script:BackendDir ".env"
+        $script:FrontendEnvFile = Join-Path $script:FrontendDir ".env"
+        Write-Success "Cloned successfully into nivesh-cloned."
+    }
+
+    $IsRepo = $false
+    try {
+      if (& git rev-parse --is-inside-work-tree 2>$null) { $IsRepo = $true }
+    } catch {}
+
+    if ($IsRepo) {
+        $CurrentRemote = & git remote get-url origin 2>$null
+        if ($CurrentRemote -like "*Nivesh-Platform*") {
+            Write-Info "Already inside the Nivesh-Platform repository."
+            $SwitchBranch = Read-Host "    Do you want to switch to/update branch '$BranchName'? (y/N)"
+            if ($SwitchBranch -match "^[Yy]$") {
+                & git fetch origin
+                & git checkout $BranchName 2>$null
+                if ($LASTEXITCODE -ne 0) {
+                    & git checkout -b $BranchName "origin/$BranchName"
+                }
+                & git pull origin $BranchName
+                Write-Success "Updated to $BranchName."
+            }
+        } else {
+            # Already inside a different git repo — clone alongside
+            clone_repo
+        }
+    } else {
+        # Not inside any git repo — clone fresh
+        clone_repo
+    }
+}
+
+# =============================================================================
 # STEP 3 — PostgreSQL setup
 # =============================================================================
 Write-Step "Step 3: PostgreSQL Setup"
@@ -119,8 +213,15 @@ $DatabaseUrl = ""
 
 if ($PgChoice -eq "2") {
   Write-Host ""
-  Write-Host "  Enter the PostgreSQL URL in this format:" -ForegroundColor White
-  Write-Host "  postgresql+asyncpg://user:password@host:port/dbname"
+  Write-Host "  ── URL format examples ────────────────────────────────────────────────" -ForegroundColor White
+  Write-Host "  Local / self-hosted PostgreSQL (port 5432):"
+  Write-Host "    postgresql+asyncpg://user:password@localhost:5432/dbname"
+  Write-Host ""
+  Write-Host "  Supabase — use Session Pooler (port 6543, NOT 5432):" -ForegroundColor White
+  Write-Host "    postgresql+asyncpg://postgres.<ref>:<password>@aws-0-<region>.pooler.supabase.com:6543/postgres"
+  Write-Warn "asyncpg is NOT compatible with Supabase port 5432 (PgBouncer transaction mode)."
+  Write-Warn "Always use port 6543 (Session Pooler) for Supabase."
+  Write-Host "  ───────────────────────────────────────────────────────────────────────"
   Write-Host ""
   $DatabaseUrl = Read-Host "  PostgreSQL URL"
   if ([string]::IsNullOrWhiteSpace($DatabaseUrl)) {
@@ -156,12 +257,22 @@ Write-Step "Step 4: Python Virtual Environment"
 
 Set-Location $ProjectRoot
 
-if (-not (Test-Path $VenvDir)) {
+if (Test-Path $VenvDir) {
+  Write-Warn "Virtual environment already exists at $VenvDir."
+  $DeleteVenv = Read-Host "  Do you want to delete it and create a fresh one? (y/N)"
+  if ($DeleteVenv -match "^[Yy]$") {
+    Write-Info "Deleting existing virtual environment..."
+    Remove-Item $VenvDir -Recurse -Force
+    Write-Info "Creating virtual environment at $VenvDir ..."
+    & $PythonCmd -m venv $VenvDir
+    Write-Success "Virtual environment created."
+  } else {
+    Write-Info "Proceeding with existing virtual environment."
+  }
+} else {
   Write-Info "Creating virtual environment at $VenvDir ..."
   & $PythonCmd -m venv $VenvDir
   Write-Success "Virtual environment created."
-} else {
-  Write-Info "Virtual environment already exists at $VenvDir."
 }
 
 $ActivateScript = Join-Path $VenvDir "Scripts\Activate.ps1"
@@ -192,6 +303,21 @@ try {
 # STEP 5 — Environment Configuration & Admin JWT
 # =============================================================================
 Write-Step "Step 5: Environment Configuration"
+
+# ── API Keys ──────────────────────────────────────────────────────────────────
+Write-Host ""
+Write-Info "Enter your API keys (leave blank to skip)."
+Write-Host ""
+$GroqApiKey = Read-Host "  Enter GROQ_API_KEY"
+
+$EnableLS = Read-Host "  Enable LangSmith tracing? (y/N)"
+if ($EnableLS -match "^[Yy]$") {
+    $LT_V2 = "true"
+    $LangsmithApiKey = Read-Host "  Enter LANGSMITH_API_KEY"
+} else {
+    $LT_V2 = "false"
+    $LangsmithApiKey = ""
+}
 
 # Generate cryptographically secure SECRET_KEY
 $SecretKey = & $PythonCmd -c "import secrets; print(secrets.token_urlsafe(32))"
@@ -232,6 +358,11 @@ ADMIN_USERNAME=
 ADMIN_PASSWORD_HASH=
 
 # -- Third-party APIs (if needed) --------------------------------------------
+GROQ_API_KEY=$GroqApiKey
+LANGCHAIN_TRACING_V2=$LT_V2
+LANGCHAIN_PROJECT=Nivesh_platform
+LANGSMITH_ENDPOINT="https://api.smith.langchain.com"
+LANGSMITH_API_KEY=$LangsmithApiKey
 # ALPHA_VANTAGE_APIKEY=your_key_here
 # SUPABASE_PASSWORD=your_password_here
 "@
@@ -245,7 +376,8 @@ Write-Info "Set up your admin login credentials for the Nivesh portal."
 Write-Host ""
 
 $AdminHelperPath = Join-Path $ScriptDir "admin_helper.py"
-& $PythonCmd $AdminHelperPath $BackendEnvFile
+# Use the venv Python explicitly — bcrypt is installed there, not in system Python
+& "$VenvDir\Scripts\python.exe" $AdminHelperPath $BackendEnvFile
 if ($LASTEXITCODE -ne 0) {
   Write-Fatal "Failed to set admin credentials. Check the output above."
 }
@@ -377,33 +509,51 @@ if (-not ($SeedMf -or $SeedStocks -or $SeedFundamentals)) {
 }
 
 if ($SeedMf) {
-  Write-Info "Seeding benchmark indices from CSV files..."
+  Start-TimedOp "Seeding benchmark indices"
   & $PythonCmd scripts\seed_indices.py
-  Write-Success "Benchmark indices seeded."
+  End-TimedOp
 
-  Write-Info "Seeding fund master records..."
+  Start-TimedOp "Seeding fund master records"
   & $PythonCmd scripts\seed_funds.py
-  Write-Success "Fund master seeded."
+  End-TimedOp
 
-  Write-Info "Fetching NAV history and computing metrics (30-60 minutes)..."
+  Write-Warn "NAV sync fetches data for every active fund — expected 30-60 minutes."
+  Start-TimedOp "NAV sync + metrics computation"
   & $PythonCmd scripts\sync_data.py
-  Write-Success "Fund NAV history and metrics complete."
+  End-TimedOp
 }
 
 if ($SeedStocks) {
-  Write-Info "Seeding stock master (18 large-cap stocks + 3 indices)..."
-  & $PythonCmd scripts\seed\seed_stock_master.py
-  Write-Success "Stock master seeded."
+  Write-Host ""
+  Write-Host "  How many years of price history to backfill?" -ForegroundColor White
+  Write-Host "  [1] 1 year   [2] 2 years   [5] 5 years   [10] 10 years   [M] Max (all available)"
+  $BackfillChoice = Read-Host "  Enter choice [5]"
+  if ([string]::IsNullOrWhiteSpace($BackfillChoice)) { $BackfillChoice = "5" }
+  $BackfillPeriod = switch ($BackfillChoice.ToLower()) {
+    "1"   { "1y"  }
+    "2"   { "2y"  }
+    "10"  { "10y" }
+    "m"   { "max" }
+    "max" { "max" }
+    default { "5y" }
+  }
+  Write-Info "Using backfill period: $BackfillPeriod"
 
-  Write-Info "Backfilling 5 years of price data from yfinance (20-40 minutes)..."
-  & $PythonCmd scripts\seed\backfill_prices.py 5y
-  Write-Success "Stock price history backfilled."
+  Start-TimedOp "Seeding stock master (18 large-cap stocks + 3 indices)"
+  & $PythonCmd scripts\seed\seed_stock_master.py
+  End-TimedOp
+
+  Write-Warn "Price backfill ($BackfillPeriod) fetches OHLCV from yfinance — expected 20-40 minutes."
+  Start-TimedOp "Price history backfill ($BackfillPeriod)"
+  & $PythonCmd scripts\seed\backfill_prices.py $BackfillPeriod
+  End-TimedOp
 }
 
 if ($SeedFundamentals) {
-  Write-Info "Seeding fundamental data from screener.in (5-15 minutes)..."
+  Write-Warn "Fundamental scraping from screener.in — expected 5-15 minutes."
+  Start-TimedOp "Seeding fundamental data"
   & $PythonCmd scripts\seed\seed_fundamentals.py
-  Write-Success "Fundamental data seeded."
+  End-TimedOp
 }
 
 # =============================================================================
@@ -471,4 +621,5 @@ Set-Location $BackendDir
 $Host_ = if ($env:NIVESH_HOST) { $env:NIVESH_HOST } else { "0.0.0.0" }
 $Port  = if ($env:NIVESH_PORT) { $env:NIVESH_PORT } else { "8000" }
 
-& uvicorn app.main:app --host $Host_ --port $Port --reload --log-level info
+# Note: --reload is omitted for production. Add it manually for development hot-reload.
+& uvicorn app.main:app --host $Host_ --port $Port --log-level info

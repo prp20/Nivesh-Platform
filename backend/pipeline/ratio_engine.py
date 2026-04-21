@@ -106,8 +106,11 @@ async def compute_ratios_for_stock(stock_id: int, latest_close: Optional[float])
     roe_val = safe_div(pat, equity)
     roe = round(roe_val * 100, 3) if roe_val is not None else None
 
-    roce_val = safe_div(ebit, tot_assets)
+    # ROCE = EBIT / Capital Employed (Total Assets - Current Liabilities)
+    capital_employed = (tot_assets - curr_liab) if tot_assets is not None and curr_liab is not None else tot_assets
+    roce_val = safe_div(ebit, capital_employed)
     roce = round(roce_val * 100, 3) if roce_val is not None else None
+
 
     roa_val = safe_div(pat, tot_assets)
     roa = round(roa_val * 100, 3) if roa_val is not None else None
@@ -206,8 +209,11 @@ async def _compute_and_store_ttm_ratios(stock_id: int, pl: dict, bs: dict, cf: d
     roe_val = safe_div(pat_ttm, equity)
     roe_ttm = round(roe_val * 100, 3) if roe_val is not None else None
 
-    roce_val = safe_div(ebit_ttm, tot_assets)
+    # TTM ROCE = EBIT TTM / Capital Employed
+    capital_employed_ttm = (tot_assets - curr_liab) if tot_assets is not None and curr_liab is not None else tot_assets
+    roce_val = safe_div(ebit_ttm, capital_employed_ttm)
     roce_ttm = round(roce_val * 100, 3) if roce_val is not None else None
+
 
     roa_val = safe_div(pat_ttm, tot_assets)
     roa_ttm = round(roa_val * 100, 3) if roa_val is not None else None

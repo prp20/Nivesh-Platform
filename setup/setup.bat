@@ -36,12 +36,32 @@ echo   NOTE: For a better experience with colour output
 echo         and richer error handling, use setup.ps1:
 echo         powershell -ExecutionPolicy RemoteSigned -File setup\setup.ps1
 echo.
+echo.
 echo   Project root: %PROJECT_ROOT%
 echo.
 
 :: =============================================================================
+:: STEP 0 — Check Git
+:: =============================================================================
+echo [STEP 0] Checking Git...
+git --version >nul 2>&1
+if errorlevel 1 (
+    echo [WARN] Git not found. Attempting to install via winget...
+    winget install --id Git.Git -e --source winget --accept-package-agreements --accept-source-agreements
+    if errorlevel 1 (
+        echo [ERROR] Failed to install Git. Please install Git manually.
+        pause
+        exit /b 1
+    )
+    echo [OK] Git installed.
+) else (
+    for /f "tokens=3" %%v in ('git --version 2^>^&1') do echo [OK]    Git %%v detected.
+)
+
+:: =============================================================================
 :: STEP 1 — Check Python and Install if missing
 :: =============================================================================
+echo.
 echo [STEP 1] Checking Python...
 
 python --version >nul 2>&1
@@ -88,6 +108,53 @@ if errorlevel 1 (
 )
 
 :: =============================================================================
+:: STEP 2.5 — Clone Project Repository (Optional)
+:: =============================================================================
+echo.
+echo [STEP 2.5] Cloning Project Repository
+echo.
+
+set /p DO_CLONE="  Do you want to clone or update the repository? (y/N): "
+if /i not "!DO_CLONE!"=="y" (
+    echo [INFO]  Skipping repository cloning/update.
+) else (
+    set REPO_URL=https://github.com/prp20/Nivesh-Platform
+    set /p BRANCH_NAME="    Enter branch to clone/update [main]: "
+    if "!BRANCH_NAME!"=="" set BRANCH_NAME=main
+
+    git rev-parse --is-inside-work-tree >nul 2>&1
+    if not errorlevel 1 (
+        for /f "tokens=*" %%a in ('git remote get-url origin 2^>nul') do set CURRENT_REMOTE=%%a
+        echo !CURRENT_REMOTE! | findstr /i "Nivesh-Platform" >nul
+        if not errorlevel 1 (
+            echo [INFO]  Already inside the Nivesh-Platform repository.
+            set /p SWITCH_BRANCH="    Do you want to switch to/update branch '!BRANCH_NAME!'? (y/N): "
+            if /i "!SWITCH_BRANCH!"=="y" (
+                git fetch origin
+                git checkout !BRANCH_NAME! || git checkout -b !BRANCH_NAME! origin/!BRANCH_NAME!
+                git pull origin !BRANCH_NAME!
+                echo [OK]    Updated to !BRANCH_NAME!.
+            )
+        ) else (
+            goto :clone_repo
+        )
+    ) else (
+        :clone_repo
+        echo [INFO]  Cloning %REPO_URL% (branch: %BRANCH_NAME%)...
+        git clone -b %BRANCH_NAME% %REPO_URL% nivesh-cloned
+        cd /d nivesh-cloned
+        set "PROJECT_ROOT=%CD%"
+        set "BACKEND_DIR=%PROJECT_ROOT%\backend"
+        set "FRONTEND_DIR=%PROJECT_ROOT%\frontend"
+        set "VENV_DIR=%BACKEND_DIR%\venv"
+        set "BACKEND_ENV_FILE=%BACKEND_DIR%\.env"
+        set "FRONTEND_ENV_FILE=%FRONTEND_DIR%\.env"
+        set "COMPOSE_FILE=%BACKEND_DIR%\docker-compose.yml"
+        echo [OK]    Cloned successfully into nivesh-cloned.
+    )
+)
+
+:: =============================================================================
 :: STEP 3 — PostgreSQL setup
 :: =============================================================================
 echo.
@@ -103,8 +170,15 @@ if "%PG_CHOICE%"=="" set PG_CHOICE=1
 set USE_DOCKER=0
 if "%PG_CHOICE%"=="2" (
   echo.
-  echo   Enter the PostgreSQL URL in this format:
-  echo   postgresql+asyncpg://user:password@host:port/dbname
+  echo   -- URL format examples -------------------------------------------------------
+  echo   Local / self-hosted PostgreSQL (port 5432):
+  echo     postgresql+asyncpg://user:password@localhost:5432/dbname
+  echo.
+  echo   Supabase - use Session Pooler (port 6543, NOT 5432):
+  echo     postgresql+asyncpg://postgres.^<ref^>:^<password^>@aws-0-^<region^>.pooler.supabase.com:6543/postgres
+  echo   [WARN]  asyncpg is NOT compatible with Supabase port 5432 (PgBouncer mode).
+  echo   [WARN]  Always use port 6543 (Session Pooler) for Supabase.
+  echo   ---------------------------------------------------------------------------
   echo.
   set /p DATABASE_URL="  PostgreSQL URL: "
   if "!DATABASE_URL!"=="" (
@@ -136,7 +210,24 @@ echo.
 
 cd /d "%PROJECT_ROOT%"
 
-if not exist "%VENV_DIR%" (
+if exist "%VENV_DIR%" (
+  echo [WARN]  Virtual environment already exists at %VENV_DIR%
+  set /p DELETE_VENV="  Do you want to delete it and create a fresh one? (y/N): "
+  if /i "!DELETE_VENV!"=="y" (
+    echo [INFO]  Deleting existing virtual environment...
+    rmdir /s /q "%VENV_DIR%"
+    echo [INFO]  Creating virtual environment at %VENV_DIR%...
+    python -m venv "%VENV_DIR%"
+    if errorlevel 1 (
+      echo [ERROR] Failed to create virtual environment.
+      pause
+      exit /b 1
+    )
+    echo [OK]    Virtual environment created.
+  ) else (
+    echo [INFO]  Proceeding with existing virtual environment.
+  )
+) else (
   echo [INFO]  Creating virtual environment at %VENV_DIR%...
   python -m venv "%VENV_DIR%"
   if errorlevel 1 (
@@ -145,8 +236,6 @@ if not exist "%VENV_DIR%" (
     exit /b 1
   )
   echo [OK]    Virtual environment created.
-) else (
-  echo [INFO]  Virtual environment already exists.
 )
 
 echo [INFO]  Activating virtual environment...
@@ -189,6 +278,20 @@ if "!SECRET_KEY!"=="" (
   set "SECRET_KEY=dev-secret-%mydate%-%mytime%-%RANDOM%-%RANDOM%"
 )
 
+:: ── API Keys ──────────────────────────────────────────────────────────────────
+echo.
+echo [INFO]  Enter your API keys (leave blank to skip).
+echo.
+set /p GROQ_API_KEY="  Enter GROQ_API_KEY: "
+set /p ENABLE_LS="  Enable LangSmith tracing? (y/N): "
+if /i "!ENABLE_LS!"=="y" (
+    set LANGCHAIN_TRACING_V2=true
+    set /p LANGSMITH_API_KEY="  Enter LANGSMITH_API_KEY: "
+) else (
+    set LANGCHAIN_TRACING_V2=false
+    set LANGSMITH_API_KEY=
+)
+
 :: Backend .env
 set WRITE_BACKEND_ENV=1
 if exist "%BACKEND_ENV_FILE%" (
@@ -219,6 +322,11 @@ if "%WRITE_BACKEND_ENV%"=="1" (
     echo ADMIN_PASSWORD_HASH=
     echo.
     echo # -- Third-party APIs ^(if needed^) -------------------------------------------
+    echo GROQ_API_KEY=!GROQ_API_KEY!
+    echo LANGCHAIN_TRACING_V2=!LANGCHAIN_TRACING_V2!
+    echo LANGCHAIN_PROJECT=Nivesh_platform
+    echo LANGSMITH_ENDPOINT="https://api.smith.langchain.com"
+    echo LANGSMITH_API_KEY=!LANGSMITH_API_KEY!
     echo # ALPHA_VANTAGE_APIKEY=your_key_here
     echo # SUPABASE_PASSWORD=your_password_here
   ) > "%BACKEND_ENV_FILE%"
@@ -415,12 +523,26 @@ if "!SEED_MF!"=="1" (
 )
 
 if "!SEED_STOCKS!"=="1" (
+  echo.
+  echo   How many years of price history to backfill?
+  echo   [1] 1 year   [2] 2 years   [5] 5 years   [10] 10 years   [M] Max (all available)
+  set /p BACKFILL_CHOICE="  Enter choice [5]: "
+  if "!BACKFILL_CHOICE!"=="" set BACKFILL_CHOICE=5
+  set BACKFILL_PERIOD=5y
+  if "!BACKFILL_CHOICE!"=="1"  set BACKFILL_PERIOD=1y
+  if "!BACKFILL_CHOICE!"=="2"  set BACKFILL_PERIOD=2y
+  if "!BACKFILL_CHOICE!"=="10" set BACKFILL_PERIOD=10y
+  if /i "!BACKFILL_CHOICE!"=="m"   set BACKFILL_PERIOD=max
+  if /i "!BACKFILL_CHOICE!"=="max" set BACKFILL_PERIOD=max
+  echo [INFO]  Using backfill period: !BACKFILL_PERIOD!
+
   echo [INFO]  Seeding stock master...
   python scripts\seed\seed_stock_master.py
   echo [OK]    Stock master seeded.
 
-  echo [INFO]  Backfilling 5 years of price data ^(20-40 minutes^)...
-  python scripts\seed\backfill_prices.py 5y
+  echo [WARN]  Price backfill ^(!BACKFILL_PERIOD!^) fetches OHLCV from yfinance -- expected 20-40 minutes.
+  echo [INFO]  Do not interrupt this step.
+  python scripts\seed\backfill_prices.py !BACKFILL_PERIOD!
   echo [OK]    Stock price history backfilled.
 )
 
@@ -502,6 +624,7 @@ cd /d "%BACKEND_DIR%"
 if "%NIVESH_HOST%"=="" set NIVESH_HOST=0.0.0.0
 if "%NIVESH_PORT%"=="" set NIVESH_PORT=8000
 
-uvicorn app.main:app --host %NIVESH_HOST% --port %NIVESH_PORT% --reload --log-level info
+uvicorn app.main:app --host %NIVESH_HOST% --port %NIVESH_PORT% --log-level info
+rem Tip: add --reload for development hot-reload (not recommended in production)
 
 endlocal

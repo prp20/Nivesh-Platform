@@ -257,7 +257,8 @@ def compute_all_metrics(nav_history: List[Dict], benchmark_history: Optional[Lis
             beta = covariance / variance if variance != 0 else 1.0
             
             # Alpha (Annualized)
-            risk_free_rate = 0.065
+            risk_free_rate = ANNUAL_RISK_FREE_RATE
+
             fund_ann_ret = (1 + fund_ret.mean())**252 - 1
             bench_ann_ret = (1 + bench_ret.mean())**252 - 1
             alpha = fund_ann_ret - (risk_free_rate + beta * (bench_ann_ret - risk_free_rate))

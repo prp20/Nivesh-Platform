@@ -182,6 +182,7 @@ class Stock(Base):
     company_name   = Column(String(255), nullable=False)
     sector         = Column(String(100))
     industry       = Column(String(100))
+    summary        = Column(String(5000))
     market_cap_cat = Column(String(50))
     is_index       = Column(Boolean, default=False)
     is_active      = Column(Boolean, default=True)
@@ -281,6 +282,10 @@ class FinancialRatio(Base):
     eps            = Column(Numeric(12, 4))
     book_value_ps  = Column(Numeric(12, 4))
     dividend_yield = Column(Numeric(8, 4))
+    market_cap     = Column(Numeric(18, 4))  # In Crores (INR)
+    low_52w        = Column(Numeric(12, 4))
+    high_52w       = Column(Numeric(12, 4))
+    revenue_per_share = Column(Numeric(12, 4))
     cfo_to_pat     = Column(Numeric(10, 3))
     computed_at    = Column(TIMESTAMP(timezone=True), server_default=func.now())
 
@@ -368,3 +373,44 @@ class PipelineAudit(Base):
     records_out = Column(Integer, default=0)
     error_msg   = Column(Text)
     metadata_   = Column("metadata", JSONB)
+
+
+class FundamentalScore(Base):
+    __tablename__ = "fundamental_scores"
+    __table_args__ = (
+        UniqueConstraint('stock_id', 'period_end', 'score_version', name='uq_stock_period_version'),
+        Index('ix_fundamental_scores_stock_id', 'stock_id'),
+    )
+
+    id                          = Column(Integer, primary_key=True)
+    stock_id                    = Column(Integer, ForeignKey("stocks.id", ondelete="CASCADE"), nullable=False)
+    period_end                  = Column(Date, nullable=False)
+    period_type                 = Column(String(10), nullable=False)
+    score_version               = Column(String(10), nullable=False, default="v1.0")
+    
+    # Statement Scores (0-10)
+    pl_score                    = Column(Numeric(6, 3))
+    bs_score                    = Column(Numeric(6, 3))
+    cf_score                    = Column(Numeric(6, 3))
+    
+    # Sub-component scores
+    pl_growth_score             = Column(Numeric(6, 3))
+    pl_margin_score             = Column(Numeric(6, 3))
+    pl_eps_score                = Column(Numeric(6, 3))
+    pl_consistency_score        = Column(Numeric(6, 3))
+    
+    bs_leverage_score           = Column(Numeric(6, 3))
+    bs_liquidity_score          = Column(Numeric(6, 3))
+    bs_asset_score              = Column(Numeric(6, 3))
+    bs_networth_score           = Column(Numeric(6, 3))
+    
+    cf_operating_score          = Column(Numeric(6, 3))
+    cf_capex_score              = Column(Numeric(6, 3))
+    cf_financing_score          = Column(Numeric(6, 3))
+    
+    # Composite Result
+    composite_fundamental_score = Column(Numeric(6, 3))
+    reasoning_label             = Column(String(50))
+    reasoning_text              = Column(Text)
+    
+    computed_at                 = Column(TIMESTAMP(timezone=True), server_default=func.now())

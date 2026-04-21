@@ -13,6 +13,21 @@ export const fetchFunds = createAsyncThunk(
     }
 );
 
+export const fetchFundsMetadata = createAsyncThunk(
+    'funds/fetchMetadata',
+    async (_, { rejectWithValue }) => {
+        try {
+            const [categories, amcs] = await Promise.all([
+                fundService.getCategories(),
+                fundService.getAmcs()
+            ]);
+            return { categories, amcs };
+        } catch (err) {
+            return rejectWithValue(err.response?.data || 'Failed to fetch metadata');
+        }
+    }
+);
+
 const fundsSlice = createSlice({
     name: 'funds',
     initialState: {
@@ -24,7 +39,9 @@ const fundsSlice = createSlice({
         pageSize: 10,
         categoryFilter: 'All',
         subcategoryFilter: '',
-        amcSearch: '',
+        amcFilter: 'All',
+        amcs: [],
+        categories: [],
         planTypeFilter: '',
         sortBy: 'scheme_name',
         viewMode: 'card', // 'card' or 'table'
@@ -33,8 +50,8 @@ const fundsSlice = createSlice({
         setCurrentPage: (state, action) => { state.currentPage = action.payload; },
         setPageSize: (state, action) => { state.pageSize = action.payload; state.currentPage = 1; },
         setCategoryFilter: (state, action) => { state.categoryFilter = action.payload; state.currentPage = 1; },
+        setAmcFilter: (state, action) => { state.amcFilter = action.payload; state.currentPage = 1; },
         setSubcategoryFilter: (state, action) => { state.subcategoryFilter = action.payload; state.currentPage = 1; },
-        setAmcSearch: (state, action) => { state.amcSearch = action.payload; state.currentPage = 1; },
         setPlanTypeFilter: (state, action) => { state.planTypeFilter = action.payload; state.currentPage = 1; },
         setSortBy: (state, action) => { state.sortBy = action.payload; state.currentPage = 1; },
         setViewMode: (state, action) => { state.viewMode = action.payload; },
@@ -62,6 +79,10 @@ const fundsSlice = createSlice({
             .addCase(fetchFunds.rejected, (state, action) => {
                 state.loading = false;
                 state.error = action.payload || 'Connectivity error. Security protocol engaged.';
+            })
+            .addCase(fetchFundsMetadata.fulfilled, (state, action) => {
+                state.categories = action.payload.categories;
+                state.amcs = action.payload.amcs;
             });
     },
 });
@@ -70,8 +91,8 @@ export const {
     setCurrentPage, 
     setPageSize, 
     setCategoryFilter, 
+    setAmcFilter,
     setSubcategoryFilter,
-    setAmcSearch, 
     setPlanTypeFilter,
     setSortBy,
     setViewMode,

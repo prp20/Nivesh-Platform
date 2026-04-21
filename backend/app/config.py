@@ -7,6 +7,7 @@ via environment variables (recommended for production deployments).
 
 import os
 import logging
+from pydantic import SecretStr
 from pydantic_settings import BaseSettings
 
 _logger = logging.getLogger(__name__)
@@ -42,6 +43,16 @@ class Settings(BaseSettings):
     # Admin portal credentials (set during setup)
     ADMIN_USERNAME: str = "admin"
     ADMIN_PASSWORD_HASH: str = ""  # bcrypt hash written by setup script
+    
+    # LLM Configuration
+    GOOGLE_API_KEY: str = ""
+    GROQ_API_KEY: SecretStr = SecretStr("")
+
+    # LangSmith Tracing
+    LANGSMITH_TRACING: bool = False
+    LANGSMITH_API_KEY: SecretStr = SecretStr("")
+    LANGSMITH_PROJECT: str = "nivesh-platform"
+    LANGSMITH_ENDPOINT: str = "https://api.smith.langchain.com"
 
     # CORS: Read from environment, fall back to dev defaults
     ALLOWED_ORIGINS: list = []

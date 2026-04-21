@@ -100,28 +100,6 @@ class AuditLog:
         error_msg: Optional[str],
     ) -> None:
         """Log audit event to database audit_log table."""
-        # Create audit_log table if it doesn't exist
-        create_table_sql = """
-        CREATE TABLE IF NOT EXISTS audit_log (
-            id BIGSERIAL PRIMARY KEY,
-            timestamp TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
-            action VARCHAR(100) NOT NULL,
-            user_account VARCHAR(100) NOT NULL,
-            resource VARCHAR(500) NOT NULL,
-            details JSONB,
-            status VARCHAR(20) NOT NULL,
-            error_message TEXT,
-            created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
-        );
-        CREATE INDEX IF NOT EXISTS ix_audit_log_user_timestamp
-            ON audit_log(user_account, created_at DESC);
-        CREATE INDEX IF NOT EXISTS ix_audit_log_action
-            ON audit_log(action, created_at DESC);
-        """
-
-        # Create table
-        await db.execute(text(create_table_sql))
-
         # Insert audit record
         insert_sql = """
         INSERT INTO audit_log

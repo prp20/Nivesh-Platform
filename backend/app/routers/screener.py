@@ -147,13 +147,14 @@ async def screener(
     # Single WHERE clause definition, used in both main and count queries
     sql_main = f"""
         SELECT
-            s.symbol, s.company_name, s.sector, s.market_cap_cat,
+            s.symbol, s.company_name, s.sector, s.industry, s.summary, s.market_cap_cat,
             p.close        AS latest_close,
             p.price_date   AS latest_date,
             r.roe,         r.roce,        r.pat_margin,
             r.pe_ratio,    r.pb_ratio,    r.debt_equity,
             r.revenue_growth, r.pat_growth, r.eps,
             r.interest_cov, r.cfo_to_pat,
+            m.market_cap, m.dividend_yield, m.low_52w, m.high_52w, m.revenue_per_share,
             sr.rating_label, sr.total_score
         FROM stocks s
         LEFT JOIN LATERAL (
@@ -163,6 +164,12 @@ async def screener(
             WHERE stock_id = s.id AND period_type = 'annual'
             ORDER BY period_end DESC LIMIT 1
         ) r ON TRUE
+        LEFT JOIN LATERAL (
+            SELECT market_cap, dividend_yield, low_52w, high_52w, revenue_per_share
+            FROM financial_ratios
+            WHERE stock_id = s.id AND period_type = 'latest'
+            ORDER BY period_end DESC LIMIT 1
+        ) m ON TRUE
         LEFT JOIN LATERAL (
             SELECT close, price_date
             FROM price_data WHERE stock_id = s.id ORDER BY price_date DESC LIMIT 1
@@ -232,7 +239,9 @@ async def get_ratios(
     sql = """
         SELECT period_end, period_type, pe_ratio, pb_ratio, ps_ratio, roe, roce, roa,
                pat_margin, ebitda_margin, debt_equity, interest_cov, current_ratio,
-               revenue_growth, pat_growth, eps_growth, eps, book_value_ps, cfo_to_pat, computed_at
+               revenue_growth, pat_growth, eps_growth, eps, book_value_ps, 
+               dividend_yield, market_cap, low_52w, high_52w, revenue_per_share,
+               cfo_to_pat, computed_at
         FROM financial_ratios
         WHERE stock_id = :sid AND period_type = :pt
         ORDER BY period_end DESC
@@ -252,8 +261,8 @@ async def compare_stocks(
     from app.routers.stocks import _get_stock_id
 
     symbol_list = [s.strip().upper() for s in symbols.split(",")][:5]
-    if not symbol_list:
-        raise HTTPException(400, "Provide at least one symbol")
+    if len(symbol_list) < 2:
+        raise HTTPException(400, "Provide at least two symbols to compare")
 
     result = []
     for sym in symbol_list:

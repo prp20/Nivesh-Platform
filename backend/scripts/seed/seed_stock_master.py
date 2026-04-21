@@ -37,45 +37,88 @@ def load_stocks_from_csv() -> List[Dict]:
                 "symbol": row["symbol"],
                 "company_name": row["company_name"],
                 "sector": row.get("sector") or None,
+                "industry": row.get("industry") or None,
+                "summary": row.get("summary") or None,
                 "market_cap_cat": row.get("market_cap_category") or None,
                 "yf_symbol": row["yf_symbol"],
                 "is_index": row["is_index"].lower() == "true",
             })
     return stocks
 
-INSERT_SQL = """
-    INSERT INTO stocks (symbol, nse_symbol, yf_symbol, screener_slug, company_name, sector, market_cap_cat, is_index, is_active)
-    VALUES ($1, $2, $3, $4, $5, $6, $7, $8, TRUE)
+INSERT_STOCK_SQL = """
+    INSERT INTO stocks (symbol, nse_symbol, yf_symbol, screener_slug, company_name, sector, industry, summary, market_cap_cat, is_index, is_active)
+    VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, FALSE, TRUE)
     ON CONFLICT (symbol) DO UPDATE SET
         company_name   = EXCLUDED.company_name,
         sector         = EXCLUDED.sector,
+        industry       = EXCLUDED.industry,
+        summary        = EXCLUDED.summary,
         market_cap_cat = EXCLUDED.market_cap_cat,
+        is_index       = FALSE,
         updated_at     = NOW()
+"""
+
+INSERT_BENCHMARK_SQL = """
+    INSERT INTO benchmark_master (benchmark_code, benchmark_name, ticker, benchmark_type, asset_class, is_active)
+    VALUES ($1, $2, $3, 'Market Index', 'Equity', TRUE)
+    ON CONFLICT (benchmark_code) DO UPDATE SET
+        benchmark_name = EXCLUDED.benchmark_name,
+        ticker = EXCLUDED.ticker,
+        updated_at = NOW()
+"""
+
+DELETE_INDEX_FROM_STOCKS_SQL = """
+    DELETE FROM stocks WHERE symbol = $1 AND is_index = TRUE
 """
 
 
 async def seed():
-    # Load stocks from CSV
-    stocks = load_stocks_from_csv()
+    # Load records from CSV
+    records = load_stocks_from_csv()
 
     # Convert async URL to sync URL for asyncpg
     db_url = settings.DATABASE_URL.replace("postgresql+asyncpg://", "postgresql://")
     conn = await asyncpg.connect(db_url, statement_cache_size=0)
     try:
-        for s in stocks:
-            await conn.execute(
-                INSERT_SQL,
-                s["symbol"],
-                s.get("nse_symbol", s["symbol"]),
-                s["yf_symbol"],
-                s.get("screener_slug", s["symbol"]),
-                s["company_name"],
-                s.get("sector"),
-                s.get("market_cap_cat"),
-                s.get("is_index", False),
-            )
-            print(f"  ✓ {s['symbol']}")
-        print(f"\nSeeded {len(stocks)} records from {CSV_PATH}")
+        stocks_count = 0
+        indices_count = 0
+        
+        for r in records:
+            if r["is_index"]:
+                # 1. Upsert into benchmark_master
+                await conn.execute(
+                    INSERT_BENCHMARK_SQL,
+                    r["symbol"],
+                    r["company_name"],
+                    r["yf_symbol"]
+                )
+                
+                # 2. Cleanup: Remove from stocks table if it was previously seeded there
+                await conn.execute(DELETE_INDEX_FROM_STOCKS_SQL, r["symbol"])
+                
+                indices_count += 1
+                print(f"  Index ✓ {r['symbol']}")
+            else:
+                # Upsert into stocks
+                await conn.execute(
+                    INSERT_STOCK_SQL,
+                    r["symbol"],
+                    r.get("nse_symbol", r["symbol"]),
+                    r["yf_symbol"],
+                    r.get("screener_slug", r["symbol"]),
+                    r["company_name"],
+                    r.get("sector"),
+                    r.get("industry"),
+                    r.get("summary"),
+                    r.get("market_cap_cat")
+                )
+                stocks_count += 1
+                if stocks_count % 50 == 0:
+                    print(f"  Stock ✓ {r['symbol']} ({stocks_count} processed)")
+        
+        print(f"\nSeeding complete from {CSV_PATH}")
+        print(f"  - Stocks seeded/updated: {stocks_count}")
+        print(f"  - Indices seeded/updated in benchmarks: {indices_count}")
     finally:
         await conn.close()
 
