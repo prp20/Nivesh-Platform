@@ -170,8 +170,15 @@ if "%PG_CHOICE%"=="" set PG_CHOICE=1
 set USE_DOCKER=0
 if "%PG_CHOICE%"=="2" (
   echo.
-  echo   Enter the PostgreSQL URL in this format:
-  echo   postgresql+asyncpg://user:password@host:port/dbname
+  echo   -- URL format examples -------------------------------------------------------
+  echo   Local / self-hosted PostgreSQL (port 5432):
+  echo     postgresql+asyncpg://user:password@localhost:5432/dbname
+  echo.
+  echo   Supabase - use Session Pooler (port 6543, NOT 5432):
+  echo     postgresql+asyncpg://postgres.^<ref^>:^<password^>@aws-0-^<region^>.pooler.supabase.com:6543/postgres
+  echo   [WARN]  asyncpg is NOT compatible with Supabase port 5432 (PgBouncer mode).
+  echo   [WARN]  Always use port 6543 (Session Pooler) for Supabase.
+  echo   ---------------------------------------------------------------------------
   echo.
   set /p DATABASE_URL="  PostgreSQL URL: "
   if "!DATABASE_URL!"=="" (
@@ -516,12 +523,26 @@ if "!SEED_MF!"=="1" (
 )
 
 if "!SEED_STOCKS!"=="1" (
+  echo.
+  echo   How many years of price history to backfill?
+  echo   [1] 1 year   [2] 2 years   [5] 5 years   [10] 10 years   [M] Max (all available)
+  set /p BACKFILL_CHOICE="  Enter choice [5]: "
+  if "!BACKFILL_CHOICE!"=="" set BACKFILL_CHOICE=5
+  set BACKFILL_PERIOD=5y
+  if "!BACKFILL_CHOICE!"=="1"  set BACKFILL_PERIOD=1y
+  if "!BACKFILL_CHOICE!"=="2"  set BACKFILL_PERIOD=2y
+  if "!BACKFILL_CHOICE!"=="10" set BACKFILL_PERIOD=10y
+  if /i "!BACKFILL_CHOICE!"=="m"   set BACKFILL_PERIOD=max
+  if /i "!BACKFILL_CHOICE!"=="max" set BACKFILL_PERIOD=max
+  echo [INFO]  Using backfill period: !BACKFILL_PERIOD!
+
   echo [INFO]  Seeding stock master...
   python scripts\seed\seed_stock_master.py
   echo [OK]    Stock master seeded.
 
-  echo [INFO]  Backfilling OHLC price data ^(20-40 minutes^)...
-  python scripts\seed\backfill_prices.py max
+  echo [WARN]  Price backfill ^(!BACKFILL_PERIOD!^) fetches OHLCV from yfinance -- expected 20-40 minutes.
+  echo [INFO]  Do not interrupt this step.
+  python scripts\seed\backfill_prices.py !BACKFILL_PERIOD!
   echo [OK]    Stock price history backfilled.
 )
 
@@ -603,6 +624,7 @@ cd /d "%BACKEND_DIR%"
 if "%NIVESH_HOST%"=="" set NIVESH_HOST=0.0.0.0
 if "%NIVESH_PORT%"=="" set NIVESH_PORT=8000
 
-uvicorn app.main:app --host %NIVESH_HOST% --port %NIVESH_PORT% --reload --log-level info
+uvicorn app.main:app --host %NIVESH_HOST% --port %NIVESH_PORT% --log-level info
+rem Tip: add --reload for development hot-reload (not recommended in production)
 
 endlocal

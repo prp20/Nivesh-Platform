@@ -37,6 +37,22 @@ function Write-Fatal   {
   exit 1
 }
 
+# Ensure Python output is unbuffered so tqdm bars and prints stream in real time
+$env:PYTHONUNBUFFERED = "1"
+
+# ─── Timed runner helpers ─────────────────────────────────────────────────────
+function Start-TimedOp {
+  param([string]$Label)
+  $script:_op_label = $Label
+  $script:_op_sw = [System.Diagnostics.Stopwatch]::StartNew()
+  Write-Info "⏳ ${Label}...  (do not interrupt)"
+}
+function End-TimedOp {
+  $script:_op_sw.Stop()
+  $elapsed = [int]$script:_op_sw.Elapsed.TotalSeconds
+  Write-Success "$($script:_op_label) — done in ${elapsed}s"
+}
+
 # ─── Resolve paths ───────────────────────────────────────────────────────────
 $ScriptDir      = Split-Path -Parent $MyInvocation.MyCommand.Path
 $ProjectRoot    = Split-Path -Parent $ScriptDir
@@ -134,6 +150,22 @@ if ($DoClone -notmatch "^[Yy]$") {
     $BranchName = Read-Host "    Enter branch to clone/update [main]"
     if ([string]::IsNullOrWhiteSpace($BranchName)) { $BranchName = "main" }
 
+    # Define clone_repo BEFORE any branch that calls it
+    function clone_repo {
+        Write-Info "Cloning $RepoUrl (branch: $BranchName)..."
+        & git clone -b $BranchName $RepoUrl nivesh-cloned
+        if ($LASTEXITCODE -ne 0) { Write-Fatal "git clone failed. Check network and repo URL." }
+        Set-Location nivesh-cloned
+        $clonedRoot = (Get-Item .).FullName
+        # Re-resolve all paths relative to the cloned directory
+        $script:BackendDir      = Join-Path $clonedRoot "backend"
+        $script:FrontendDir     = Join-Path $clonedRoot "frontend"
+        $script:VenvDir         = Join-Path $script:BackendDir "venv"
+        $script:BackendEnvFile  = Join-Path $script:BackendDir ".env"
+        $script:FrontendEnvFile = Join-Path $script:FrontendDir ".env"
+        Write-Success "Cloned successfully into nivesh-cloned."
+    }
+
     $IsRepo = $false
     try {
       if (& git rev-parse --is-inside-work-tree 2>$null) { $IsRepo = $true }
@@ -154,22 +186,11 @@ if ($DoClone -notmatch "^[Yy]$") {
                 Write-Success "Updated to $BranchName."
             }
         } else {
+            # Already inside a different git repo — clone alongside
             clone_repo
         }
     } else {
-        function clone_repo {
-            Write-Info "Cloning $RepoUrl (branch: $BranchName)..."
-            & git clone -b $BranchName $RepoUrl nivesh-cloned
-            Set-Location nivesh-cloned
-            $ProjectRoot = (Get-Item .).FullName
-            # Re-resolve paths
-            $script:BackendDir     = Join-Path $ProjectRoot "backend"
-            $script:FrontendDir    = Join-Path $ProjectRoot "frontend"
-            $script:VenvDir        = Join-Path $BackendDir "venv"
-            $script:BackendEnvFile = Join-Path $BackendDir ".env"
-            $script:FrontendEnvFile= Join-Path $FrontendDir ".env"
-            Write-Success "Cloned successfully into nivesh-cloned."
-        }
+        # Not inside any git repo — clone fresh
         clone_repo
     }
 }
@@ -192,8 +213,15 @@ $DatabaseUrl = ""
 
 if ($PgChoice -eq "2") {
   Write-Host ""
-  Write-Host "  Enter the PostgreSQL URL in this format:" -ForegroundColor White
-  Write-Host "  postgresql+asyncpg://user:password@host:port/dbname"
+  Write-Host "  ── URL format examples ────────────────────────────────────────────────" -ForegroundColor White
+  Write-Host "  Local / self-hosted PostgreSQL (port 5432):"
+  Write-Host "    postgresql+asyncpg://user:password@localhost:5432/dbname"
+  Write-Host ""
+  Write-Host "  Supabase — use Session Pooler (port 6543, NOT 5432):" -ForegroundColor White
+  Write-Host "    postgresql+asyncpg://postgres.<ref>:<password>@aws-0-<region>.pooler.supabase.com:6543/postgres"
+  Write-Warn "asyncpg is NOT compatible with Supabase port 5432 (PgBouncer transaction mode)."
+  Write-Warn "Always use port 6543 (Session Pooler) for Supabase."
+  Write-Host "  ───────────────────────────────────────────────────────────────────────"
   Write-Host ""
   $DatabaseUrl = Read-Host "  PostgreSQL URL"
   if ([string]::IsNullOrWhiteSpace($DatabaseUrl)) {
@@ -348,7 +376,8 @@ Write-Info "Set up your admin login credentials for the Nivesh portal."
 Write-Host ""
 
 $AdminHelperPath = Join-Path $ScriptDir "admin_helper.py"
-& $PythonCmd $AdminHelperPath $BackendEnvFile
+# Use the venv Python explicitly — bcrypt is installed there, not in system Python
+& "$VenvDir\Scripts\python.exe" $AdminHelperPath $BackendEnvFile
 if ($LASTEXITCODE -ne 0) {
   Write-Fatal "Failed to set admin credentials. Check the output above."
 }
@@ -480,33 +509,51 @@ if (-not ($SeedMf -or $SeedStocks -or $SeedFundamentals)) {
 }
 
 if ($SeedMf) {
-  Write-Info "Seeding benchmark indices from CSV files..."
+  Start-TimedOp "Seeding benchmark indices"
   & $PythonCmd scripts\seed_indices.py
-  Write-Success "Benchmark indices seeded."
+  End-TimedOp
 
-  Write-Info "Seeding fund master records..."
+  Start-TimedOp "Seeding fund master records"
   & $PythonCmd scripts\seed_funds.py
-  Write-Success "Fund master seeded."
+  End-TimedOp
 
-  Write-Info "Fetching NAV history and computing metrics (30-60 minutes)..."
+  Write-Warn "NAV sync fetches data for every active fund — expected 30-60 minutes."
+  Start-TimedOp "NAV sync + metrics computation"
   & $PythonCmd scripts\sync_data.py
-  Write-Success "Fund NAV history and metrics complete."
+  End-TimedOp
 }
 
 if ($SeedStocks) {
-  Write-Info "Seeding stock master (18 large-cap stocks + 3 indices)..."
-  & $PythonCmd scripts\seed\seed_stock_master.py
-  Write-Success "Stock master seeded."
+  Write-Host ""
+  Write-Host "  How many years of price history to backfill?" -ForegroundColor White
+  Write-Host "  [1] 1 year   [2] 2 years   [5] 5 years   [10] 10 years   [M] Max (all available)"
+  $BackfillChoice = Read-Host "  Enter choice [5]"
+  if ([string]::IsNullOrWhiteSpace($BackfillChoice)) { $BackfillChoice = "5" }
+  $BackfillPeriod = switch ($BackfillChoice.ToLower()) {
+    "1"   { "1y"  }
+    "2"   { "2y"  }
+    "10"  { "10y" }
+    "m"   { "max" }
+    "max" { "max" }
+    default { "5y" }
+  }
+  Write-Info "Using backfill period: $BackfillPeriod"
 
-  Write-Info "Backfilling 5 years of price data from yfinance (20-40 minutes)..."
-  & $PythonCmd scripts\seed\backfill_prices.py 5y
-  Write-Success "Stock price history backfilled."
+  Start-TimedOp "Seeding stock master (18 large-cap stocks + 3 indices)"
+  & $PythonCmd scripts\seed\seed_stock_master.py
+  End-TimedOp
+
+  Write-Warn "Price backfill ($BackfillPeriod) fetches OHLCV from yfinance — expected 20-40 minutes."
+  Start-TimedOp "Price history backfill ($BackfillPeriod)"
+  & $PythonCmd scripts\seed\backfill_prices.py $BackfillPeriod
+  End-TimedOp
 }
 
 if ($SeedFundamentals) {
-  Write-Info "Seeding fundamental data from screener.in (5-15 minutes)..."
+  Write-Warn "Fundamental scraping from screener.in — expected 5-15 minutes."
+  Start-TimedOp "Seeding fundamental data"
   & $PythonCmd scripts\seed\seed_fundamentals.py
-  Write-Success "Fundamental data seeded."
+  End-TimedOp
 }
 
 # =============================================================================
@@ -574,4 +621,5 @@ Set-Location $BackendDir
 $Host_ = if ($env:NIVESH_HOST) { $env:NIVESH_HOST } else { "0.0.0.0" }
 $Port  = if ($env:NIVESH_PORT) { $env:NIVESH_PORT } else { "8000" }
 
-& uvicorn app.main:app --host $Host_ --port $Port --reload --log-level info
+# Note: --reload is omitted for production. Add it manually for development hot-reload.
+& uvicorn app.main:app --host $Host_ --port $Port --log-level info

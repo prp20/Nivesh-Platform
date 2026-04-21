@@ -41,8 +41,14 @@ Used for AI-powered financial insights.
 If you prefer not to use local Docker, you can use Supabase:
 1. Sign up at [Supabase](https://supabase.com).
 2. Create a new project and set a secure database password.
-3. In **Project Settings > Database**, copy the **Direct Connection String** (Session Pooler recommended).
-4. Replace `[YOUR-PASSWORD]` with your actual password.
+3. In **Project Settings > Database**, go to the **Connection string** tab.
+4. Select **Session Pooler** and copy the URI (use port **6543**, not 5432).
+5. Replace `[YOUR-PASSWORD]` with your actual password and set in `backend/.env` as:
+   ```
+   DATABASE_URL=postgresql+asyncpg://postgres.<ref>:<password>@aws-0-<region>.pooler.supabase.com:6543/postgres
+   ```
+
+> **⚠️ Important:** `asyncpg` is **not** compatible with Supabase's port 5432 (PgBouncer transaction mode). Always use the **Session Pooler** on port **6543**.
 
 ---
 
@@ -79,13 +85,26 @@ npm run dev
 
 ## 🏗️ Initial Data Load
 
-To populate your environment with initial data:
+To populate your environment with initial data (run from the `backend/` directory):
 ```bash
-# Seed benchmark indices
-python scripts/seed_benchmarks.py
+# Activate the virtual environment first
+source venv/bin/activate  # Linux/macOS
+# venv\Scripts\activate.bat  # Windows
 
-# Migrate existing mutual fund data
-python scripts/migrate_data.py
+# 1. Seed benchmark indices (from local CSV files)
+python scripts/seed_indices.py
+
+# 2. Seed fund master records
+python scripts/seed_funds.py
+
+# 3. Fetch NAV history and compute metrics (30–60 min)
+python scripts/sync_data.py
+
+# 4. Seed stock master (18 large-cap + 3 index symbols)
+python scripts/seed/seed_stock_master.py
+
+# 5. Backfill 5 years of OHLCV price history (20–40 min)
+python scripts/seed/backfill_prices.py 5y
 ```
 
 ---

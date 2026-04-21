@@ -25,14 +25,14 @@ When adding a new financial indicator or feature:
 
 ## 🔄 Data Initialization
 
-After a fresh setup, use these scripts to populate your local database:
+After a fresh setup, run these scripts from the `backend/` directory (with venv activated):
 
-1.  **Seed Benchmarks**: `python scripts/seed_benchmarks.py`
-2.  **Seed Funds**: `python scripts/migrate_data.py`
-3.  **Seed Stocks**: `python scripts/seed/seed_stock_master.py`
-4.  **Backfill Prices**: `python scripts/seed/backfill_prices.py`
-
-*Tip: Use `scripts/setup_data.sh` (if available) for a one-click initialization of the entire ecosystem.*
+1.  **Seed Benchmark Indices**: `python scripts/seed_indices.py`
+2.  **Seed Fund Master**: `python scripts/seed_funds.py`
+3.  **Sync NAV History + Metrics**: `python scripts/sync_data.py` *(30–60 min)*
+4.  **Seed Stock Master**: `python scripts/seed/seed_stock_master.py`
+5.  **Backfill Price History**: `python scripts/seed/backfill_prices.py 5y` *(20–40 min)*
+6.  **Seed Fundamentals** *(optional)*: `python scripts/seed/seed_fundamentals.py`
 
 ---
 

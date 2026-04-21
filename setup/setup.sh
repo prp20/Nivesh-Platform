@@ -38,6 +38,27 @@ warn()    { echo -e "${YELLOW}[WARN]${NC}  $*"; }
 error()   { echo -e "${RED}[ERROR]${NC} $*" >&2; exit 1; }
 step()    { echo -e "\n${BOLD}${CYAN}══ $* ══${NC}"; }
 
+# Ensure Python output is unbuffered so tqdm bars and prints stream in real time
+export PYTHONUNBUFFERED=1
+
+# ─── Timed runner ─────────────────────────────────────────────────────────────
+# Usage: time_run "Label" command [args...]
+# Runs the command, shows elapsed seconds, and exits on error.
+time_run() {
+  local label="$1"; shift
+  local start; start=$(date +%s)
+  info "⏳ ${label}…  (do not interrupt)"
+  "$@"
+  local rc=$?
+  local elapsed=$(( $(date +%s) - start ))
+  if [[ $rc -eq 0 ]]; then
+    success "${label} — done in ${elapsed}s"
+  else
+    error "${label} — failed after ${elapsed}s (exit code ${rc})"
+  fi
+  return $rc
+}
+
 # ─── Resolve paths ───────────────────────────────────────────────────────────
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
@@ -198,8 +219,15 @@ PG_CHOICE="${PG_CHOICE:-1}"
 
 if [[ "$PG_CHOICE" == "2" ]]; then
   echo ""
-  echo "  Enter the PostgreSQL URL in this format:"
-  echo "  postgresql+asyncpg://user:password@host:port/dbname"
+  echo "  ── URL format examples ────────────────────────────────────────────────"
+  echo "  Local / self-hosted PostgreSQL (port 5432):"
+  echo "    postgresql+asyncpg://user:password@localhost:5432/dbname"
+  echo ""
+  echo "  Supabase — use Session Pooler (port 6543, NOT 5432):"
+  echo "    postgresql+asyncpg://postgres.<ref>:<password>@aws-0-<region>.pooler.supabase.com:6543/postgres"
+  warn "asyncpg is NOT compatible with Supabase port 5432 (PgBouncer transaction mode)."
+  warn "Always use port 6543 (Session Pooler) for Supabase."
+  echo "  ───────────────────────────────────────────────────────────────────────"
   echo ""
   read -rp "  PostgreSQL URL: " DATABASE_URL
   if [[ -z "$DATABASE_URL" ]]; then
@@ -293,6 +321,10 @@ else
   LANGSMITH_API_KEY=""
 fi
 
+# Generate a cryptographically secure SECRET_KEY for JWT signing
+SECRET_KEY=$(python3 -c "import secrets; print(secrets.token_urlsafe(32))")
+success "Generated SECRET_KEY."
+
 # Backend .env
 WRITE_BACKEND_ENV=true
 if [[ -f "${BACKEND_ENV_FILE}" ]]; then
@@ -342,7 +374,7 @@ echo ""
 info "Set up your admin login credentials for the Nivesh portal."
 echo ""
 
-python3 "${SCRIPT_DIR}/admin_helper.py" "$BACKEND_ENV_FILE"
+"${VENV_DIR}/bin/python3" "${SCRIPT_DIR}/admin_helper.py" "$BACKEND_ENV_FILE"
 if [[ $? -ne 0 ]]; then
   error "Failed to configure admin credentials. Check the output above."
 fi
@@ -471,33 +503,44 @@ case "$SEED_CHOICE" in
 esac
 
 if [[ "$SEED_MF" == true ]]; then
-  info "Seeding benchmark indices from CSV files..."
-  python3 scripts/seed_indices.py
-  success "Benchmark indices seeded."
+  time_run "Seeding benchmark indices" \
+    python3 scripts/seed_indices.py
 
-  info "Seeding fund master records..."
-  python3 scripts/seed_funds.py
-  success "Fund master seeded."
+  time_run "Seeding fund master records" \
+    python3 scripts/seed_funds.py
 
-  info "Fetching NAV history and computing metrics (this may take 30-60 minutes)..."
-  python3 scripts/sync_data.py
-  success "Fund NAV history and metrics complete."
+  warn "NAV sync fetches data for every active fund — expected 30–60 minutes."
+  time_run "NAV sync + metrics computation" \
+    python3 scripts/sync_data.py
 fi
 
 if [[ "$SEED_STOCKS" == true ]]; then
-  info "Seeding stock master (18 large-cap stocks + 3 indices)..."
-  python3 scripts/seed/seed_stock_master.py
-  success "Stock master seeded."
+  echo ""
+  echo "  How many years of price history to backfill?"
+  echo "  [1] 1 year   [2] 2 years   [5] 5 years   [10] 10 years   [M] Max (all available)"
+  read -rp "  Enter choice [5]: " BACKFILL_CHOICE
+  BACKFILL_CHOICE="${BACKFILL_CHOICE:-5}"
+  case "${BACKFILL_CHOICE,,}" in
+    1)      BACKFILL_PERIOD="1y"  ;;
+    2)      BACKFILL_PERIOD="2y"  ;;
+    10)     BACKFILL_PERIOD="10y" ;;
+    m|max)  BACKFILL_PERIOD="max" ;;
+    *)      BACKFILL_PERIOD="5y"  ;;
+  esac
+  info "Using backfill period: ${BACKFILL_PERIOD}"
 
-  info "Backfilling 5 years of price data from yfinance (20-40 minutes)..."
-  python3 scripts/seed/backfill_prices.py max
-  success "Stock price history backfilled."
+  time_run "Seeding stock master (18 large-cap stocks + 3 indices)" \
+    python3 scripts/seed/seed_stock_master.py
+
+  warn "Price backfill (${BACKFILL_PERIOD}) fetches OHLCV from yfinance — expected 20–40 minutes."
+  time_run "Price history backfill (${BACKFILL_PERIOD})" \
+    python3 scripts/seed/backfill_prices.py "${BACKFILL_PERIOD}"
 fi
 
 if [[ "$SEED_FUNDAMENTALS" == true ]]; then
-  info "Seeding fundamental data from screener.in (5-15 minutes)..."
-  python3 scripts/seed/seed_fundamentals.py
-  success "Fundamental data seeded."
+  warn "Fundamental scraping from screener.in — expected 5–15 minutes."
+  time_run "Seeding fundamental data" \
+    python3 scripts/seed/seed_fundamentals.py
 fi
 
 # =============================================================================
@@ -638,5 +681,5 @@ exec uvicorn app.main:app \
   --host "${NIVESH_HOST:-0.0.0.0}" \
   --port "${NIVESH_PORT:-8000}" \
   --workers "${NIVESH_WORKERS:-1}" \
-  --reload \
   --log-level info
+  # Tip: add --reload above for development hot-reload (not recommended for production)
