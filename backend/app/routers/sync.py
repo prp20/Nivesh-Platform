@@ -1,7 +1,11 @@
-from fastapi import APIRouter, Depends, BackgroundTasks
+import asyncio
+from fastapi import APIRouter, Depends, BackgroundTasks, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 from ..database import get_db, session_factory
 from .. import sync, security
+
+_sync_all_lock = asyncio.Lock()
+
 
 router = APIRouter(prefix="/sync", tags=["sync"])
 
@@ -16,9 +20,17 @@ async def trigger_full_sync(
     session: AsyncSession = Depends(get_db),
     current_user: str = Depends(security.get_current_user)
 ):
-    """Trigger a background job to sync all funds."""
-    background_tasks.add_task(background_sync_all_wrapper)
+    """Trigger a background job to sync all funds. Prevents concurrent syncs."""
+    if _sync_all_lock.locked():
+        raise HTTPException(status_code=409, detail="A full sync is already in progress.")
+        
+    async def _locked_sync():
+        async with _sync_all_lock:
+            await background_sync_all_wrapper()
+            
+    background_tasks.add_task(_locked_sync)
     return {"message": "Sync started in background"}
+
 
 @router.post("/{scheme_code}")
 async def sync_single_fund(

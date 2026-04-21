@@ -120,5 +120,10 @@ async def upload_benchmark_csv(
         raise HTTPException(status_code=500, detail=f"Failed to process CSV: {str(e)}")
 
 @router.get("/{benchmark_code}", response_model=List[schemas.BenchmarkNavHistoryRead])
-async def get_benchmark_nav_history(benchmark_code: str, limit: int = 100, session: AsyncSession = Depends(get_db)):
+async def get_benchmark_nav_history(
+    benchmark_code: str,
+    limit: int = 100,
+    session: AsyncSession = Depends(get_db),
+    # Public access for index charts
+):
     return await crud.get_benchmark_nav_history(session, benchmark_code, limit)

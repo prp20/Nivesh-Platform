@@ -1,0 +1,364 @@
+<!DOCTYPE html>
+
+<html class="dark" lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>Nivesh Platform | Sovereign Ledger</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@200;400;600;700;800&amp;family=Inter:wght@300;400;500;600&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script id="tailwind-config">
+      tailwind.config = {
+        darkMode: "class",
+        theme: {
+          extend: {
+            "colors": {
+                    "surface-container-highest": "#30353b",
+                    "background": "#0f1419",
+                    "inverse-surface": "#dee3ea",
+                    "secondary-container": "#25a55a",
+                    "on-background": "#dee3ea",
+                    "on-secondary-fixed": "#00210c",
+                    "surface-dim": "#0f1419",
+                    "primary-fixed": "#ffe088",
+                    "on-surface": "#dee3ea",
+                    "on-surface-variant": "#c6c6cc",
+                    "error-container": "#93000a",
+                    "tertiary-fixed": "#dbe3ef",
+                    "on-primary-fixed": "#241a00",
+                    "surface-container-lowest": "#0a0f14",
+                    "on-tertiary-fixed-variant": "#3f4851",
+                    "primary": "#e9c349",
+                    "surface-container-high": "#252a30",
+                    "surface": "#0f1419",
+                    "primary-fixed-dim": "#e9c349",
+                    "on-primary": "#3c2f00",
+                    "surface-variant": "#30353b",
+                    "secondary-fixed": "#83fba5",
+                    "primary-container": "#201700",
+                    "tertiary": "#bfc7d2",
+                    "inverse-primary": "#735c00",
+                    "surface-container": "#1b2025",
+                    "tertiary-fixed-dim": "#bfc7d2",
+                    "secondary-fixed-dim": "#66dd8b",
+                    "secondary": "#66dd8b",
+                    "tertiary-container": "#111921",
+                    "surface-bright": "#353a3f",
+                    "on-tertiary": "#29313a",
+                    "on-error-container": "#ffdad6",
+                    "on-error": "#690005",
+                    "surface-tint": "#e9c349",
+                    "surface-container-low": "#171c21",
+                    "outline": "#909096",
+                    "on-primary-container": "#9d7e00",
+                    "on-tertiary-fixed": "#141c24",
+                    "on-tertiary-container": "#7a828c",
+                    "on-secondary-container": "#003115",
+                    "on-secondary": "#003919",
+                    "on-secondary-fixed-variant": "#005227",
+                    "inverse-on-surface": "#2c3136",
+                    "error": "#ffb4ab",
+                    "outline-variant": "#45464c",
+                    "on-primary-fixed-variant": "#574500"
+            },
+            "borderRadius": {
+                    "DEFAULT": "0.125rem",
+                    "lg": "0.25rem",
+                    "xl": "0.5rem",
+                    "full": "0.75rem"
+            },
+            "fontFamily": {
+                    "headline": ["Manrope"],
+                    "body": ["Manrope"],
+                    "label": ["Inter"]
+            }
+          },
+        },
+      }
+    </script>
+<style>
+        .glass-card {
+            background: rgba(48, 53, 59, 0.6);
+            backdrop-filter: blur(20px);
+            border-top: 1px solid rgba(69, 70, 76, 0.2);
+            border-left: 1px solid rgba(69, 70, 76, 0.2);
+        }
+        .gold-gradient-text {
+            background: linear-gradient(to right, #e9c349, #9d7e00);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+        .emerald-glow {
+            box-shadow: 0 0 32px rgba(102, 221, 139, 0.1);
+        }
+    </style>
+</head>
+<body class="bg-background text-on-background font-body selection:bg-primary/30">
+<!-- TopAppBar -->
+<header class="fixed top-0 w-full z-50 bg-[#0f1419]/80 backdrop-blur-xl bg-gradient-to-b from-[#1a1f26] to-transparent shadow-[0_10px_30px_-15px_rgba(233,195,73,0.05)]">
+<div class="flex justify-between items-center px-12 py-6 w-full max-w-[1920px] mx-auto">
+<div class="text-2xl font-bold tracking-tighter text-[#e9c349] italic">Nivesh</div>
+<nav class="hidden md:flex items-center gap-8">
+<a class="font-['Manrope'] uppercase tracking-widest text-xs font-semibold text-[#e9c349] border-b border-[#e9c349] pb-1 cursor-pointer active:scale-[0.98]" href="#">Markets</a>
+<a class="font-['Manrope'] uppercase tracking-widest text-xs font-semibold text-[#45464c] hover:text-[#e9c349] hover:opacity-80 transition-all duration-500 cursor-pointer active:scale-[0.98]" href="#">Stocks</a>
+<a class="font-['Manrope'] uppercase tracking-widest text-xs font-semibold text-[#45464c] hover:text-[#e9c349] hover:opacity-80 transition-all duration-500 cursor-pointer active:scale-[0.98]" href="#">Funds</a>
+<a class="font-['Manrope'] uppercase tracking-widest text-xs font-semibold text-[#45464c] hover:text-[#e9c349] hover:opacity-80 transition-all duration-500 cursor-pointer active:scale-[0.98]" href="#">Portfolio</a>
+<a class="font-['Manrope'] uppercase tracking-widest text-xs font-semibold text-[#45464c] hover:text-[#e9c349] hover:opacity-80 transition-all duration-500 cursor-pointer active:scale-[0.98]" href="#">Insights</a>
+</nav>
+<div class="flex items-center gap-6">
+<button class="font-['Manrope'] uppercase tracking-widest text-xs font-semibold text-[#45464c] hover:text-[#e9c349] transition-all">Login</button>
+<button class="bg-gradient-to-r from-primary to-on-primary-container text-on-primary px-6 py-2.5 rounded-md font-['Manrope'] uppercase tracking-widest text-xs font-bold hover:opacity-90 transition-all shadow-lg active:scale-[0.98]">Open Account</button>
+</div>
+</div>
+</header>
+<main class="pt-32 pb-20 px-12 max-w-[1920px] mx-auto">
+<!-- Hero Section -->
+<section class="grid grid-cols-12 gap-8 items-center mb-32">
+<div class="col-span-12 lg:col-span-7">
+<span class="font-label text-primary text-xs uppercase tracking-[0.4em] mb-6 block">The Sovereign Gateway</span>
+<h1 class="font-headline text-[5rem] leading-[0.95] font-extrabold tracking-tighter mb-8 text-on-surface">
+                    Nivesh Platform<span class="text-primary">.</span>
+</h1>
+<p class="font-headline text-2xl text-on-surface-variant font-light max-w-xl mb-12">
+                    Wealth management so smooth, it’s almost unfair.
+                </p>
+<div class="flex gap-4">
+<button class="bg-gradient-to-r from-primary to-on-primary-container text-on-primary px-8 py-4 rounded-md font-label uppercase tracking-widest text-sm font-bold shadow-2xl hover:opacity-90 transition-all">Explore Alpha</button>
+<button class="border border-outline-variant/30 text-on-surface px-8 py-4 rounded-md font-label uppercase tracking-widest text-sm font-bold hover:bg-surface-container-low transition-all">View Institutions</button>
+</div>
+</div>
+<div class="col-span-12 lg:col-span-5 relative">
+<div class="absolute inset-0 bg-primary/5 blur-[120px] rounded-full"></div>
+<div class="relative glass-card p-8 rounded-xl border border-outline-variant/20 shadow-2xl">
+<div class="flex justify-between items-center mb-8">
+<div>
+<p class="font-label text-xs text-on-surface-variant uppercase tracking-widest">Total Sovereign Assets</p>
+<h2 class="font-headline text-4xl font-bold text-on-surface mt-1">₹ 4,82,10,950</h2>
+</div>
+<div class="bg-secondary/10 p-3 rounded-full">
+<span class="material-symbols-outlined text-secondary" style="font-variation-settings: 'FILL' 1;">trending_up</span>
+</div>
+</div>
+<div class="space-y-6">
+<div class="flex justify-between items-end">
+<span class="font-label text-xs text-on-surface-variant">24h Performance</span>
+<span class="text-secondary font-headline font-bold text-lg">+₹ 12,400.00 (0.26%)</span>
+</div>
+<!-- Sparkline Placeholder -->
+<div class="h-24 w-full bg-gradient-to-t from-secondary/10 to-transparent relative overflow-hidden rounded-lg">
+<svg class="absolute bottom-0 w-full h-full" preserveaspectratio="none" viewbox="0 0 400 100">
+<path d="M0,80 Q50,20 100,50 T200,30 T300,70 T400,10" fill="none" stroke="#66dd8b" stroke-width="2" vector-effect="non-scaling-stroke"></path>
+<path d="M0,80 Q50,20 100,50 T200,30 T300,70 T400,10 L400,100 L0,100 Z" fill="url(#grad1)" opacity="0.1"></path>
+<defs>
+<lineargradient id="grad1" x1="0%" x2="0%" y1="0%" y2="100%">
+<stop offset="0%" style="stop-color:#66dd8b;stop-opacity:1"></stop>
+<stop offset="100%" style="stop-color:#66dd8b;stop-opacity:0"></stop>
+</lineargradient>
+</defs>
+</svg>
+</div>
+</div>
+</div>
+</div>
+</section>
+<!-- Market Indices -->
+<section class="mb-32">
+<div class="flex justify-between items-end mb-12">
+<div>
+<h3 class="font-headline text-3xl font-bold mb-2">Market Pulse</h3>
+<p class="font-label text-xs text-on-surface-variant uppercase tracking-[0.2em]">Real-time Indian Sovereign Indices</p>
+</div>
+<div class="flex gap-2">
+<span class="inline-block w-2 h-2 rounded-full bg-secondary animate-pulse"></span>
+<span class="font-label text-[10px] text-secondary uppercase tracking-widest">Markets Open</span>
+</div>
+</div>
+<div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+<!-- SENSEX -->
+<div class="bg-surface-container-low p-6 rounded-lg border border-transparent hover:border-primary/20 transition-all group">
+<div class="flex justify-between items-start mb-4">
+<span class="font-label text-xs text-on-surface-variant tracking-widest">SENSEX</span>
+<span class="text-secondary font-headline font-bold">+1.12%</span>
+</div>
+<div class="text-2xl font-headline font-bold mb-4">74,248.22</div>
+<div class="h-12 w-full">
+<svg class="w-full h-full" viewbox="0 0 100 40">
+<path d="M0,35 L20,30 L40,32 L60,15 L80,18 L100,5" fill="none" stroke="#66dd8b" stroke-width="1.5"></path>
+</svg>
+</div>
+</div>
+<!-- NIFTY 100 -->
+<div class="bg-surface-container-low p-6 rounded-lg border border-transparent hover:border-primary/20 transition-all">
+<div class="flex justify-between items-start mb-4">
+<span class="font-label text-xs text-on-surface-variant tracking-widest">NIFTY 100</span>
+<span class="text-secondary font-headline font-bold">+0.94%</span>
+</div>
+<div class="text-2xl font-headline font-bold mb-4">22,513.70</div>
+<div class="h-12 w-full">
+<svg class="w-full h-full" viewbox="0 0 100 40">
+<path d="M0,30 L20,35 L40,25 L60,20 L80,22 L100,8" fill="none" stroke="#66dd8b" stroke-width="1.5"></path>
+</svg>
+</div>
+</div>
+<!-- BANK NIFTY -->
+<div class="bg-surface-container-low p-6 rounded-lg border border-transparent hover:border-primary/20 transition-all">
+<div class="flex justify-between items-start mb-4">
+<span class="font-label text-xs text-on-surface-variant tracking-widest">BANK NIFTY</span>
+<span class="text-error font-headline font-bold">-0.12%</span>
+</div>
+<div class="text-2xl font-headline font-bold mb-4">48,493.10</div>
+<div class="h-12 w-full opacity-50">
+<svg class="w-full h-full" viewbox="0 0 100 40">
+<path d="M0,10 L20,15 L40,12 L60,25 L80,20 L100,35" fill="none" stroke="#ffb4ab" stroke-width="1.5"></path>
+</svg>
+</div>
+</div>
+<!-- NIFTY IT -->
+<div class="bg-surface-container-low p-6 rounded-lg border border-transparent hover:border-primary/20 transition-all">
+<div class="flex justify-between items-start mb-4">
+<span class="font-label text-xs text-on-surface-variant tracking-widest">NIFTY IT</span>
+<span class="text-secondary font-headline font-bold">+2.45%</span>
+</div>
+<div class="text-2xl font-headline font-bold mb-4">35,102.45</div>
+<div class="h-12 w-full">
+<svg class="w-full h-full" viewbox="0 0 100 40">
+<path d="M0,38 L20,30 L40,32 L60,10 L80,12 L100,2" fill="none" stroke="#66dd8b" stroke-width="1.5"></path>
+</svg>
+</div>
+</div>
+</div>
+</section>
+<!-- High-Impact Navigation Cards -->
+<section class="mb-32">
+<div class="grid grid-cols-1 md:grid-cols-3 gap-8">
+<!-- Elite Stocks -->
+<div class="group relative aspect-[4/5] rounded-2xl overflow-hidden bg-surface-container-high border border-outline-variant/10 cursor-pointer">
+<img class="absolute inset-0 w-full h-full object-cover opacity-40 group-hover:scale-110 transition-transform duration-1000 grayscale group-hover:grayscale-0" data-alt="close-up of a sharp professional luxury watch dial and mechanical gears representing precision and elite status" src="https://lh3.googleusercontent.com/aida-public/AB6AXuCYqNnYd03zIrlco-EF-yq5GR8N-YsGSxWfea4d7NoIpWklIB9BKWWLHJVZFdWWnyNRW80v3HVWRTlfgbxoGFOgZO06FV9hStk6C4wl3gTe8gODhn32ZxBuzNChy-q-vGFyljw2mUl2LHKgKEz00bpSZhEW2BikCiOlarFNE-lAuE2kpExq-Xx97aa4hQ89D21btN5z2wWqzueoC-UQcmQ57rK1FwOqUL82plTFAQfqCU73RoBkzcXOTCuThAo9wIlYwlZg-RrXJa7O"/>
+<div class="absolute inset-0 bg-gradient-to-t from-background via-background/60 to-transparent"></div>
+<div class="absolute bottom-0 p-8 w-full">
+<span class="material-symbols-outlined text-primary text-3xl mb-4" style="font-variation-settings: 'FILL' 1;">diamond</span>
+<h4 class="font-headline text-3xl font-bold mb-2">Elite Stocks</h4>
+<p class="font-body text-on-surface-variant mb-6 leading-relaxed">Access algorithmically curated equity baskets for the sophisticated investor.</p>
+<div class="flex items-center justify-between">
+<span class="font-label text-xs text-primary uppercase tracking-widest">+12.4% Average Alpha</span>
+<span class="material-symbols-outlined group-hover:translate-x-2 transition-transform">arrow_forward</span>
+</div>
+</div>
+</div>
+<!-- Premium Funds -->
+<div class="group relative aspect-[4/5] rounded-2xl overflow-hidden bg-surface-container-high border border-outline-variant/10 cursor-pointer">
+<img class="absolute inset-0 w-full h-full object-cover opacity-40 group-hover:scale-110 transition-transform duration-1000 grayscale group-hover:grayscale-0" data-alt="architectural shot of a modern glass vault in a minimalist building with moody atmospheric lighting and reflections" src="https://lh3.googleusercontent.com/aida-public/AB6AXuClQNFuPCTRO7K8cHuLLkZCub3xoTEvMHzSNdQ80YY0nVZatRSF2a5EFlTWf4LH7JO9vg27lEtHLJA8EGMpb9io0WjibPGCTH9b9cyqId7X8_3Sdv0t94uojKMcZ_PbMDjuTKonvDzxADYUzG-fR1_qZUK5r2cuxDJHgCO5p2x8ajTbTvrdhxZerFLMuc44VDCi3XQ5jaiJw6D1CxUKg-hxWkjyxUCMOgWziVJPZ5eaLwgXfxquUTUT_YD4bX0Fxgk8ECoitKyk9ljG"/>
+<div class="absolute inset-0 bg-gradient-to-t from-background via-background/60 to-transparent"></div>
+<div class="absolute bottom-0 p-8 w-full">
+<span class="material-symbols-outlined text-primary text-3xl mb-4" style="font-variation-settings: 'FILL' 1;">account_balance</span>
+<h4 class="font-headline text-3xl font-bold mb-2">Premium Funds</h4>
+<p class="font-body text-on-surface-variant mb-6 leading-relaxed">Institutional grade mutual funds and ETFs with zero hidden management fees.</p>
+<div class="flex items-center justify-between">
+<span class="font-label text-xs text-primary uppercase tracking-widest">98th Percentile Returns</span>
+<span class="material-symbols-outlined group-hover:translate-x-2 transition-transform">arrow_forward</span>
+</div>
+</div>
+</div>
+<!-- Private Portfolio -->
+<div class="group relative aspect-[4/5] rounded-2xl overflow-hidden bg-surface-container-high border border-outline-variant/10 cursor-pointer">
+<img class="absolute inset-0 w-full h-full object-cover opacity-40 group-hover:scale-110 transition-transform duration-1000 grayscale group-hover:grayscale-0" data-alt="an abstract composition of dark silk fabric folds with golden light hitting the edges creating high contrast and depth" src="https://lh3.googleusercontent.com/aida-public/AB6AXuB7pBXaFi2OiEa2riLkzbONjiQIBdrfQK9UPgP90B31ArODKpIhyXn3T5Diea0vyL-z5FmTedCYCDGFPSmgrdAOKCMgMK-oFbvhczxC_db80bH7XZCIJ-fA61qJDcNvJMQTvqE_Rco3JlpnUEgCbI6sjuI9uTQ06akQQhiiJBEm0H6jFZJSRwU5hMFGL2zDBekbMFs5zAhFtJG-b_hRI6r03VUK8-x8zyLS98SljDZNNbkrGOJTMuZZ1B-IdRfbTw76kq4GKQz8TtdG"/>
+<div class="absolute inset-0 bg-gradient-to-t from-background via-background/60 to-transparent"></div>
+<div class="absolute bottom-0 p-8 w-full">
+<span class="material-symbols-outlined text-primary text-3xl mb-4" style="font-variation-settings: 'FILL' 1;">verified_user</span>
+<h4 class="font-headline text-3xl font-bold mb-2">Private Portfolio</h4>
+<p class="font-body text-on-surface-variant mb-6 leading-relaxed">Unified viewing of your entire net worth across all asset classes and custodians.</p>
+<div class="flex items-center justify-between">
+<span class="font-label text-xs text-primary uppercase tracking-widest">Zero-Latency Sync</span>
+<span class="material-symbols-outlined group-hover:translate-x-2 transition-transform">arrow_forward</span>
+</div>
+</div>
+</div>
+</div>
+</section>
+<!-- High-Density Data Bento -->
+<section class="grid grid-cols-12 gap-8 mb-32">
+<div class="col-span-12 lg:col-span-8 bg-surface-container-low rounded-xl p-8 border border-outline-variant/10">
+<div class="flex justify-between items-center mb-12">
+<h3 class="font-headline text-2xl font-bold">Top Performing Asset Classes</h3>
+<button class="font-label text-xs text-primary tracking-widest uppercase hover:underline">Full Analysis</button>
+</div>
+<div class="space-y-8">
+<div class="grid grid-cols-12 items-center">
+<div class="col-span-4 flex items-center gap-4">
+<div class="w-10 h-10 rounded bg-primary/10 flex items-center justify-center text-primary">
+<span class="material-symbols-outlined">analytics</span>
+</div>
+<span class="font-headline font-semibold">Small-Cap Alpha</span>
+</div>
+<div class="col-span-5 h-2 bg-surface-container rounded-full overflow-hidden">
+<div class="h-full bg-primary w-[85%]"></div>
+</div>
+<div class="col-span-3 text-right">
+<span class="text-secondary font-headline font-bold">+34.2%</span>
+</div>
+</div>
+<div class="grid grid-cols-12 items-center">
+<div class="col-span-4 flex items-center gap-4">
+<div class="w-10 h-10 rounded bg-primary/10 flex items-center justify-center text-primary">
+<span class="material-symbols-outlined">candlestick_chart</span>
+</div>
+<span class="font-headline font-semibold">Sovereign Debt</span>
+</div>
+<div class="col-span-5 h-2 bg-surface-container rounded-full overflow-hidden">
+<div class="h-full bg-primary w-[62%]"></div>
+</div>
+<div class="col-span-3 text-right">
+<span class="text-secondary font-headline font-bold">+12.8%</span>
+</div>
+</div>
+<div class="grid grid-cols-12 items-center">
+<div class="col-span-4 flex items-center gap-4">
+<div class="w-10 h-10 rounded bg-primary/10 flex items-center justify-center text-primary">
+<span class="material-symbols-outlined">monetization_on</span>
+</div>
+<span class="font-headline font-semibold">Digital Assets</span>
+</div>
+<div class="col-span-5 h-2 bg-surface-container rounded-full overflow-hidden">
+<div class="h-full bg-primary w-[45%]"></div>
+</div>
+<div class="col-span-3 text-right">
+<span class="text-secondary font-headline font-bold">+9.1%</span>
+</div>
+</div>
+</div>
+</div>
+<div class="col-span-12 lg:col-span-4 bg-gradient-to-br from-surface-container-high to-surface-container-low rounded-xl p-8 border border-primary/20 relative overflow-hidden">
+<div class="absolute top-0 right-0 w-32 h-32 bg-primary/10 blur-[60px] rounded-full -mr-16 -mt-16"></div>
+<h3 class="font-headline text-2xl font-bold mb-6">Market Insight</h3>
+<p class="font-body text-on-surface-variant leading-relaxed mb-8">
+                    "Institutional sentiment suggests a strong rotation toward energy and infrastructure in the coming quarter. Nivesh clients are currently 14% overweighted in these sectors."
+                </p>
+<div class="flex items-center gap-4">
+<div class="w-12 h-12 rounded-full border-[1.5px] border-primary p-0.5">
+<img class="w-full h-full rounded-full object-cover" data-alt="professional portrait of an executive male in his 50s with grey hair and a confident expression" src="https://lh3.googleusercontent.com/aida-public/AB6AXuAnZrLVGWKfdmggTEcnXQy_M23D9FYb6S98i2s9oHMaMbHO15jBBtvDWVgxXMZCfB4RQKk2UgLT0sowVWl_fc0xsd7eTZq4ueW6F15Vz7Z-esTH2S627685tmuU_YdDprrJrjg7DpI6di4ODGEvrCtI2JkO2ys3g5VHchUAmCA-IadQR9fL1PayhSOik9f-B_4gH44xpqc8etV7EjYkpEz9r67qZvFym4OG7hl95iAjHinTyIpGl66K5YD4istmCinrzkxl24o3HA7P"/>
+</div>
+<div>
+<p class="font-headline font-bold text-sm">Vikram Malhotra</p>
+<p class="font-label text-[10px] uppercase text-on-surface-variant tracking-widest">Chief Investment Officer</p>
+</div>
+</div>
+</div>
+</section>
+</main>
+<!-- Footer -->
+<footer class="w-full border-t border-[#45464c]/10 pt-24 pb-12 mt-20 bg-[#0f1419]">
+<div class="flex flex-col md:flex-row justify-between items-center px-12 w-full max-w-7xl mx-auto">
+<p class="font-['Inter'] text-[10px] uppercase tracking-[0.2em] text-[#45464c] mb-8 md:mb-0">
+                © 2024 Nivesh Sovereign Ledger. Member SIPC &amp; FINRA.
+            </p>
+<div class="flex gap-10">
+<a class="font-['Inter'] text-[10px] uppercase tracking-[0.2em] text-[#45464c] hover:text-white transition-colors ease-in-out" href="#">Legal Disclosure</a>
+<a class="font-['Inter'] text-[10px] uppercase tracking-[0.2em] text-[#45464c] hover:text-white transition-colors ease-in-out" href="#">Privacy Policy</a>
+<a class="font-['Inter'] text-[10px] uppercase tracking-[0.2em] text-[#45464c] hover:text-white transition-colors ease-in-out" href="#">Term of Service</a>
+<a class="font-['Inter'] text-[10px] uppercase tracking-[0.2em] text-[#45464c] hover:text-white transition-colors ease-in-out" href="#">Institutional</a>
+<a class="font-['Inter'] text-[10px] uppercase tracking-[0.2em] text-[#45464c] hover:text-white transition-colors ease-in-out" href="#">Contact</a>
+</div>
+</div>
+</footer>
+</body></html>

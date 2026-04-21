@@ -17,11 +17,21 @@ All sensitive operations are audited and logged.
 """
 
 import logging
-from typing import Optional
+from typing import Optional, List, Dict, Any
 from fastapi import APIRouter, HTTPException, Depends, BackgroundTasks, Query
+import sqlalchemy as sa
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.security import require_admin
 from app.audit_log import AuditLog
+from app.database import get_db, raw_connection, AsyncSessionLocal
+from app.schemas import (
+    FundamentalScoreRunRequest, 
+    BulkFundamentalScoreRequest, 
+    ScoringStateSchema,
+    FundamentalScoreRead
+)
+
 
 logger = logging.getLogger(__name__)
 
@@ -200,7 +210,7 @@ async def trigger_screener_scrape_all(
     from pipeline.fundamental_scraper import run_fundamental_scrape_all
 
     async def _scrape_then_ratios():
-        await run_fundamental_scrape_all()
+        await run_fundamental_scrape_all(days_since_last=days_since_last)
         from pipeline.ratio_engine import run_ratio_compute_all
         await run_ratio_compute_all()
 
@@ -214,17 +224,16 @@ async def trigger_screener_scrape_all(
 @router.post("/screener/{symbol}", summary="Trigger screener.in scrape for a single stock")
 async def trigger_screener_scrape_one(
     symbol: str,
+    background_tasks: BackgroundTasks,
     force: bool = Query(False, description="Bypass checksum and force re-scrape"),
     admin: str = Depends(require_admin),
 ):
     """
-    Scrapes screener.in for a single stock synchronously.
+    Starts a screener.in scrape for a single stock as a background task.
+    Returns immediately — poll GET /pipeline/status to track progress.
     Set force=true to bypass the checksum deduplication check.
     After a successful scrape, ratio recompute is triggered automatically.
     """
-    from pipeline.fundamental_scraper import run_fundamental_scrape_one
-    from pipeline.ratio_engine import compute_ratios_for_stock
-    from pipeline.metric_recompute import _get_latest_close
     from app.database import raw_connection
 
     sym = symbol.upper()
@@ -235,22 +244,27 @@ async def trigger_screener_scrape_one(
     if not row:
         raise HTTPException(status_code=404, detail=f"Stock '{sym}' not found or inactive")
 
-    try:
-        await run_fundamental_scrape_one(sym, force=force)
-        # Chain: ratio recompute for this stock
-        stock_id = row["id"]
-        close = await _get_latest_close(stock_id)
-        await compute_ratios_for_stock(stock_id, close)
-        return {
-            "symbol": sym,
-            "message": "Scrape and ratio recompute completed successfully",
-            "force_rescrape": force,
-        }
-    except ValueError as e:
-        raise HTTPException(status_code=404, detail=str(e))
-    except Exception as e:
-        logger.error(f"Screener scrape failed for {sym}: {e}")
-        raise HTTPException(status_code=500, detail=f"Scrape failed: {e}")
+    stock_id = row["id"]
+
+    async def _run_scrape_and_ratios():
+        from pipeline.fundamental_scraper import run_fundamental_scrape_one
+        from pipeline.ratio_engine import compute_ratios_for_stock
+        from pipeline.metric_recompute import _get_latest_close
+        try:
+            await run_fundamental_scrape_one(sym, force=force)
+            close = await _get_latest_close(stock_id)
+            await compute_ratios_for_stock(stock_id, close)
+        except Exception as e:
+            logger.error(f"Background screener scrape failed for {sym}: {e}")
+
+    background_tasks.add_task(_run_scrape_and_ratios)
+    return {
+        "symbol": sym,
+        "message": "Fundamental scrape started in background. Poll GET /pipeline/status to track progress.",
+        "job_name": "fundamental_scrape_single",
+        "status": "STARTED",
+        "force_rescrape": force,
+    }
 
 
 @router.get("/screener/status", summary="Show last scrape date and overdue stocks")
@@ -388,6 +402,148 @@ async def trigger_rating_compute_one(
         raise HTTPException(status_code=500, detail=f"Rating compute failed: {e}")
 
 
+# ─── Fundamental Scoring (LangGraph) ──────────────────────────────────────────
+
+@router.post("/fundamentals/stage/fetch/{symbol}", response_model=ScoringStateSchema, summary="Fetch: Trigger only the Fetch agent")
+async def trigger_fetch_stage(
+    symbol: str,
+    period_type: str = "annual",
+    admin: str = Depends(require_admin),
+    db: AsyncSession = Depends(get_db)
+):
+    """Fetches raw financial statements for a stock. First stage of fundamental scoring."""
+    from fundamental_scorer.nodes.data_nodes import fetch_statements
+    
+    sym = symbol.upper()
+    row = await db.execute(sa.text("SELECT id FROM stocks WHERE symbol=:sym AND is_active=TRUE"), {"sym": sym})
+    stock = row.fetchone()
+    if not stock:
+        raise HTTPException(status_code=404, detail=f"Stock '{sym}' not found")
+
+    try:
+        data = await fetch_statements(stock.id, period_type, db)
+        return {
+            "stock_id": stock.id,
+            "symbol": sym,
+            "period_type": period_type,
+            "score_version": "v1.0",
+            "statements_data": data,
+            "status": "FETCHED",
+            "logs": [f"Granular fetch triggered for {sym}"]
+        }
+    except Exception as e:
+        logger.error(f"Fetch stage failed for {sym}: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/fundamentals/stage/compute", response_model=ScoringStateSchema, summary="Compute: Trigger only the Scoring engine")
+async def trigger_compute_stage(
+    state: ScoringStateSchema,
+    admin: str = Depends(require_admin)
+):
+    """Runs deterministic calculations on provided financial statements."""
+    from fundamental_scorer.nodes.compute_nodes import compute_scores_node
+    # Convert Pydantic model to dict for node consumption (TypedDict)
+    state_dict = state.model_dump()
+    result = compute_scores_node(state_dict)
+    return {**state_dict, **result}
+
+
+@router.post("/fundamentals/stage/reason", response_model=ScoringStateSchema, summary="Reason: Trigger only the AI Reasoning agent")
+async def trigger_reason_stage(
+    state: ScoringStateSchema,
+    admin: str = Depends(require_admin)
+):
+    """Generates qualitative AI reasoning based on computed scores."""
+    from fundamental_scorer.nodes.reasoning_nodes import generate_reasoning_node
+    state_dict = state.model_dump()
+    result = await generate_reasoning_node(state_dict)
+    return {**state_dict, **result}
+
+
+@router.post("/fundamentals/stage/persist", response_model=ScoringStateSchema, summary="Persist: Save results to database")
+async def trigger_persist_stage(
+    state: ScoringStateSchema,
+    admin: str = Depends(require_admin),
+    db: AsyncSession = Depends(get_db)
+):
+    """Saves the scoring results to the database."""
+    from fundamental_scorer.nodes.data_nodes import persist_scores_node
+    state_dict = state.model_dump()
+    result = await persist_scores_node(state_dict, db)
+    return {**state_dict, **result}
+
+
+@router.post("/fundamentals/run/{symbol}", summary="Full Run: Trigger end-to-end scoring pipeline")
+async def trigger_fundamental_scoring_one(
+    symbol: str,
+    period_type: str = "annual",
+    score_version: str = "v1.0",
+    admin: str = Depends(require_admin),
+    db: AsyncSession = Depends(get_db)
+):
+    """Synchronously runs the full Fetch -> Compute -> Reason -> Persist pipeline."""
+    from fundamental_scorer.graph import run_fundamental_scorer
+    
+    sym = symbol.upper()
+    row = await db.execute(sa.text("SELECT id FROM stocks WHERE symbol=:sym AND is_active=TRUE"), {"sym": sym})
+    stock = row.fetchone()
+    
+    if not stock:
+        raise HTTPException(status_code=404, detail=f"Stock '{sym}' not found")
+
+    result = await run_fundamental_scorer(stock.id, sym, db, period_type=period_type, score_version=score_version)
+    
+    if result.get("status") == "FAILED":
+        raise HTTPException(status_code=500, detail=f"Scoring failed: {result.get('error')}")
+        
+    return result
+
+
+@router.post("/fundamentals/bulk-run", summary="Bulk Run: Trigger scoring for multiple stocks")
+async def trigger_fundamental_scoring_bulk(
+    req: BulkFundamentalScoreRequest,
+    background_tasks: BackgroundTasks,
+    admin: str = Depends(require_admin)
+):
+    """Starts fundamental scoring for multiple stocks in the background."""
+    from fundamental_scorer.graph import run_fundamental_scorer
+
+    async def _run_bulk():
+        async with AsyncSessionLocal() as db:
+            if req.symbols:
+                rows = await db.execute(
+                    sa.text("SELECT id, symbol FROM stocks WHERE symbol = ANY(:symbols)"), 
+                    {"symbols": list(req.symbols)}
+                )
+            else:
+                rows = await db.execute(sa.text("SELECT id, symbol FROM stocks WHERE is_active=TRUE"))
+            
+            stocks = rows.fetchall()
+            
+            for stock in stocks:
+                try:
+                    # Reuse the existing session for all stocks in this bulk run
+                    await run_fundamental_scorer(
+                        stock.id, stock.symbol, db, 
+                        period_type=req.period_type, 
+                        score_version=req.score_version
+                    )
+                    # Commit after each stock to persist progress
+                    await db.commit()
+                except Exception as e:
+                    await db.rollback()
+                    logger.error(f"Bulk scoring failed for {stock.symbol}: {e}")
+
+
+    background_tasks.add_task(_run_bulk)
+    return {
+        "message": f"Bulk scoring started for {len(req.symbols) if req.symbols else 'all active'} stocks",
+        "period_type": req.period_type,
+        "score_version": req.score_version
+    }
+
+
 # ─── Overall Pipeline Status ──────────────────────────────────────────────────
 
 @router.get("/status", summary="Overall pipeline health and live progress polling")
@@ -407,10 +563,17 @@ async def get_pipeline_status(admin: str = Depends(require_admin)):
         FROM pipeline_audit
         ORDER BY job_name, started_at DESC
     """
-    async with raw_connection() as conn:
-        rows = await conn.fetch(sql)
+    rows = []
+    try:
+        async with raw_connection() as conn:
+            rows = await conn.fetch(sql)
+    except Exception as e:
+        # Graceful fallback for any connection/pool issues
+        logger.error(f"Failed to fetch pipeline status: {str(e)}", exc_info=True)
     
     jobs = []
+
+
     for r in rows:
         job = dict(r)
         # Calculate progress percentage if records_in is known
@@ -421,3 +584,4 @@ async def get_pipeline_status(admin: str = Depends(require_admin)):
         jobs.append(job)
 
     return {"jobs": jobs}
+

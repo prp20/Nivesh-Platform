@@ -8,14 +8,19 @@
 #   Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope CurrentUser
 #
 # What this script does:
-#   1. Checks prerequisites (Python 3.10+, Node.js, Docker)
-#   2. Prompts for PostgreSQL: Docker (auto) or external URL
-#   3. Attempts ta-lib install (pre-built wheel); shows fallback instructions if it fails
-#   4. Creates Python virtual environment and installs dependencies
-#   5. Writes backend\.env
-#   6. Runs database migrations
-#   7. Optionally seeds data
-#   8. Starts the FastAPI server
+#   1.  Check Git
+#   2.  Check Python 3.10+ (winget auto-install if missing)
+#   3.  Check Node.js 18+ (winget auto-install if missing)
+#   4.  Clone/Update repository
+#   5.  PostgreSQL setup — Docker (auto) or external URL
+#   6.  Python virtual environment + dependencies (excluding TA-Lib)
+#   7.  Environment configuration + Admin JWT
+#   8.  Start Docker PostgreSQL (if chosen)
+#   9.  Database migrations
+#   10. Optional data seeding
+#   11. Frontend build
+#   12. TA-Lib installation
+#   13. Start FastAPI server
 # =============================================================================
 
 #Requires -Version 5.1
@@ -30,6 +35,22 @@ function Write-Fatal   {
   param($msg)
   Write-Host "[ERROR] $msg" -ForegroundColor Red
   exit 1
+}
+
+# Ensure Python output is unbuffered so tqdm bars and prints stream in real time
+$env:PYTHONUNBUFFERED = "1"
+
+# ─── Timed runner helpers ─────────────────────────────────────────────────────
+function Start-TimedOp {
+  param([string]$Label)
+  $script:_op_label = $Label
+  $script:_op_sw = [System.Diagnostics.Stopwatch]::StartNew()
+  Write-Info "⏳ ${Label}...  (do not interrupt)"
+}
+function End-TimedOp {
+  $script:_op_sw.Stop()
+  $elapsed = [int]$script:_op_sw.Elapsed.TotalSeconds
+  Write-Success "$($script:_op_label) — done in ${elapsed}s"
 }
 
 # ─── Resolve paths ───────────────────────────────────────────────────────────
@@ -49,11 +70,28 @@ Write-Host ""
 Write-Info "Project root : $ProjectRoot"
 
 # =============================================================================
-# STEP 1 — Check prerequisites
+# STEP 0 — Check Git
 # =============================================================================
-Write-Step "Step 1: Checking Prerequisites"
+Write-Step "Step 0: Checking Git"
 
-# Python
+if (Get-Command git -ErrorAction SilentlyContinue) {
+    $gitVer = & git --version
+    Write-Success "$gitVer detected."
+} else {
+    Write-Warn "Git not found. Attempting to install via winget..."
+    & winget install --id Git.Git -e --source winget --accept-package-agreements --accept-source-agreements
+    if ($LASTEXITCODE -ne 0) {
+        Write-Fatal "Failed to install Git. Please install Git from https://git-scm.com and re-run this script."
+    }
+    Write-Warn "Git installed. Please restart this PowerShell window for PATH changes to take effect, then re-run this script."
+    exit 0
+}
+
+# =============================================================================
+# STEP 1 — Check Python
+# =============================================================================
+Write-Step "Step 1: Checking Python"
+
 $PythonCmd = $null
 foreach ($cmd in @("python", "python3", "py")) {
   if (Get-Command $cmd -ErrorAction SilentlyContinue) {
@@ -70,27 +108,97 @@ foreach ($cmd in @("python", "python3", "py")) {
   }
 }
 if (-not $PythonCmd) {
-  Write-Fatal "Python 3.10+ not found. Download from https://python.org and ensure it is in PATH."
+  Write-Warn "Python 3.10+ not found. Attempting to install via winget..."
+  & winget install --id Python.Python.3.11 -e --accept-package-agreements --accept-source-agreements
+  if ($LASTEXITCODE -ne 0) {
+    Write-Fatal "Failed to install Python. Please install Python 3.10+ from https://python.org and re-run this script."
+  }
+  Write-Warn "Python installed. Please restart this PowerShell window for PATH changes to take effect, then re-run this script."
+  exit 0
 }
 
-# Node.js
+# =============================================================================
+# STEP 2 — Check Node.js
+# =============================================================================
+Write-Step "Step 2: Checking Node.js"
+
 if (Get-Command node -ErrorAction SilentlyContinue) {
   $nodeVer = & node --version
   Write-Success "Node.js $nodeVer detected."
   $npmVer = & npm --version
   Write-Success "npm $npmVer detected."
 } else {
-  Write-Warn "Node.js not found."
-  Write-Warn "Install Node.js 18+ LTS from https://nodejs.org"
-  Write-Warn "Or use Windows Package Manager: winget install OpenJS.NodeJS"
-  Write-Warn "After installing Node.js, please restart this script."
-  Write-Fatal "Node.js is required for frontend setup."
+  Write-Warn "Node.js not found. Attempting to install via winget..."
+  & winget install OpenJS.NodeJS.LTS -e --accept-package-agreements --accept-source-agreements
+  if ($LASTEXITCODE -ne 0) {
+    Write-Fatal "Failed to install Node.js. Please install Node.js 18+ from https://nodejs.org and re-run this script."
+  }
+  Write-Warn "Node.js installed. Please restart this PowerShell window for PATH changes to take effect, then re-run this script."
+  exit 0
 }
 
 # =============================================================================
-# STEP 2 — PostgreSQL setup
+# STEP 2.5 — Clone Project Repository (Optional)
 # =============================================================================
-Write-Step "Step 2: PostgreSQL Setup"
+Write-Step "Step 2.5: Clone Project Repository"
+
+$DoClone = Read-Host "  Do you want to clone or update the repository? (y/N)"
+if ($DoClone -notmatch "^[Yy]$") {
+    Write-Info "Skipping repository cloning/update."
+} else {
+    $RepoUrl = "https://github.com/prp20/Nivesh-Platform"
+    $BranchName = Read-Host "    Enter branch to clone/update [main]"
+    if ([string]::IsNullOrWhiteSpace($BranchName)) { $BranchName = "main" }
+
+    # Define clone_repo BEFORE any branch that calls it
+    function clone_repo {
+        Write-Info "Cloning $RepoUrl (branch: $BranchName)..."
+        & git clone -b $BranchName $RepoUrl nivesh-cloned
+        if ($LASTEXITCODE -ne 0) { Write-Fatal "git clone failed. Check network and repo URL." }
+        Set-Location nivesh-cloned
+        $clonedRoot = (Get-Item .).FullName
+        # Re-resolve all paths relative to the cloned directory
+        $script:BackendDir      = Join-Path $clonedRoot "backend"
+        $script:FrontendDir     = Join-Path $clonedRoot "frontend"
+        $script:VenvDir         = Join-Path $script:BackendDir "venv"
+        $script:BackendEnvFile  = Join-Path $script:BackendDir ".env"
+        $script:FrontendEnvFile = Join-Path $script:FrontendDir ".env"
+        Write-Success "Cloned successfully into nivesh-cloned."
+    }
+
+    $IsRepo = $false
+    try {
+      if (& git rev-parse --is-inside-work-tree 2>$null) { $IsRepo = $true }
+    } catch {}
+
+    if ($IsRepo) {
+        $CurrentRemote = & git remote get-url origin 2>$null
+        if ($CurrentRemote -like "*Nivesh-Platform*") {
+            Write-Info "Already inside the Nivesh-Platform repository."
+            $SwitchBranch = Read-Host "    Do you want to switch to/update branch '$BranchName'? (y/N)"
+            if ($SwitchBranch -match "^[Yy]$") {
+                & git fetch origin
+                & git checkout $BranchName 2>$null
+                if ($LASTEXITCODE -ne 0) {
+                    & git checkout -b $BranchName "origin/$BranchName"
+                }
+                & git pull origin $BranchName
+                Write-Success "Updated to $BranchName."
+            }
+        } else {
+            # Already inside a different git repo — clone alongside
+            clone_repo
+        }
+    } else {
+        # Not inside any git repo — clone fresh
+        clone_repo
+    }
+}
+
+# =============================================================================
+# STEP 3 — PostgreSQL setup
+# =============================================================================
+Write-Step "Step 3: PostgreSQL Setup"
 
 Write-Host ""
 Write-Host "  How do you want to connect to PostgreSQL?" -ForegroundColor White
@@ -105,8 +213,15 @@ $DatabaseUrl = ""
 
 if ($PgChoice -eq "2") {
   Write-Host ""
-  Write-Host "  Enter the PostgreSQL URL in this format:" -ForegroundColor White
-  Write-Host "  postgresql+asyncpg://user:password@host:port/dbname"
+  Write-Host "  ── URL format examples ────────────────────────────────────────────────" -ForegroundColor White
+  Write-Host "  Local / self-hosted PostgreSQL (port 5432):"
+  Write-Host "    postgresql+asyncpg://user:password@localhost:5432/dbname"
+  Write-Host ""
+  Write-Host "  Supabase — use Session Pooler (port 6543, NOT 5432):" -ForegroundColor White
+  Write-Host "    postgresql+asyncpg://postgres.<ref>:<password>@aws-0-<region>.pooler.supabase.com:6543/postgres"
+  Write-Warn "asyncpg is NOT compatible with Supabase port 5432 (PgBouncer transaction mode)."
+  Write-Warn "Always use port 6543 (Session Pooler) for Supabase."
+  Write-Host "  ───────────────────────────────────────────────────────────────────────"
   Write-Host ""
   $DatabaseUrl = Read-Host "  PostgreSQL URL"
   if ([string]::IsNullOrWhiteSpace($DatabaseUrl)) {
@@ -136,36 +251,28 @@ if ($UseDocker) {
 }
 
 # =============================================================================
-# STEP 3 — ta-lib
-# =============================================================================
-Write-Step "Step 3: ta-lib (Technical Analysis Library)"
-
-Write-Info "Attempting to install TA-Lib Python wheel..."
-Write-Info "Note: TA-Lib >= 0.6.8 includes pre-built Windows wheels — this may succeed without extra steps."
-Write-Host ""
-
-# We'll try pip install after creating the venv. Just note the fallback here.
-Write-Warn "If pip install fails for TA-Lib, you have these options:"
-Write-Host "  A) Conda (recommended for Windows):"
-Write-Host "       conda install -c conda-forge ta-lib"
-Write-Host "  B) WSL (Windows Subsystem for Linux):"
-Write-Host "       Run this script inside WSL with Ubuntu"
-Write-Host "  C) Pre-built wheel from unofficial sources (use at your own risk)"
-Write-Host ""
-
-# =============================================================================
-# STEP 4 — Python virtual environment + dependencies
+# STEP 4 — Python virtual environment + dependencies (excluding TA-Lib)
 # =============================================================================
 Write-Step "Step 4: Python Virtual Environment"
 
 Set-Location $ProjectRoot
 
-if (-not (Test-Path $VenvDir)) {
+if (Test-Path $VenvDir) {
+  Write-Warn "Virtual environment already exists at $VenvDir."
+  $DeleteVenv = Read-Host "  Do you want to delete it and create a fresh one? (y/N)"
+  if ($DeleteVenv -match "^[Yy]$") {
+    Write-Info "Deleting existing virtual environment..."
+    Remove-Item $VenvDir -Recurse -Force
+    Write-Info "Creating virtual environment at $VenvDir ..."
+    & $PythonCmd -m venv $VenvDir
+    Write-Success "Virtual environment created."
+  } else {
+    Write-Info "Proceeding with existing virtual environment."
+  }
+} else {
   Write-Info "Creating virtual environment at $VenvDir ..."
   & $PythonCmd -m venv $VenvDir
   Write-Success "Virtual environment created."
-} else {
-  Write-Info "Virtual environment already exists at $VenvDir."
 }
 
 $ActivateScript = Join-Path $VenvDir "Scripts\Activate.ps1"
@@ -178,27 +285,48 @@ Write-Success "Virtual environment activated."
 Write-Info "Upgrading pip..."
 & pip install --upgrade pip --quiet
 
-Write-Info "Installing Python dependencies from requirements.txt..."
+Write-Info "Installing Python dependencies (excluding TA-Lib)..."
 $ReqFile = Join-Path $BackendDir "requirements.txt"
+$TempReq = [System.IO.Path]::GetTempFileName()
 try {
-  & pip install -r $ReqFile
-  Write-Success "Python dependencies installed."
-} catch {
-  Write-Host ""
-  Write-Warn "pip install encountered an error."
-  Write-Warn "If the error is about TA-Lib, install it via conda first:"
-  Write-Warn "  conda install -c conda-forge ta-lib"
-  Write-Warn "Then rerun this script with --skip-deps or install remaining deps manually."
-  Write-Fatal "Dependency installation failed. See above for details."
+  Get-Content $ReqFile | Where-Object { $_ -notmatch '(?i)ta.?lib' } | Set-Content $TempReq
+  & pip install --prefer-binary -r $TempReq
+  if ($LASTEXITCODE -ne 0) {
+    Write-Fatal "pip install failed. Check the error output above."
+  }
+  Write-Success "Python dependencies installed (TA-Lib excluded — installed in Step 10)."
+} finally {
+  Remove-Item $TempReq -Force -ErrorAction SilentlyContinue
 }
 
 # =============================================================================
-# STEP 5 — Write backend\.env
+# STEP 5 — Environment Configuration & Admin JWT
 # =============================================================================
 Write-Step "Step 5: Environment Configuration"
 
-# Generate random SECRET_KEY
-$SecretKey = [Convert]::ToBase64String([System.Text.Encoding]::UTF8.GetBytes((Get-Random -Minimum 100000000 -Maximum 999999999).ToString() + (Get-Date).Ticks))
+# ── API Keys ──────────────────────────────────────────────────────────────────
+Write-Host ""
+Write-Info "Enter your API keys (leave blank to skip)."
+Write-Host ""
+$GroqApiKey = Read-Host "  Enter GROQ_API_KEY"
+
+$EnableLS = Read-Host "  Enable LangSmith tracing? (y/N)"
+if ($EnableLS -match "^[Yy]$") {
+    $LT_V2 = "true"
+    $LangsmithApiKey = Read-Host "  Enter LANGSMITH_API_KEY"
+} else {
+    $LT_V2 = "false"
+    $LangsmithApiKey = ""
+}
+
+# Generate cryptographically secure SECRET_KEY
+$SecretKey = & $PythonCmd -c "import secrets; print(secrets.token_urlsafe(32))"
+if ($LASTEXITCODE -ne 0 -or -not $SecretKey) {
+  $SecretKey = [System.Web.Security.Membership]::GeneratePassword(32, 8)
+  if (-not $SecretKey) {
+    $SecretKey = [Convert]::ToBase64String([System.Security.Cryptography.RandomNumberGenerator]::GetBytes(32))
+  }
+}
 
 # Backend .env
 $WriteBackendEnv = $true
@@ -213,24 +341,45 @@ if (Test-Path $BackendEnvFile) {
 
 if ($WriteBackendEnv) {
   $BackendEnvContent = @"
-# ── Database ──────────────────────────────────────────────────────────────────
+# -- Database -----------------------------------------------------------------
 DATABASE_URL=$DatabaseUrl
 
-# ── API ───────────────────────────────────────────────────────────────────────
+# -- API ----------------------------------------------------------------------
 API_V1_STR=/api/v1
 PROJECT_NAME=Nivesh API
 
-# ── Security — CHANGE IN PRODUCTION ──────────────────────────────────────────
-ENABLE_AUTH=false
+# -- Security - CHANGE IN PRODUCTION ------------------------------------------
+ENABLE_AUTH=true
 SECRET_KEY=$SecretKey
 ACCESS_TOKEN_EXPIRE_MINUTES=30
 
-# ── Third-party APIs (if needed) ──────────────────────────────────────────────
+# -- Admin portal credentials (set below) -------------------------------------
+ADMIN_USERNAME=
+ADMIN_PASSWORD_HASH=
+
+# -- Third-party APIs (if needed) --------------------------------------------
+GROQ_API_KEY=$GroqApiKey
+LANGCHAIN_TRACING_V2=$LT_V2
+LANGCHAIN_PROJECT=Nivesh_platform
+LANGSMITH_ENDPOINT="https://api.smith.langchain.com"
+LANGSMITH_API_KEY=$LangsmithApiKey
 # ALPHA_VANTAGE_APIKEY=your_key_here
 # SUPABASE_PASSWORD=your_password_here
 "@
   Set-Content -Path $BackendEnvFile -Value $BackendEnvContent -Encoding UTF8
-  Write-Success "backend\.env written with generated SECRET_KEY"
+  Write-Success "backend\.env written to $BackendEnvFile"
+}
+
+# ── Admin credentials ─────────────────────────────────────────────────────────
+Write-Host ""
+Write-Info "Set up your admin login credentials for the Nivesh portal."
+Write-Host ""
+
+$AdminHelperPath = Join-Path $ScriptDir "admin_helper.py"
+# Use the venv Python explicitly — bcrypt is installed there, not in system Python
+& "$VenvDir\Scripts\python.exe" $AdminHelperPath $BackendEnvFile
+if ($LASTEXITCODE -ne 0) {
+  Write-Fatal "Failed to set admin credentials. Check the output above."
 }
 
 # Frontend .env
@@ -246,18 +395,13 @@ if (Test-Path $FrontendEnvFile) {
 
 if ($WriteFrontendEnv) {
   $FrontendEnvContent = @"
-# ── API URL ──────────────────────────────────────────────────────────────────
-# For development: http://localhost:8000/api/v1
-# For production: /api/v1 (same origin — backend serves frontend)
+# -- API URL ------------------------------------------------------------------
+# For development: http://localhost:8000/api/v1  (set in .env.development)
+# For production: /api/v1 (same origin -- backend serves frontend)
 VITE_API_URL=/api/v1
 "@
   Set-Content -Path $FrontendEnvFile -Value $FrontendEnvContent -Encoding UTF8
-  Write-Success "frontend\.env written"
-}
-
-$BackendEnvContents = Get-Content $BackendEnvFile -Raw
-if ($BackendEnvContents -match "ENABLE_AUTH=false") {
-  Write-Warn "ENABLE_AUTH=false — write endpoints are unprotected. Set to true for production."
+  Write-Success "frontend\.env written to $FrontendEnvFile"
 }
 
 # =============================================================================
@@ -290,19 +434,52 @@ if ($UseDocker) {
 }
 
 # =============================================================================
-# STEP 7 — Database migrations
+# STEP 7 — Database Setup
 # =============================================================================
-Write-Step "Step 7: Database Migrations"
+Write-Step "Step 7: Database Setup"
 
 Set-Location $BackendDir
 
-Write-Info "Creating MF tables (SQLAlchemy create_all)..."
-& python scripts\db_init.py
-Write-Success "MF tables created."
+Write-Info "Checking existing database state..."
+& $PythonCmd scripts\db_setup.py --check 2>$null
+$TablesExist = ($LASTEXITCODE -eq 0)
 
-Write-Info "Running Alembic migration for stock tables..."
-& alembic upgrade head
-Write-Success "Stock tables migrated."
+if ($TablesExist) {
+  Write-Host ""
+  Write-Warn "Existing database tables detected."
+  Write-Host ""
+  Write-Host "  [1] Keep all data -- update schema only  (safe, recommended)"
+  Write-Host "  [2] Erase EVERYTHING and start fresh     (destructive, all data lost)"
+  Write-Host ""
+  $DbAction = Read-Host "  Enter choice [1]"
+  if ([string]::IsNullOrWhiteSpace($DbAction)) { $DbAction = "1" }
+
+  if ($DbAction -eq "2") {
+    Write-Host ""
+    Write-Warn "This will PERMANENTLY DELETE all data in the database."
+    $DropConfirm = Read-Host "  Type YES to confirm"
+    if ($DropConfirm -eq "YES") {
+      Write-Info "Dropping all tables..."
+      & $PythonCmd scripts\db_setup.py --drop-all
+      if ($LASTEXITCODE -ne 0) { Write-Fatal "Failed to drop tables. Check database connectivity." }
+      Write-Success "All tables dropped."
+    } else {
+      Write-Info "Cancelled. Keeping existing data."
+    }
+  }
+} else {
+  Write-Info "No existing tables found. Fresh installation."
+}
+
+Write-Info "Creating MF tables and enabling pg_trgm (SQLAlchemy create_all)..."
+& $PythonCmd scripts\db_init.py
+if ($LASTEXITCODE -ne 0) { Write-Fatal "db_init.py failed. Check database connectivity." }
+Write-Success "MF tables ready."
+
+Write-Info "Running Alembic migration for stock tables (idempotent)..."
+& "$VenvDir\Scripts\alembic" upgrade head
+if ($LASTEXITCODE -ne 0) { Write-Fatal "alembic upgrade head failed. Check database connectivity and alembic.ini." }
+Write-Success "Stock tables ready."
 
 # =============================================================================
 # STEP 8 — Optional seeding
@@ -310,35 +487,73 @@ Write-Success "Stock tables migrated."
 Write-Step "Step 8: Data Seeding (Optional)"
 
 Write-Host ""
-Write-Warn "Seeding fetches live data from AMFI and yfinance — this can take 30–90 minutes."
+Write-Warn "Seeding fetches live data from AMFI, yfinance, and screener.in — this can take 30-120 minutes."
 Write-Host ""
-$SeedMf = Read-Host "  Seed mutual fund data (benchmarks + funds + NAV history)? (y/N)"
+Write-Host "  What data would you like to seed?"
+Write-Host "  [1] Mutual Fund data only          (benchmarks + funds + NAV history,  30-60 min)"
+Write-Host "  [2] Stock data only                (18 stocks + 5y price history,      20-40 min)"
+Write-Host "  [3] Stock data + Fundamentals      (stocks + screener.in data,         35-55 min)"
+Write-Host "  [4] Both MF + Stocks               (recommended for full platform,     50-100 min)"
+Write-Host "  [5] All  (MF + Stocks + Fundamentals)                                  65-115 min"
+Write-Host "  [6] Skip seeding                   (run seed scripts manually later)"
+Write-Host ""
+$SeedChoice = Read-Host "  Enter choice [6]"
+if ([string]::IsNullOrWhiteSpace($SeedChoice)) { $SeedChoice = "6" }
 
-if ($SeedMf -match "^[Yy]$") {
-  Write-Info "Seeding benchmark indices from CSV files..."
-  & python scripts\seed_indices.py
-  Write-Success "Benchmark indices seeded."
+$SeedMf           = $SeedChoice -in @("1","4","5")
+$SeedStocks       = $SeedChoice -in @("2","3","4","5")
+$SeedFundamentals = $SeedChoice -in @("3","5")
 
-  Write-Info "Seeding fund master records..."
-  & python scripts\seed_funds.py
-  Write-Success "Fund master seeded."
-
-  Write-Info "Fetching NAV history and computing metrics (30–60 minutes)..."
-  & python scripts\sync_data.py
-  Write-Success "Fund NAV history and metrics complete."
+if (-not ($SeedMf -or $SeedStocks -or $SeedFundamentals)) {
+  Write-Info "Skipping seeding."
 }
 
-Write-Host ""
-$SeedStocks = Read-Host "  Also seed stock master + 5y price history from yfinance? (y/N)"
+if ($SeedMf) {
+  Start-TimedOp "Seeding benchmark indices"
+  & $PythonCmd scripts\seed_indices.py
+  End-TimedOp
 
-if ($SeedStocks -match "^[Yy]$") {
-  Write-Info "Seeding stock master (18 large-cap stocks + 3 indices)..."
-  & python scripts\seed\seed_stock_master.py
-  Write-Success "Stock master seeded."
+  Start-TimedOp "Seeding fund master records"
+  & $PythonCmd scripts\seed_funds.py
+  End-TimedOp
 
-  Write-Info "Backfilling 5 years of price data from yfinance (20–40 minutes)..."
-  & python scripts\seed\backfill_prices.py 5y
-  Write-Success "Stock price history backfilled."
+  Write-Warn "NAV sync fetches data for every active fund — expected 30-60 minutes."
+  Start-TimedOp "NAV sync + metrics computation"
+  & $PythonCmd scripts\sync_data.py
+  End-TimedOp
+}
+
+if ($SeedStocks) {
+  Write-Host ""
+  Write-Host "  How many years of price history to backfill?" -ForegroundColor White
+  Write-Host "  [1] 1 year   [2] 2 years   [5] 5 years   [10] 10 years   [M] Max (all available)"
+  $BackfillChoice = Read-Host "  Enter choice [5]"
+  if ([string]::IsNullOrWhiteSpace($BackfillChoice)) { $BackfillChoice = "5" }
+  $BackfillPeriod = switch ($BackfillChoice.ToLower()) {
+    "1"   { "1y"  }
+    "2"   { "2y"  }
+    "10"  { "10y" }
+    "m"   { "max" }
+    "max" { "max" }
+    default { "5y" }
+  }
+  Write-Info "Using backfill period: $BackfillPeriod"
+
+  Start-TimedOp "Seeding stock master (18 large-cap stocks + 3 indices)"
+  & $PythonCmd scripts\seed\seed_stock_master.py
+  End-TimedOp
+
+  Write-Warn "Price backfill ($BackfillPeriod) fetches OHLCV from yfinance — expected 20-40 minutes."
+  Start-TimedOp "Price history backfill ($BackfillPeriod)"
+  & $PythonCmd scripts\seed\backfill_prices.py $BackfillPeriod
+  End-TimedOp
+}
+
+if ($SeedFundamentals) {
+  Write-Warn "Fundamental scraping from screener.in — expected 5-15 minutes."
+  Start-TimedOp "Seeding fundamental data"
+  & $PythonCmd scripts\seed\seed_fundamentals.py
+  End-TimedOp
 }
 
 # =============================================================================
@@ -367,9 +582,31 @@ if (-not (Test-Path $DistDir)) {
 Write-Success "Frontend built and ready at $DistDir"
 
 # =============================================================================
-# STEP 10 — Start API server
+# STEP 10 — TA-Lib Installation
 # =============================================================================
-Write-Step "Step 10: Starting FastAPI Server"
+Write-Step "Step 10: TA-Lib Installation"
+
+Write-Info "TA-Lib >= 0.6.8 includes pre-built Windows wheels — attempting pip install..."
+Write-Host ""
+
+Set-Location $BackendDir
+
+& pip install "TA-Lib>=0.6.8"
+if ($LASTEXITCODE -ne 0) {
+  Write-Host ""
+  Write-Warn "pip install TA-Lib failed. You have these options:"
+  Write-Host "  A) Conda (recommended for Windows):"
+  Write-Host "       conda install -c conda-forge ta-lib"
+  Write-Host "  B) WSL (Windows Subsystem for Linux):"
+  Write-Host "       Run setup\setup.sh inside WSL with Ubuntu"
+  Write-Fatal "TA-Lib installation failed. Install it manually and re-run this script."
+}
+Write-Success "TA-Lib installed."
+
+# =============================================================================
+# STEP 11 — Start API server
+# =============================================================================
+Write-Step "Step 11: Starting FastAPI Server"
 
 Write-Host ""
 Write-Host "  Setup complete! Starting Nivesh API..." -ForegroundColor Green
@@ -384,4 +621,5 @@ Set-Location $BackendDir
 $Host_ = if ($env:NIVESH_HOST) { $env:NIVESH_HOST } else { "0.0.0.0" }
 $Port  = if ($env:NIVESH_PORT) { $env:NIVESH_PORT } else { "8000" }
 
-& uvicorn app.main:app --host $Host_ --port $Port --reload --log-level info
+# Note: --reload is omitted for production. Add it manually for development hot-reload.
+& uvicorn app.main:app --host $Host_ --port $Port --log-level info

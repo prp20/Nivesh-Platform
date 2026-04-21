@@ -36,52 +36,129 @@ echo   NOTE: For a better experience with colour output
 echo         and richer error handling, use setup.ps1:
 echo         powershell -ExecutionPolicy RemoteSigned -File setup\setup.ps1
 echo.
+echo.
 echo   Project root: %PROJECT_ROOT%
 echo.
 
 :: =============================================================================
-:: STEP 1 — Check Python
+:: STEP 0 — Check Git
 :: =============================================================================
+echo [STEP 0] Checking Git...
+git --version >nul 2>&1
+if errorlevel 1 (
+    echo [WARN] Git not found. Attempting to install via winget...
+    winget install --id Git.Git -e --source winget --accept-package-agreements --accept-source-agreements
+    if errorlevel 1 (
+        echo [ERROR] Failed to install Git. Please install Git manually.
+        pause
+        exit /b 1
+    )
+    echo [OK] Git installed.
+) else (
+    for /f "tokens=3" %%v in ('git --version 2^>^&1') do echo [OK]    Git %%v detected.
+)
+
+:: =============================================================================
+:: STEP 1 — Check Python and Install if missing
+:: =============================================================================
+echo.
 echo [STEP 1] Checking Python...
 
 python --version >nul 2>&1
 if errorlevel 1 (
-  echo [ERROR] 'python' command not found. Install Python 3.10+ from https://python.org
-  echo         Ensure "Add Python to PATH" is checked during installation.
-  pause
-  exit /b 1
+  echo [WARN] 'python' command not found. Attempting to install Python via winget...
+  winget install --id Python.Python.3.11 -e --accept-package-agreements --accept-source-agreements
+  if errorlevel 1 (
+    echo [ERROR] Failed to install Python. Please install Python 3.10+ manually.
+    pause
+    exit /b 1
+  )
+  echo [OK] Python installed. Please restart this command prompt for PATH changes to take effect.
+) else (
+  for /f "tokens=2" %%v in ('python --version 2^>^&1') do set PY_VER=%%v
+  echo [OK]    Python !PY_VER! detected.
 )
-
-for /f "tokens=2" %%v in ('python --version 2^>^&1') do set PY_VER=%%v
-echo [OK]    Python %PY_VER% detected.
 
 :: Basic version check (major.minor >= 3.10)
 python -c "import sys; exit(0 if sys.version_info >= (3,10) else 1)" >nul 2>&1
 if errorlevel 1 (
-  echo [ERROR] Python 3.10+ is required. Found: %PY_VER%
+  echo [ERROR] Python 3.10+ is required.
   pause
   exit /b 1
 )
 
-:: Node.js
+:: =============================================================================
+:: STEP 2 — Check Nodejs and Install if missing
+:: =============================================================================
+echo.
+echo [STEP 2] Checking Node.js...
 node --version >nul 2>&1
 if errorlevel 1 (
-  echo [ERROR] Node.js not found. This is required for building the frontend.
-  echo         Install Node.js 18+ LTS from https://nodejs.org
-  echo         Or use Windows Package Manager: winget install OpenJS.NodeJS
-  echo         After installing, restart this script.
-  pause
-  exit /b 1
+  echo [WARN] Node.js not found. Attempting to install Node.js via winget...
+  winget install OpenJS.NodeJS.LTS -e --accept-package-agreements --accept-source-agreements
+  if errorlevel 1 (
+    echo [ERROR] Failed to install Node.js. Please install manually.
+    pause
+    exit /b 1
+  )
+  echo [OK] Node.js installed.
 ) else (
   for /f %%v in ('node --version 2^>^&1') do echo [OK]    Node.js %%v detected.
   for /f %%v in ('npm --version 2^>^&1') do echo [OK]    npm %%v detected.
 )
 
 :: =============================================================================
-:: STEP 2 — PostgreSQL setup
+:: STEP 2.5 — Clone Project Repository (Optional)
 :: =============================================================================
 echo.
-echo [STEP 2] PostgreSQL Setup
+echo [STEP 2.5] Cloning Project Repository
+echo.
+
+set /p DO_CLONE="  Do you want to clone or update the repository? (y/N): "
+if /i not "!DO_CLONE!"=="y" (
+    echo [INFO]  Skipping repository cloning/update.
+) else (
+    set REPO_URL=https://github.com/prp20/Nivesh-Platform
+    set /p BRANCH_NAME="    Enter branch to clone/update [main]: "
+    if "!BRANCH_NAME!"=="" set BRANCH_NAME=main
+
+    git rev-parse --is-inside-work-tree >nul 2>&1
+    if not errorlevel 1 (
+        for /f "tokens=*" %%a in ('git remote get-url origin 2^>nul') do set CURRENT_REMOTE=%%a
+        echo !CURRENT_REMOTE! | findstr /i "Nivesh-Platform" >nul
+        if not errorlevel 1 (
+            echo [INFO]  Already inside the Nivesh-Platform repository.
+            set /p SWITCH_BRANCH="    Do you want to switch to/update branch '!BRANCH_NAME!'? (y/N): "
+            if /i "!SWITCH_BRANCH!"=="y" (
+                git fetch origin
+                git checkout !BRANCH_NAME! || git checkout -b !BRANCH_NAME! origin/!BRANCH_NAME!
+                git pull origin !BRANCH_NAME!
+                echo [OK]    Updated to !BRANCH_NAME!.
+            )
+        ) else (
+            goto :clone_repo
+        )
+    ) else (
+        :clone_repo
+        echo [INFO]  Cloning %REPO_URL% (branch: %BRANCH_NAME%)...
+        git clone -b %BRANCH_NAME% %REPO_URL% nivesh-cloned
+        cd /d nivesh-cloned
+        set "PROJECT_ROOT=%CD%"
+        set "BACKEND_DIR=%PROJECT_ROOT%\backend"
+        set "FRONTEND_DIR=%PROJECT_ROOT%\frontend"
+        set "VENV_DIR=%BACKEND_DIR%\venv"
+        set "BACKEND_ENV_FILE=%BACKEND_DIR%\.env"
+        set "FRONTEND_ENV_FILE=%FRONTEND_DIR%\.env"
+        set "COMPOSE_FILE=%BACKEND_DIR%\docker-compose.yml"
+        echo [OK]    Cloned successfully into nivesh-cloned.
+    )
+)
+
+:: =============================================================================
+:: STEP 3 — PostgreSQL setup
+:: =============================================================================
+echo.
+echo [STEP 3] PostgreSQL Setup
 echo.
 echo   How do you want to connect to PostgreSQL?
 echo   [1] Docker  -- auto-managed, starts postgres:16-alpine (default)
@@ -93,8 +170,15 @@ if "%PG_CHOICE%"=="" set PG_CHOICE=1
 set USE_DOCKER=0
 if "%PG_CHOICE%"=="2" (
   echo.
-  echo   Enter the PostgreSQL URL in this format:
-  echo   postgresql+asyncpg://user:password@host:port/dbname
+  echo   -- URL format examples -------------------------------------------------------
+  echo   Local / self-hosted PostgreSQL (port 5432):
+  echo     postgresql+asyncpg://user:password@localhost:5432/dbname
+  echo.
+  echo   Supabase - use Session Pooler (port 6543, NOT 5432):
+  echo     postgresql+asyncpg://postgres.^<ref^>:^<password^>@aws-0-^<region^>.pooler.supabase.com:6543/postgres
+  echo   [WARN]  asyncpg is NOT compatible with Supabase port 5432 (PgBouncer mode).
+  echo   [WARN]  Always use port 6543 (Session Pooler) for Supabase.
+  echo   ---------------------------------------------------------------------------
   echo.
   set /p DATABASE_URL="  PostgreSQL URL: "
   if "!DATABASE_URL!"=="" (
@@ -118,26 +202,32 @@ if "%PG_CHOICE%"=="2" (
 )
 
 :: =============================================================================
-:: STEP 3 — ta-lib note
-:: =============================================================================
-echo.
-echo [STEP 3] ta-lib (Technical Analysis Library)
-echo.
-echo   TA-Lib ^>= 0.6.8 includes pre-built Windows wheels.
-echo   pip install will be attempted. If it fails, you have these options:
-echo   A) Conda:  conda install -c conda-forge ta-lib
-echo   B) WSL:    Run setup\setup.sh inside Windows Subsystem for Linux
-echo.
-
-:: =============================================================================
 :: STEP 4 — Python virtual environment + dependencies
 :: =============================================================================
+echo.
 echo [STEP 4] Python Virtual Environment
 echo.
 
 cd /d "%PROJECT_ROOT%"
 
-if not exist "%VENV_DIR%" (
+if exist "%VENV_DIR%" (
+  echo [WARN]  Virtual environment already exists at %VENV_DIR%
+  set /p DELETE_VENV="  Do you want to delete it and create a fresh one? (y/N): "
+  if /i "!DELETE_VENV!"=="y" (
+    echo [INFO]  Deleting existing virtual environment...
+    rmdir /s /q "%VENV_DIR%"
+    echo [INFO]  Creating virtual environment at %VENV_DIR%...
+    python -m venv "%VENV_DIR%"
+    if errorlevel 1 (
+      echo [ERROR] Failed to create virtual environment.
+      pause
+      exit /b 1
+    )
+    echo [OK]    Virtual environment created.
+  ) else (
+    echo [INFO]  Proceeding with existing virtual environment.
+  )
+) else (
   echo [INFO]  Creating virtual environment at %VENV_DIR%...
   python -m venv "%VENV_DIR%"
   if errorlevel 1 (
@@ -146,8 +236,6 @@ if not exist "%VENV_DIR%" (
     exit /b 1
   )
   echo [OK]    Virtual environment created.
-) else (
-  echo [INFO]  Virtual environment already exists.
 )
 
 echo [INFO]  Activating virtual environment...
@@ -162,30 +250,47 @@ echo [OK]    Virtual environment activated.
 echo [INFO]  Upgrading pip...
 pip install --upgrade pip --quiet
 
-echo [INFO]  Installing Python dependencies...
-pip install -r "%BACKEND_DIR%\requirements.txt"
+echo [INFO]  Installing Python dependencies (excluding ta-lib)...
+findstr /v /i "TA-Lib" "%BACKEND_DIR%\requirements.txt" > "%TEMP%\req_temp.txt"
+pip install --no-cache-dir --prefer-binary -r "%TEMP%\req_temp.txt"
 if errorlevel 1 (
   echo.
   echo [ERROR] pip install failed.
-  echo         If the error is about TA-Lib, install it via conda:
-  echo           conda install -c conda-forge ta-lib
-  echo         Then rerun this script.
   pause
   exit /b 1
 )
+del "%TEMP%\req_temp.txt" /q
 echo [OK]    Python dependencies installed.
 
 :: =============================================================================
-:: STEP 5 — Write backend\.env
+:: STEP 5 — Environment Configuration
 :: =============================================================================
 echo.
 echo [STEP 5] Environment Configuration
 echo.
 
-:: Generate random SECRET_KEY (using timestamp + random number)
-for /f "tokens=2-4 delims=/ " %%a in ('date /t') do (set mydate=%%c%%a%%b)
-for /f "tokens=1-2 delims=/:" %%a in ('time /t') do (set mytime=%%a%%b)
-set "SECRET_KEY=dev-secret-%mydate%-%mytime%"
+:: Generate cryptographically secure SECRET_KEY using Python
+for /f "delims=" %%s in ('python -c "import secrets; print(secrets.token_urlsafe(32))" 2^>nul') do set "SECRET_KEY=%%s"
+if "!SECRET_KEY!"=="" (
+  echo [WARN]  Could not generate SECRET_KEY via Python. Using fallback.
+  for /f "tokens=2-4 delims=/ " %%a in ('date /t') do (set mydate=%%c%%a%%b)
+  for /f "tokens=1-2 delims=/:" %%a in ('time /t') do (set mytime=%%a%%b)
+  set "SECRET_KEY=dev-secret-%mydate%-%mytime%-%RANDOM%-%RANDOM%"
+)
+
+:: ── API Keys ──────────────────────────────────────────────────────────────────
+echo.
+echo [INFO]  Enter your API keys (leave blank to skip).
+echo.
+set /p GROQ_API_KEY="  Enter GROQ_API_KEY: "
+set /p ENABLE_LS="  Enable LangSmith tracing? (y/N): "
+if /i "!ENABLE_LS!"=="y" (
+    set LANGCHAIN_TRACING_V2=true
+    set /p LANGSMITH_API_KEY="  Enter LANGSMITH_API_KEY: "
+) else (
+    set LANGCHAIN_TRACING_V2=false
+    set LANGSMITH_API_KEY=
+)
 
 :: Backend .env
 set WRITE_BACKEND_ENV=1
@@ -208,16 +313,36 @@ if "%WRITE_BACKEND_ENV%"=="1" (
     echo PROJECT_NAME=Nivesh API
     echo.
     echo # -- Security - CHANGE IN PRODUCTION ------------------------------------------
-    echo ENABLE_AUTH=false
+    echo ENABLE_AUTH=true
     echo SECRET_KEY=%SECRET_KEY%
     echo ACCESS_TOKEN_EXPIRE_MINUTES=30
     echo.
-    echo # -- Third-party APIs (if needed) --------------------------------------------
+    echo # -- Admin portal credentials ^(set below^) -----------------------------------
+    echo ADMIN_USERNAME=
+    echo ADMIN_PASSWORD_HASH=
+    echo.
+    echo # -- Third-party APIs ^(if needed^) -------------------------------------------
+    echo GROQ_API_KEY=!GROQ_API_KEY!
+    echo LANGCHAIN_TRACING_V2=!LANGCHAIN_TRACING_V2!
+    echo LANGCHAIN_PROJECT=Nivesh_platform
+    echo LANGSMITH_ENDPOINT="https://api.smith.langchain.com"
+    echo LANGSMITH_API_KEY=!LANGSMITH_API_KEY!
     echo # ALPHA_VANTAGE_APIKEY=your_key_here
     echo # SUPABASE_PASSWORD=your_password_here
   ) > "%BACKEND_ENV_FILE%"
   echo [OK]    backend\.env written to %BACKEND_ENV_FILE%
-  echo [WARN]  ENABLE_AUTH=false -- write endpoints are unprotected. Set to true for production.
+)
+
+:: ── Admin credentials ─────────────────────────────────────────────────────────
+echo.
+echo [INFO]  Set up your admin login credentials for the Nivesh portal.
+echo.
+
+python "%SCRIPT_DIR%admin_helper.py" "%BACKEND_ENV_FILE%"
+if errorlevel 1 (
+  echo [ERROR] Failed to set admin credentials. Check the output above.
+  pause
+  exit /b 1
 )
 
 :: Frontend .env
@@ -234,7 +359,7 @@ if exist "%FRONTEND_ENV_FILE%" (
 if "%WRITE_FRONTEND_ENV%"=="1" (
   (
     echo # -- API URL ------------------------------------------------------------------
-    echo # For development: http://localhost:8000/api/v1
+    echo # For development: http://localhost:8000/api/v1  (set in .env.development)
     echo # For production: /api/v1 (same origin -- backend serves frontend)
     echo VITE_API_URL=/api/v1
   ) > "%FRONTEND_ENV_FILE%"
@@ -281,31 +406,69 @@ if "%USE_DOCKER%"=="1" (
 )
 
 :: =============================================================================
-:: STEP 7 — Database migrations
+:: STEP 7 — Database Setup
 :: =============================================================================
 echo.
-echo [STEP 7] Database Migrations
+echo [STEP 7] Database Setup
 echo.
 
 cd /d "%BACKEND_DIR%"
 
-echo [INFO]  Creating MF tables...
+echo [INFO]  Checking existing database state...
+python scripts\db_setup.py --check
+if errorlevel 1 goto :fresh_install
+
+:: Tables exist — ask user what to do
+echo.
+echo [WARN]  Existing database tables detected.
+echo.
+echo   [1] Keep all data -- update schema only  ^(safe, recommended^)
+echo   [2] Erase EVERYTHING and start fresh     ^(destructive, all data lost^)
+echo.
+set /p DB_ACTION="  Enter choice [1]: "
+if "!DB_ACTION!"=="" set DB_ACTION=1
+if not "!DB_ACTION!"=="2" goto :run_migrations
+
+:: Confirm destructive drop
+echo.
+echo [WARN]  This will PERMANENTLY DELETE all data from the database.
+set /p DROP_CONFIRM="  Type YES to confirm: "
+if /i not "!DROP_CONFIRM!"=="YES" (
+  echo [INFO]  Cancelled. Keeping existing data.
+  goto :run_migrations
+)
+
+echo [INFO]  Dropping all tables...
+python scripts\db_setup.py --drop-all
+if errorlevel 1 (
+  echo [ERROR] Failed to drop tables. Check database connectivity.
+  pause
+  exit /b 1
+)
+echo [OK]    All tables dropped.
+goto :run_migrations
+
+:fresh_install
+echo [INFO]  No existing tables found. Fresh installation.
+
+:run_migrations
+echo [INFO]  Creating MF tables and enabling pg_trgm ^(SQLAlchemy create_all^)...
 python scripts\db_init.py
 if errorlevel 1 (
   echo [ERROR] db_init.py failed. Check database connectivity.
   pause
   exit /b 1
 )
-echo [OK]    MF tables created.
+echo [OK]    MF tables ready.
 
-echo [INFO]  Running Alembic migration for stock tables...
-alembic upgrade head
+echo [INFO]  Running Alembic migration for stock tables ^(idempotent^)...
+"%VENV_DIR%\Scripts\alembic.exe" upgrade head
 if errorlevel 1 (
   echo [ERROR] alembic upgrade head failed. Check database connectivity and alembic.ini.
   pause
   exit /b 1
 )
-echo [OK]    Stock tables migrated.
+echo [OK]    Stock tables ready.
 
 :: =============================================================================
 :: STEP 8 — Optional seeding
@@ -313,11 +476,39 @@ echo [OK]    Stock tables migrated.
 echo.
 echo [STEP 8] Data Seeding (Optional)
 echo.
-echo [WARN]  Seeding fetches live data from AMFI and yfinance -- this can take 30-90 minutes.
+echo [WARN]  Seeding fetches live data from AMFI, yfinance, and screener.in -- this can take 30-120 minutes.
 echo.
-set /p SEED_MF="  Seed mutual fund data (benchmarks + funds + NAV history)? (y/N): "
+echo   What data would you like to seed?
+echo   [1] Mutual Fund data only          ^(benchmarks + funds + NAV history,  30-60 min^)
+echo   [2] Stock data only                ^(18 stocks + 5y price history,      20-40 min^)
+echo   [3] Stock data + Fundamentals      ^(stocks + screener.in data,         35-55 min^)
+echo   [4] Both MF + Stocks               ^(recommended for full platform,     50-100 min^)
+echo   [5] All ^(MF + Stocks + Fundamentals^)                                   65-115 min
+echo   [6] Skip seeding                   ^(run seed scripts manually later^)
+echo.
+set /p SEED_CHOICE="  Enter choice [6]: "
+if "!SEED_CHOICE!"=="" set SEED_CHOICE=6
 
-if /i "%SEED_MF%"=="y" (
+set SEED_MF=0
+set SEED_STOCKS=0
+set SEED_FUNDAMENTALS=0
+if "!SEED_CHOICE!"=="1" set SEED_MF=1
+if "!SEED_CHOICE!"=="2" set SEED_STOCKS=1
+if "!SEED_CHOICE!"=="3" (
+  set SEED_STOCKS=1
+  set SEED_FUNDAMENTALS=1
+)
+if "!SEED_CHOICE!"=="4" (
+  set SEED_MF=1
+  set SEED_STOCKS=1
+)
+if "!SEED_CHOICE!"=="5" (
+  set SEED_MF=1
+  set SEED_STOCKS=1
+  set SEED_FUNDAMENTALS=1
+)
+
+if "!SEED_MF!"=="1" (
   echo [INFO]  Seeding benchmark indices...
   python scripts\seed_indices.py
   echo [OK]    Benchmark indices seeded.
@@ -326,22 +517,39 @@ if /i "%SEED_MF%"=="y" (
   python scripts\seed_funds.py
   echo [OK]    Fund master seeded.
 
-  echo [INFO]  Fetching NAV history and computing metrics (30-60 minutes)...
+  echo [INFO]  Fetching NAV history and computing metrics ^(30-60 minutes^)...
   python scripts\sync_data.py
   echo [OK]    Fund NAV history and metrics complete.
 )
 
-echo.
-set /p SEED_STOCKS="  Also seed stock master + 5y price history from yfinance? (y/N): "
+if "!SEED_STOCKS!"=="1" (
+  echo.
+  echo   How many years of price history to backfill?
+  echo   [1] 1 year   [2] 2 years   [5] 5 years   [10] 10 years   [M] Max (all available)
+  set /p BACKFILL_CHOICE="  Enter choice [5]: "
+  if "!BACKFILL_CHOICE!"=="" set BACKFILL_CHOICE=5
+  set BACKFILL_PERIOD=5y
+  if "!BACKFILL_CHOICE!"=="1"  set BACKFILL_PERIOD=1y
+  if "!BACKFILL_CHOICE!"=="2"  set BACKFILL_PERIOD=2y
+  if "!BACKFILL_CHOICE!"=="10" set BACKFILL_PERIOD=10y
+  if /i "!BACKFILL_CHOICE!"=="m"   set BACKFILL_PERIOD=max
+  if /i "!BACKFILL_CHOICE!"=="max" set BACKFILL_PERIOD=max
+  echo [INFO]  Using backfill period: !BACKFILL_PERIOD!
 
-if /i "%SEED_STOCKS%"=="y" (
   echo [INFO]  Seeding stock master...
   python scripts\seed\seed_stock_master.py
   echo [OK]    Stock master seeded.
 
-  echo [INFO]  Backfilling 5 years of price data (20-40 minutes)...
-  python scripts\seed\backfill_prices.py 5y
+  echo [WARN]  Price backfill ^(!BACKFILL_PERIOD!^) fetches OHLCV from yfinance -- expected 20-40 minutes.
+  echo [INFO]  Do not interrupt this step.
+  python scripts\seed\backfill_prices.py !BACKFILL_PERIOD!
   echo [OK]    Stock price history backfilled.
+)
+
+if "!SEED_FUNDAMENTALS!"=="1" (
+  echo [INFO]  Seeding fundamental data from screener.in ^(5-15 minutes^)...
+  python scripts\seed\seed_fundamentals.py
+  echo [OK]    Fundamental data seeded.
 )
 
 :: =============================================================================
@@ -377,10 +585,32 @@ if not exist "%FRONTEND_DIR%\dist" (
 echo [OK]    Frontend built and ready at %FRONTEND_DIR%\dist
 
 :: =============================================================================
-:: STEP 10 — Start API server
+:: STEP 10 — Install Ta-lib (Moved to last)
 :: =============================================================================
 echo.
-echo [STEP 10] Starting FastAPI Server
+echo [STEP 10] Install Ta-lib
+echo.
+echo   TA-Lib ^>= 0.6.8 includes pre-built Windows wheels.
+echo   pip install will be attempted. If it fails, you have these options:
+echo   A) Conda:  conda install -c conda-forge ta-lib
+echo   B) WSL:    Run setup\setup.sh inside Windows Subsystem for Linux
+echo.
+
+pip install TA-Lib>=0.6.8
+if errorlevel 1 (
+  echo [ERROR] pip install TA-Lib failed.
+  echo         Install it via conda: conda install -c conda-forge ta-lib
+  echo         Then rerun this script.
+  pause
+  exit /b 1
+)
+echo [OK]    TA-Lib installed.
+
+:: =============================================================================
+:: STEP 11 — Start API server
+:: =============================================================================
+echo.
+echo [STEP 11] Starting FastAPI Server
 echo.
 echo   Setup complete! Starting Nivesh API...
 echo.
@@ -394,6 +624,7 @@ cd /d "%BACKEND_DIR%"
 if "%NIVESH_HOST%"=="" set NIVESH_HOST=0.0.0.0
 if "%NIVESH_PORT%"=="" set NIVESH_PORT=8000
 
-uvicorn app.main:app --host %NIVESH_HOST% --port %NIVESH_PORT% --reload --log-level info
+uvicorn app.main:app --host %NIVESH_HOST% --port %NIVESH_PORT% --log-level info
+rem Tip: add --reload for development hot-reload (not recommended in production)
 
 endlocal

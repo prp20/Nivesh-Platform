@@ -36,6 +36,7 @@ class RateLimiter:
         # Format: {(user_id, endpoint): [(timestamp, count), ...]}
         self.requests: Dict[Tuple[str, str], list] = defaultdict(list)
         self.last_cleanup = datetime.now(timezone.utc)
+        self._call_count = 0
 
     def is_allowed(self, user_id: str, endpoint: str) -> bool:
         """
@@ -51,9 +52,11 @@ class RateLimiter:
         # Get rate limit for this endpoint
         limit, window_secs = RATE_LIMITS.get(endpoint, DEFAULT_LIMIT)
 
-        # Check if cleanup needed (every 100 checks)
-        if len(self.requests) % 100 == 0:
+        # Check if cleanup needed (every 1000 checks)
+        self._call_count += 1
+        if self._call_count % 1000 == 0:
             self._cleanup()
+
 
         key = (user_id, endpoint)
         now = datetime.now(timezone.utc)

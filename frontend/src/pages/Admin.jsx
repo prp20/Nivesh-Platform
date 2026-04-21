@@ -70,7 +70,7 @@ const Admin = () => {
       try {
         if (assetType === 'stocks') {
           const res = await stockService.getStocks({ limit: 50, q: searchQuery });
-          setAssetsData(res.records || []);
+          setAssetsData(res.results || []);
         } else {
           const res = await fundService.getFunds(0, 50, null, null, null, null, null, searchQuery);
           setAssetsData(res.items || []);

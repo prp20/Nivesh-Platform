@@ -9,10 +9,12 @@ Wraps the existing ScreenerScraper to:
 import sys
 import asyncio
 import hashlib
+import json
 import logging
 import random
 from datetime import date, datetime
 import os
+from typing import Optional, List, Dict
 
 # Import the EXISTING scraper — do not modify that file
 # Add parent directory (project root) to path
@@ -22,7 +24,14 @@ try:
 except ImportError:
     # Fallback if running from different directory
     sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../..")))
-    from fundamental_data_extractor import ScreenerScraper
+    # Add local_tests to path as it's a known location for the extractor
+    sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../../local_tests")))
+    try:
+        from fundamental_data_extractor import ScreenerScraper
+    except ImportError:
+        logger.warning("fundamental_data_extractor not found. Scraper functionality will be disabled.")
+        ScreenerScraper = None
+
 
 from pipeline.normalizer import (
     normalize_financial_table,
@@ -42,9 +51,9 @@ logger = logging.getLogger(__name__)
 
 # ─── Main entry points ────────────────────────────────────────────────────────
 
-async def run_fundamental_scrape_all():
-    """Scrape all active stocks that haven't been scraped in 90+ days."""
-    stocks = await _fetch_stocks_needing_scrape(days_since_last=90)
+async def run_fundamental_scrape_all(days_since_last: int = 90):
+    """Scrape all active stocks that haven't been scraped in `days_since_last` days."""
+    stocks = await _fetch_stocks_needing_scrape(days_since_last=days_since_last)
     async with audit_job("fundamental_scrape_all", records_in=len(stocks)) as audit:
         scraper = ScreenerScraper(delay_seconds=2.5)
         total = 0
@@ -97,19 +106,21 @@ async def _scrape_and_store(scraper: ScreenerScraper, stock: dict, force_rescrap
         if not raw:
             return False
 
-        # Checksum to detect changes
-        checksum = hashlib.md5(str(raw).encode()).hexdigest()
+        # Checksum to detect changes (SHA-256 with sorted keys for stability)
+        checksum = hashlib.sha256(json.dumps(raw, sort_keys=True).encode()).hexdigest()
+
         if not force_rescrape:
             existing_checksum = await _get_latest_checksum(stock["id"])
             if checksum == existing_checksum:
                 logger.info(f"{ticker}: no change detected (checksum match), skipping DB write")
                 return True
 
-        # Normalise and store each statement type
-        await _store_pl(stock["id"], raw.get("profit_and_loss", {}), checksum)
-        await _store_bs(stock["id"], raw.get("balance_sheet",   {}), checksum)
-        await _store_cf(stock["id"], raw.get("cash_flow",        {}), checksum)
-        await _store_shareholding(stock["id"], raw.get("shareholding_pattern", {}))
+        # Normalise and store each statement type (reusing one connection)
+        async with raw_connection() as conn:
+            await _store_pl(stock["id"], raw.get("profit_and_loss", {}), checksum, conn)
+            await _store_bs(stock["id"], raw.get("balance_sheet",   {}), checksum, conn)
+            await _store_cf(stock["id"], raw.get("cash_flow",        {}), checksum, conn)
+            await _store_shareholding(stock["id"], raw.get("shareholding_pattern", {}), conn)
 
         logger.info(f"{ticker}: stored successfully")
         return True
@@ -122,7 +133,7 @@ async def _scrape_and_store(scraper: ScreenerScraper, stock: dict, force_rescrap
 
 # ─── Per-statement storage ────────────────────────────────────────────────────
 
-async def _store_pl(stock_id: int, raw_pl: dict, checksum: str):
+async def _store_pl(stock_id: int, raw_pl: dict, checksum: str, conn):
     normalised = normalize_financial_table(raw_pl)
     ok, missing = validate_pl(normalised)
     if not ok:
@@ -155,13 +166,12 @@ async def _store_pl(stock_id: int, raw_pl: dict, checksum: str):
                 raw_checksum = EXCLUDED.raw_checksum,
                 scraped_at   = NOW()
         """
-        import json
-        async with raw_connection() as conn:
-            await conn.execute(sql, stock_id, period_end,
-                               json.dumps(period_data), json.dumps(raw_pl), checksum)
+        # Note: import json moved to top
+        await conn.execute(sql, stock_id, period_end,
+                           json.dumps(period_data), json.dumps(raw_pl), checksum)
 
 
-async def _store_bs(stock_id: int, raw_bs: dict, checksum: str):
+async def _store_bs(stock_id: int, raw_bs: dict, checksum: str, conn):
     """Store balance sheet — same structure as _store_pl."""
     normalised = normalize_financial_table(raw_bs)
     for i, period_label in enumerate(normalised["periods"]):
@@ -174,7 +184,7 @@ async def _store_bs(stock_id: int, raw_bs: dict, checksum: str):
         for req_key in REQUIRED_BS_KEYS:
             if req_key not in period_data or period_data[req_key] is None:
                 period_data[req_key] = "n/a"
-        import json
+        # Note: import json moved to top
         sql = """
             INSERT INTO financial_statements
                 (stock_id, statement_type, period_type, period_end, data, raw_data, raw_checksum)
@@ -183,12 +193,11 @@ async def _store_bs(stock_id: int, raw_bs: dict, checksum: str):
             DO UPDATE SET data=EXCLUDED.data, raw_data=EXCLUDED.raw_data,
                           raw_checksum=EXCLUDED.raw_checksum, scraped_at=NOW()
         """
-        async with raw_connection() as conn:
-            await conn.execute(sql, stock_id, period_end,
-                               json.dumps(period_data), json.dumps(raw_bs), checksum)
+        await conn.execute(sql, stock_id, period_end,
+                           json.dumps(period_data), json.dumps(raw_bs), checksum)
 
 
-async def _store_cf(stock_id: int, raw_cf: dict, checksum: str):
+async def _store_cf(stock_id: int, raw_cf: dict, checksum: str, conn):
     """Store cash flow — same structure as _store_pl."""
     normalised = normalize_financial_table(raw_cf)
     for i, period_label in enumerate(normalised["periods"]):
@@ -201,7 +210,7 @@ async def _store_cf(stock_id: int, raw_cf: dict, checksum: str):
         for req_key in REQUIRED_CF_KEYS:
             if req_key not in period_data or period_data[req_key] is None:
                 period_data[req_key] = "n/a"
-        import json
+        # Note: import json moved to top
         sql = """
             INSERT INTO financial_statements
                 (stock_id, statement_type, period_type, period_end, data, raw_data, raw_checksum)
@@ -210,12 +219,11 @@ async def _store_cf(stock_id: int, raw_cf: dict, checksum: str):
             DO UPDATE SET data=EXCLUDED.data, raw_data=EXCLUDED.raw_data,
                           raw_checksum=EXCLUDED.raw_checksum, scraped_at=NOW()
         """
-        async with raw_connection() as conn:
-            await conn.execute(sql, stock_id, period_end,
-                               json.dumps(period_data), json.dumps(raw_cf), checksum)
+        await conn.execute(sql, stock_id, period_end,
+                           json.dumps(period_data), json.dumps(raw_cf), checksum)
 
 
-async def _store_shareholding(stock_id: int, raw_sh: dict):
+async def _store_shareholding(stock_id: int, raw_sh: dict, conn):
     """Parse and store shareholding records."""
     records = normalize_shareholding(raw_sh)
     if not records:
@@ -237,10 +245,9 @@ async def _store_shareholding(stock_id: int, raw_sh: dict):
         period_end = _parse_period_label(rec["period"])
         if not period_end:
             continue
-        async with raw_connection() as conn:
-            await conn.execute(sql, stock_id, period_end,
-                               rec["promoter_pct"], rec["fii_pct"], rec["dii_pct"],
-                               rec["public_pct"],   rec["pledged_pct"])
+        await conn.execute(sql, stock_id, period_end,
+                           rec["promoter_pct"], rec["fii_pct"], rec["dii_pct"],
+                           rec["public_pct"],   rec["pledged_pct"])
 
 
 # ─── DB helpers ───────────────────────────────────────────────────────────────
@@ -316,7 +323,7 @@ def _parse_period_label(label: str) -> date | None:
         year = int(year_str)
     except ValueError:
         return None
-    if not month or not (2000 <= year <= 2030):
+    if not month or not (2000 <= year <= datetime.now().year + 2):
         return None
     day = MONTH_ENDS[month]
     # Handle leap year for February

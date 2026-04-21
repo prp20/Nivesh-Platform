@@ -27,13 +27,28 @@ async def list_benchmarks(
     is_active: Optional[bool] = Query(None, description="Filter by active status"),
     skip: int = Query(0, ge=0),
     limit: int = Query(10, ge=1, le=100),
-    session: AsyncSession = Depends(get_db)
+    session: AsyncSession = Depends(get_db),
+    # Public access allowed for landing page
 ):
     items, total = await crud.get_all_benchmark_masters(session, is_active=is_active, skip=skip, limit=limit, search=q)
+    
+    # Enrich with latest prices and changes
+    if items:
+        codes = [item.benchmark_code for item in items]
+        prices = await crud.get_benchmarks_latest_prices(session, codes)
+        for item in items:
+            p_data = prices.get(item.benchmark_code, {})
+            item.latest_close = p_data.get("latest_close")
+            item.change_percent = p_data.get("change_percent")
+            
     return {"items": items, "total": total}
 
 @router.get("/{benchmark_code}", response_model=schemas.BenchmarkMasterRead)
-async def read_benchmark(benchmark_code: str, session: AsyncSession = Depends(get_db)):
+async def read_benchmark(
+    benchmark_code: str,
+    session: AsyncSession = Depends(get_db),
+    # Public access allowed for landing page
+):
     benchmark = await crud.get_benchmark_master(session, benchmark_code)
     if not benchmark:
         raise HTTPException(status_code=404, detail=f"Benchmark with code {benchmark_code} not found")

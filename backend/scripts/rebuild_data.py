@@ -19,7 +19,7 @@ async def run_wipe_and_rebuild():
     db_url = settings.DATABASE_URL.replace("postgresql+asyncpg://", "postgresql://")
     
     logger.info("Connecting to database for TRUNCATE cascade...")
-    conn = await asyncpg.connect(db_url)
+    conn = await asyncpg.connect(db_url, statement_cache_size=0)
     try:
         # We start with price_data, which will cascade delete dependent rows 
         # in technical_indicators and possibly others if FKs are set up.

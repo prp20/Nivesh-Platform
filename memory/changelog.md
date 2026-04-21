@@ -1,5 +1,26 @@
 # Changelog
 
+## 2026-04-16 — Session: Auth bypass removal, setup script fixes, fundamentals UX
+
+### Issues Fixed
+- #Issue1 (UI auth on load): Removed VITE_API_TOKEN bypass; enforced login via localStorage-only JWT
+- #35/#36/#37 (setup script failures): Removed jose dependency, added shared admin_helper.py, fixed SECRET_KEY strength on Windows, made TA-Lib non-fatal, removed VITE_API_TOKEN from frontend .env
+- #49 (fundamentals seeding): Added options [3] Stock+Fundamentals and [5] All to seeding menu in all setup scripts
+- #Issue6 (fundamentals button stuck): Converted /pipeline/screener/{symbol} to background task; UI now polls /pipeline/status every 5s until job completes
+
+### Modified Files
+- `frontend/src/context/AuthContext.jsx` — Removed VITE_API_TOKEN env bypass; only reads localStorage token
+- `frontend/src/api/apiClient.js` — Removed VITE_API_TOKEN and VITE_ADMIN_TOKEN env reads; simplified to localStorage-only auth
+- `frontend/.env.development` — Removed VITE_ADMIN_TOKEN=dev-admin-token
+- `frontend/.env` — Removed VITE_API_TOKEN bypass token (kept VITE_API_URL only)
+- `frontend/src/pages/StockDetail.jsx` — Added useRef for poll cleanup; replaced sync handleSyncFundamentals with trigger+poll pattern (5s interval, 5min timeout)
+- `backend/app/routers/pipeline.py` — /screener/{symbol}: converted synchronous scrape to background task; returns immediately with job_name for status polling
+- `setup/admin_helper.py` — NEW: shared credential helper (bcrypt only, no jose dependency); called by all setup scripts
+- `setup/setup.sh` — Uses shared admin_helper.py; removed jwt/TOKEN_FILE; made TA-Lib non-fatal (warn instead of crash); updated seeding menu (6 options); added setup completion summary banner
+- `setup/setup.ps1` — Uses shared admin_helper.py; removed jwt/TOKEN_FILE; fixed SECRET_KEY to use Python secrets module; updated seeding menu (6 options)
+- `setup/setup.bat` — Uses shared admin_helper.py; removed echo-based Python helper; fixed SECRET_KEY via Python; updated seeding menu (6 options)
+- `backend/scripts/seed/seed_fundamentals.py` — NEW: async script to scrape screener.in for all stocks + ratio recompute
+
 ## 2026-04-10 — Session: Cross-platform setup scripts + Documentation + Frontend Build
 
 ### Frontend Build & Environment Configuration

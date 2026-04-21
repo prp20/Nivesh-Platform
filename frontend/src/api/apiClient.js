@@ -12,13 +12,7 @@ apiClient.interceptors.request.use(
     (config) => {
         try {
             const token = localStorage.getItem('nivesh_token');
-            const isAdminPath = config.url?.includes('/pipeline/');
-            const devAdminToken = import.meta.env.VITE_ADMIN_TOKEN;
-
-            // In development, pipeline endpoints require a specific ADMIN_TOKEN
-            if (isAdminPath && devAdminToken) {
-                config.headers.Authorization = `Bearer ${devAdminToken}`;
-            } else if (token) {
+            if (token) {
                 config.headers.Authorization = `Bearer ${token}`;
             }
         } catch (storageError) {
@@ -39,7 +33,10 @@ apiClient.interceptors.response.use(
             } catch (storageError) {
                 console.warn("Failed to clear token on 401", storageError);
             }
-            // Optional: window.location.href = '/login';
+            // Force reload to login to ensure clean state
+            if (!window.location.pathname.includes('/login')) {
+                window.location.href = '/login';
+            }
         }
         return Promise.reject(error);
     }

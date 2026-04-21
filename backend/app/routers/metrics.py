@@ -5,7 +5,7 @@ from typing import Optional, Dict, Any
 from sqlalchemy.ext.asyncio import AsyncSession
 from datetime import datetime, timedelta, timezone
 from ..database import get_db, session_factory
-from .. import crud, schemas, sync, security
+from .. import crud, schemas, sync, security  # security used for auth deps
 
 router = APIRouter(prefix="/metrics", tags=["metrics"])
 
@@ -30,6 +30,7 @@ async def get_metrics(
     scheme_code: str,
     background_tasks: BackgroundTasks,
     session: AsyncSession = Depends(get_db),
+    current_user: str = Depends(security.get_current_user),
 ):
     """Retrieve fund metrics, triggering a background sync if data is stale."""
     _validate_scheme_code(scheme_code)
@@ -87,7 +88,11 @@ async def get_metrics(
     }
 
 @router.get("/{scheme_code}/status", response_model=Optional[schemas.SyncJobRead])
-async def get_sync_status(scheme_code: str, session: AsyncSession = Depends(get_db)):
+async def get_sync_status(
+    scheme_code: str,
+    session: AsyncSession = Depends(get_db),
+    current_user: str = Depends(security.get_current_user),
+):
     """Get the latest sync job status for a fund. Returns None if no job exists."""
     job = await crud.get_latest_sync_job(session, scheme_code)
     return job

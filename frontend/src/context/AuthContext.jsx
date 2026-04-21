@@ -4,15 +4,14 @@ import authService from '../api/services/authService';
 const AuthContext = createContext();
 
 export const AuthProvider = ({ children }) => {
-    const [user, setUser] = useState({ username: 'admin', role: 'admin' });
-    const [loading, setLoading] = useState(false);
+    const [user, setUser] = useState(null);
+    const [loading, setLoading] = useState(true);
 
     useEffect(() => {
-        // Authentication disabled - defaulting to mock user
-        /*
         const initAuth = async () => {
             try {
                 const token = localStorage.getItem('nivesh_token');
+
                 if (token) {
                     try {
                         const userData = await authService.getMe();
@@ -28,19 +27,19 @@ export const AuthProvider = ({ children }) => {
             setLoading(false);
         };
         initAuth();
-        */
     }, []);
 
     const login = async (username, password) => {
         try {
             const data = await authService.login(username, password);
+            const userData = await authService.getMe(data.access_token);
+            
             try {
                 localStorage.setItem('nivesh_token', data.access_token);
             } catch (storageError) {
                 console.warn("Failed to store token (possibly incognito mode)", storageError);
-                throw storageError;
             }
-            const userData = await authService.getMe();
+            
             setUser(userData);
             return userData;
         } catch (error) {

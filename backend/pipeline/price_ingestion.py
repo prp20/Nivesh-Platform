@@ -56,17 +56,22 @@ async def run_daily_price_ingestion():
 
 
 async def run_index_ingestion():
-    """Fetches last 5 trading days for all indices."""
-    indices = await _fetch_active_stocks(indices_only=True)
+    """Fetches last 5 trading days for all indices in benchmark_master."""
+    indices = await _fetch_benchmark_indices()
+    if not indices:
+        logger.info("No indices found in benchmark_master to ingest.")
+        return
+
     async with audit_job("index_daily_ingestion", records_in=len(indices)) as audit:
-        count = await _ingest_chunk(indices, period="5d")
+        # Ingest benchmark indices into benchmark_nav_history
+        count = await _ingest_benchmarks_chunk(indices, period="5d")
         audit.records_out = count
         await audit.update_progress(len(indices))
 
 
 # ─── Backfill (run once from seed script) ────────────────────────────────────
 
-async def run_backfill(period: str = "5y"):
+async def run_backfill(period: str = "5y", progress_callback=None):
     """
     Fetch full price history for all stocks.
 
@@ -90,6 +95,13 @@ async def run_backfill(period: str = "5y"):
             total_upserted += count
             stocks_processed += len(chunk)
             await audit.update_progress(stocks_processed)
+            
+            if progress_callback:
+                if asyncio.iscoroutinefunction(progress_callback):
+                    await progress_callback(len(chunk), stocks_processed, len(stocks))
+                else:
+                    progress_callback(len(chunk), stocks_processed, len(stocks))
+
             logger.info(
                 f"Backfill chunk {i+1}/{len(chunks)} ({stocks_processed}/{len(stocks)} stocks): {count} rows"
             )
@@ -128,7 +140,9 @@ async def _ingest_chunk(stocks: list, period: str) -> int:
     # Download with exponential backoff retry
     for attempt in range(MAX_API_RETRIES):
         try:
-            df = yf.download(
+            # yfinance is blocking, run in thread to keep event loop free
+            df = await asyncio.to_thread(
+                yf.download,
                 tickers_str,
                 period=period,
                 interval="1d",
@@ -190,16 +204,116 @@ async def _ingest_chunk(stocks: list, period: str) -> int:
 def _extract_ticker_df(df: pd.DataFrame, yf_symbol: str, num_tickers: int) -> pd.DataFrame:
     """Extract a single ticker's data from a (possibly multi-ticker) DataFrame."""
     if num_tickers == 1:
-        # Single ticker: df columns are ['Open', 'High', 'Low', 'Close', 'Volume']
         return df
+    
     try:
-        # Multi-ticker: df has MultiIndex columns (ticker, field)
-        ticker_df = df[yf_symbol]
-        if ticker_df.empty:
-            return None
-        return ticker_df
-    except KeyError:
-        return None
+        # Try direct access (standard case)
+        if yf_symbol in df.columns.levels[0]:
+            return df[yf_symbol]
+        
+        # Fallback: exact match in columns regardless of levels
+        if yf_symbol in df.columns:
+            return df[yf_symbol]
+            
+        # Case-insensitive level 0 check
+        for level_val in df.columns.levels[0]:
+            if str(level_val).upper() == yf_symbol.upper():
+                return df[level_val]
+                
+    except (KeyError, AttributeError, IndexError) as e:
+        logger.warning(f"Ticker extraction failed for {yf_symbol}: {e}")
+        
+    return None
+
+
+async def _ingest_benchmarks_chunk(benchmarks: list, period: str) -> int:
+    """Download index values for a batch of benchmarks and upsert to benchmark_nav_history."""
+    if not benchmarks:
+        return 0
+
+    tickers_str = " ".join(b["yf_symbol"] for b in benchmarks)
+    df = None
+
+    for attempt in range(MAX_API_RETRIES):
+        try:
+            df = await asyncio.to_thread(
+                yf.download,
+                tickers_str,
+                period=period,
+                interval="1d",
+                group_by="ticker",
+                auto_adjust=False,
+                progress=False,
+                threads=False,
+                timeout=API_CALL_TIMEOUT_SECS,
+            )
+            if df is not None and not df.empty:
+                break
+        except Exception as e:
+            logger.warning(f"yfinance benchmark download attempt {attempt+1} failed: {e}")
+            if attempt < MAX_API_RETRIES - 1:
+                await asyncio.sleep(EXPONENTIAL_BACKOFF_BASE ** (attempt + 1))
+            continue
+
+    if df is None or df.empty:
+        logger.error("yfinance returned no data for benchmark chunk")
+        return 0
+
+    total = 0
+    for b in benchmarks:
+        symbol = b["yf_symbol"]
+        try:
+            b_df = _extract_ticker_df(df, symbol, len(benchmarks))
+            if b_df is None or b_df.empty:
+                logger.warning(f"Could not extract data for benchmark {symbol} from yfinance response")
+                continue
+            
+            count = await _upsert_benchmark_nav_rows(b["benchmark_code"], b_df)
+            total += count
+            logger.info(f"Ingested {count} index rows for {b['benchmark_code']}")
+        except Exception as e:
+            logger.error(f"Failed to ingest benchmark {b['benchmark_code']}: {str(e)}")
+            continue
+
+    return total
+
+
+async def _upsert_benchmark_nav_rows(benchmark_code: str, df: pd.DataFrame) -> int:
+    """Upsert rows into benchmark_nav_history."""
+    rows = []
+    skipped = 0
+    for idx, row in df.iterrows():
+        # Check for both "Close" and "Adj Close" (some indices use one or other)
+        close_val = row.get("Close")
+        if pd.isna(close_val):
+            close_val = row.get("Adj Close")
+            
+        if pd.isna(close_val):
+            skipped += 1
+            continue
+            
+        rows.append((
+            benchmark_code,
+            idx.date() if hasattr(idx, "date") else idx,
+            float(close_val),
+        ))
+
+    if skipped > 0:
+        logger.debug(f"Skipped {skipped} rows for {benchmark_code} due to missing 'Close' data")
+
+    if not rows:
+        return 0
+
+    sql = """
+        INSERT INTO benchmark_nav_history (benchmark_code, nav_date, index_value)
+        VALUES ($1, $2, $3)
+        ON CONFLICT (benchmark_code, nav_date) DO UPDATE SET
+            index_value = EXCLUDED.index_value
+    """
+    async with raw_connection() as conn:
+        await conn.executemany(sql, rows)
+
+    return len(rows)
 
 
 async def _upsert_price_rows(stock_id: int, df: pd.DataFrame) -> int:
@@ -251,6 +365,19 @@ async def _fetch_active_stocks(indices_only: bool = False) -> list:
     """
     async with raw_connection() as conn:
         rows = await conn.fetch(sql, indices_only)
+        return [dict(r) for r in rows]
+
+
+async def _fetch_benchmark_indices() -> list:
+    """Fetch all active indices from benchmark_master."""
+    sql = """
+        SELECT benchmark_code, ticker as yf_symbol
+        FROM benchmark_master
+        WHERE is_active = TRUE
+          AND benchmark_type = 'Market Index'
+    """
+    async with raw_connection() as conn:
+        rows = await conn.fetch(sql)
         return [dict(r) for r in rows]
 
 

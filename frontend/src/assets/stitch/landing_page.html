@@ -1,0 +1,301 @@
+<!DOCTYPE html>
+
+<html class="dark" lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>The Sovereign Ledger | Private Wealth Gateway</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@200;400;600;700;800&amp;family=Inter:wght@300;400;600&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script id="tailwind-config">
+    tailwind.config = {
+      darkMode: "class",
+      theme: {
+        extend: {
+          "colors": {
+                  "surface-container-high": "#252a30",
+                  "on-primary-container": "#9d7e00",
+                  "primary-container": "#201700",
+                  "on-tertiary-fixed": "#141c24",
+                  "on-background": "#dee3ea",
+                  "on-error-container": "#ffdad6",
+                  "surface-bright": "#353a3f",
+                  "on-tertiary": "#29313a",
+                  "on-secondary-container": "#003115",
+                  "tertiary-container": "#111921",
+                  "primary-fixed-dim": "#e9c349",
+                  "on-tertiary-fixed-variant": "#3f4851",
+                  "surface-container-lowest": "#0a0f14",
+                  "outline-variant": "#45464c",
+                  "on-secondary-fixed": "#00210c",
+                  "surface-variant": "#30353b",
+                  "surface-container-highest": "#30353b",
+                  "inverse-on-surface": "#2c3136",
+                  "tertiary-fixed": "#dbe3ef",
+                  "outline": "#909096",
+                  "on-primary-fixed-variant": "#574500",
+                  "on-primary-fixed": "#241a00",
+                  "on-primary": "#3c2f00",
+                  "error-container": "#93000a",
+                  "tertiary-fixed-dim": "#bfc7d2",
+                  "background": "#0f1419",
+                  "secondary-container": "#25a55a",
+                  "on-secondary": "#003919",
+                  "secondary": "#66dd8b",
+                  "error": "#ffb4ab",
+                  "surface-tint": "#e9c349",
+                  "on-tertiary-container": "#7a828c",
+                  "surface": "#0f1419",
+                  "on-error": "#690005",
+                  "surface-dim": "#0f1419",
+                  "secondary-fixed": "#83fba5",
+                  "inverse-primary": "#735c00",
+                  "secondary-fixed-dim": "#66dd8b",
+                  "primary": "#e9c349",
+                  "primary-fixed": "#ffe088",
+                  "inverse-surface": "#dee3ea",
+                  "on-surface-variant": "#c6c6cc",
+                  "on-surface": "#dee3ea",
+                  "on-secondary-fixed-variant": "#005227",
+                  "tertiary": "#bfc7d2",
+                  "surface-container-low": "#171c21",
+                  "surface-container": "#1b2025"
+          },
+          "borderRadius": {
+                  "DEFAULT": "0.125rem",
+                  "lg": "0.25rem",
+                  "xl": "0.5rem",
+                  "full": "0.75rem"
+          },
+          "fontFamily": {
+                  "headline": ["Manrope"],
+                  "body": ["Manrope"],
+                  "label": ["Inter"]
+          }
+        },
+      },
+    }
+  </script>
+<style>
+    .material-symbols-outlined {
+      font-variation-settings: 'FILL' 0, 'wght' 300, 'GRAD' 0, 'opsz' 24;
+    }
+    .glass-card {
+      background: rgba(48, 53, 59, 0.4);
+      backdrop-filter: blur(20px);
+      border-top: 1px solid rgba(69, 70, 76, 0.2);
+      border-left: 1px solid rgba(69, 70, 76, 0.2);
+    }
+    .gold-gradient {
+      background: linear-gradient(135deg, #e9c349 0%, #9d7e00 100%);
+    }
+    .glow-gold {
+      box-shadow: 0 0 32px rgba(233, 195, 73, 0.04);
+    }
+    .emerald-glow {
+      box-shadow: 0 0 20px rgba(102, 221, 139, 0.1);
+    }
+  </style>
+</head>
+<body class="bg-background text-on-surface font-body selection:bg-primary/30 min-h-screen flex flex-col overflow-x-hidden">
+<!-- TopNavBar (Shared Component Execution) -->
+<header class="fixed top-0 w-full z-50 bg-[#0f1419]/80 backdrop-blur-xl border-b border-[#45464c]/15 shadow-[0_8px_32px_rgba(233,195,73,0.04)]">
+<nav class="flex justify-between items-center h-20 px-12 w-full mx-auto">
+<div class="flex items-center gap-12">
+<span class="text-2xl font-bold tracking-tighter text-[#e9c349] uppercase font-headline">The Sovereign Ledger</span>
+<div class="hidden md:flex gap-8 items-center h-full">
+<a class="text-slate-400 hover:text-slate-200 transition-colors font-manrope tracking-tight text-sm" href="#">Portfolio</a>
+<a class="text-slate-400 hover:text-slate-200 transition-colors font-manrope tracking-tight text-sm" href="#">Insights</a>
+<a class="text-slate-400 hover:text-slate-200 transition-colors font-manrope tracking-tight text-sm" href="#">Vault</a>
+<a class="text-slate-400 hover:text-slate-200 transition-colors font-manrope tracking-tight text-sm" href="#">Concierge</a>
+</div>
+</div>
+<div class="flex items-center gap-6">
+<div class="hidden lg:flex items-center gap-4 px-4 py-2 rounded-full bg-surface-container-lowest border border-outline-variant/10">
+<span class="material-symbols-outlined text-outline text-sm">search</span>
+<input class="bg-transparent border-none focus:ring-0 text-xs font-label text-on-surface w-40" placeholder="Search Markets" type="text"/>
+</div>
+<div class="flex items-center gap-4">
+<span class="material-symbols-outlined text-slate-400 hover:text-[#e9c349] cursor-pointer transition-colors">notifications</span>
+<span class="material-symbols-outlined text-slate-400 hover:text-[#e9c349] cursor-pointer transition-colors">settings</span>
+<button class="gold-gradient text-on-primary-fixed font-bold text-xs uppercase px-6 py-2.5 rounded-md hover:opacity-90 active:scale-[0.99] transition-all tracking-widest">
+            Connect Identity
+          </button>
+</div>
+</div>
+</nav>
+</header>
+<main class="flex-grow pt-32 pb-24 px-12 max-w-[1600px] mx-auto w-full">
+<!-- Hero Section -->
+<section class="mb-20">
+<div class="flex flex-col md:flex-row justify-between items-end gap-8">
+<div class="max-w-2xl">
+<span class="font-label text-primary text-xs tracking-[0.4em] uppercase mb-4 block">Exclusive Gateway</span>
+<h1 class="text-6xl font-extrabold font-headline tracking-tighter text-on-background mb-6 leading-[1.1]">
+            Navigate the Heights of <br/><span class="text-primary italic font-light">Global Capital</span>
+</h1>
+<p class="text-lg text-on-surface-variant font-light max-w-lg leading-relaxed">
+            A curated entry point for the modern sovereign. Manage your legacy through distilled data and institutional-grade access.
+          </p>
+</div>
+<div class="flex flex-col items-end">
+<div class="flex gap-2 mb-2">
+<span class="h-1.5 w-12 bg-primary rounded-full"></span>
+<span class="h-1.5 w-4 bg-surface-container-highest rounded-full"></span>
+<span class="h-1.5 w-4 bg-surface-container-highest rounded-full"></span>
+</div>
+<span class="font-label text-[10px] text-outline uppercase tracking-widest">Active Session: Elite Tier</span>
+</div>
+</div>
+</section>
+<!-- Bento Grid Navigation -->
+<section class="grid grid-cols-1 md:grid-cols-3 gap-8">
+<!-- Card 1: Elite Stocks -->
+<div class="group relative overflow-hidden rounded-xl bg-surface-container-low glass-card transition-all duration-500 hover:shadow-[0_24px_48px_rgba(233,195,73,0.08)] hover:-translate-y-1">
+<div class="absolute inset-0 z-0">
+<div class="absolute inset-0 bg-gradient-to-br from-primary/5 to-transparent opacity-40"></div>
+<img class="w-full h-full object-cover opacity-20 transition-transform duration-700 group-hover:scale-110" data-alt="abstract architectural lines in dark metal with golden light reflections and soft bokeh highlights" src="https://lh3.googleusercontent.com/aida-public/AB6AXuAcyKL5p_np1vcIJR7u2WZd-PeOy2EEKg3ufjBVjGJpaLfd0329KBzMcmKL5BzIOJufPi78j0OkprSAWhwRyuGcrWURGctpcjn61i_yEWu2JSw2VIlChDlSj5oyguP3UTBVGo0wR6qbw10TE55nLiWNNrHjoWZRBIdqOn_XejNyh4JZIL_Udln70XpzclyXYQy0awAy7EHpGoDbhqo4oq2124zpN67WFehPx5YCCmeoJm1U_tJx8YLzSy87y_Y9Y1YzTuAszDkxTvh-"/>
+</div>
+<div class="relative z-10 p-10 h-full flex flex-col justify-between min-h-[500px]">
+<div>
+<div class="w-14 h-14 rounded-lg bg-surface-container-highest flex items-center justify-center mb-8 border border-outline-variant/20 shadow-lg">
+<span class="material-symbols-outlined text-primary text-3xl" style="font-variation-settings: 'FILL' 1;">trending_up</span>
+</div>
+<h3 class="text-3xl font-bold font-headline mb-4">Elite Stocks</h3>
+<p class="text-on-surface-variant leading-relaxed mb-6 font-light">
+              Access hyper-growth equities and blue-chip volatility with precision algorithmic sorting.
+            </p>
+<div class="flex items-baseline gap-4 mb-8">
+<span class="text-2xl font-bold text-secondary">+12.4%</span>
+<span class="text-xs font-label text-outline uppercase tracking-widest">Average Alpha</span>
+</div>
+</div>
+<div class="flex items-center justify-between">
+<button class="group/btn flex items-center gap-2 text-primary font-bold text-sm uppercase tracking-widest">
+              Explore Markets
+              <span class="material-symbols-outlined transition-transform group-hover/btn:translate-x-1">arrow_right_alt</span>
+</button>
+<div class="h-10 w-24 emerald-glow rounded-md bg-secondary/5 flex items-center justify-center overflow-hidden">
+<!-- Sparkline Simulation -->
+<svg class="w-full h-full px-2" viewbox="0 0 100 40">
+<path d="M0 35 Q 20 5, 40 30 T 80 10 T 100 20" fill="none" stroke="#66dd8b" stroke-width="2"></path>
+</svg>
+</div>
+</div>
+</div>
+</div>
+<!-- Card 2: Premium Funds -->
+<div class="group relative overflow-hidden rounded-xl bg-surface-container-low glass-card transition-all duration-500 hover:shadow-[0_24px_48px_rgba(233,195,73,0.08)] hover:-translate-y-1">
+<div class="absolute inset-0 z-0">
+<div class="absolute inset-0 bg-gradient-to-tr from-primary/5 to-transparent opacity-40"></div>
+<img class="w-full h-full object-cover opacity-20 transition-transform duration-700 group-hover:scale-110" data-alt="deep charcoal silk fabric texture with soft flowing folds and golden ambient light catching the edges" src="https://lh3.googleusercontent.com/aida-public/AB6AXuBS5ekgQ_A98VV-56VFNmF7bqowVnf9xN9mZFLI8fOm_kvFnJsMmuDNQui8H3d8UGRHO0EuYafzGOdyyAd8OI6YwmMQdHA8oETT0jKEZ5L6NWKfMMxIyy8kq-wQL60tcp--SN6g3BmtWCITwy1uSGDK4bSo0G5X_v_ePYqP04jKEAbf7_ujmQXRqL9_AOShOBMvtoC14FN4enVagMSW6rn7OQ0d9FEGLVRylTPFr_KzY1UKcLaVq2EfqrP0Y370mA2eZwAPBphA3-Sm"/>
+</div>
+<div class="relative z-10 p-10 h-full flex flex-col justify-between min-h-[500px]">
+<div>
+<div class="w-14 h-14 rounded-lg bg-surface-container-highest flex items-center justify-center mb-8 border border-outline-variant/20 shadow-lg">
+<span class="material-symbols-outlined text-primary text-3xl" style="font-variation-settings: 'FILL' 1;">account_balance</span>
+</div>
+<h3 class="text-3xl font-bold font-headline mb-4">Premium Funds</h3>
+<p class="text-on-surface-variant leading-relaxed mb-6 font-light">
+              Bespoke index exposure and curated ETF baskets optimized for tax-advantaged wealth preservation.
+            </p>
+<div class="space-y-3">
+<div class="flex justify-between text-xs font-label border-b border-outline-variant/10 pb-2">
+<span class="text-outline uppercase tracking-tighter">Sovereign Index</span>
+<span class="text-secondary">+2.1%</span>
+</div>
+<div class="flex justify-between text-xs font-label border-b border-outline-variant/10 pb-2">
+<span class="text-outline uppercase tracking-tighter">Vault Yield</span>
+<span class="text-on-surface">4.8% APY</span>
+</div>
+</div>
+</div>
+<div>
+<button class="group/btn flex items-center gap-2 text-primary font-bold text-sm uppercase tracking-widest">
+              Review Allocation
+              <span class="material-symbols-outlined transition-transform group-hover/btn:translate-x-1">arrow_right_alt</span>
+</button>
+</div>
+</div>
+</div>
+<!-- Card 3: Private Portfolio -->
+<div class="group relative overflow-hidden rounded-xl bg-surface-container-low glass-card transition-all duration-500 hover:shadow-[0_24px_48px_rgba(233,195,73,0.08)] hover:-translate-y-1">
+<div class="absolute inset-0 z-0">
+<div class="absolute inset-0 bg-gradient-to-t from-primary/10 to-transparent opacity-40"></div>
+<img class="w-full h-full object-cover opacity-25 transition-transform duration-700 group-hover:scale-110" data-alt="high-tech secure server room with glowing blue and gold status lights reflecting on polished surfaces" src="https://lh3.googleusercontent.com/aida-public/AB6AXuC7eoQaTjL0_zS5o864_3OzI9zzfWSbGILbOZ44XYEN-8muYZ-vsiwPrvyQi5fYRgG7RazKvNv3DPRf7UwmMGj452YFYy8U6r_h2pn1iX2ZLSO3AT87Xz3-K2Fdu6CBy3cBpnfK5s9ycn5T8Rqt2wjsu8aHvRQdEW5ZEUhJOAWU9HjbOnl2pA6j09EkGQ8t84vVvwNgMyfcYdTcSkmQBPv0GRwn-vvZ55dYNcSNH2WfdJiC8ZUkmj6fb0FkpCnoMyDJ6-YSKTl99qQE"/>
+</div>
+<div class="relative z-10 p-10 h-full flex flex-col justify-between min-h-[500px]">
+<div>
+<div class="w-14 h-14 rounded-lg bg-surface-container-highest flex items-center justify-center mb-8 border border-outline-variant/20 shadow-lg">
+<span class="material-symbols-outlined text-primary text-3xl" style="font-variation-settings: 'FILL' 1;">shield_person</span>
+</div>
+<h3 class="text-3xl font-bold font-headline mb-4">Private Portfolio</h3>
+<p class="text-on-surface-variant leading-relaxed mb-6 font-light">
+              Aggregated view of physical assets, digital liquidity, and venture capital stakes.
+            </p>
+<div class="bg-surface-container-lowest/80 p-4 rounded-lg border border-outline-variant/5">
+<div class="text-[10px] font-label text-outline uppercase tracking-widest mb-1">Total Sovereign Value</div>
+<div class="text-2xl font-bold font-headline tracking-tight text-on-surface">$12,842,000.00</div>
+</div>
+</div>
+<div>
+<button class="w-full gold-gradient text-on-primary-fixed font-bold text-sm uppercase py-4 rounded-md hover:opacity-90 active:scale-[0.99] transition-all tracking-widest">
+              Enter Vault
+            </button>
+</div>
+</div>
+</div>
+</section>
+<!-- Secondary Insights Section -->
+<section class="mt-24">
+<div class="flex items-center justify-between mb-12">
+<h2 class="text-2xl font-bold font-headline">Institutional Intel</h2>
+<a class="text-xs font-label text-outline hover:text-primary uppercase tracking-[0.2em] transition-colors" href="#">View All Insights</a>
+</div>
+<div class="grid grid-cols-1 md:grid-cols-2 gap-12">
+<div class="flex gap-8 items-start group">
+<div class="relative w-48 h-32 flex-shrink-0 rounded-lg overflow-hidden grayscale group-hover:grayscale-0 transition-all duration-500">
+<img class="w-full h-full object-cover" data-alt="a financial chart on a screen in a dark room reflecting onto a glass surface" src="https://lh3.googleusercontent.com/aida-public/AB6AXuAzoRZeP0Kc89jhWwKx9dgu9RvtCqnrYyJx__w7Hf8BcaT4zMLFUvUZHVDbJ49JWeq8IdSxwixzEoTn94gjB3hqYUdeeX0QWEZlYDQH_CtucODcmxkamsK9n4zkEW_r9htPIuv0cl50SR3CAXSzqgmo3UICBZMp_syQEOjE3uz81Wajyl4JlAwVE5ZtiTudwF57pip11KdcjkGiZ1QGEL2cmYhABNrJ5jGHA1GGci3huYmtFrCyPoy503NXEAOGwhVwT6BMfOh5xZ-c"/>
+</div>
+<div>
+<span class="text-primary text-[10px] font-label uppercase tracking-widest mb-2 block">Macro Update</span>
+<h4 class="text-lg font-bold mb-2 group-hover:text-primary transition-colors">The Shift Toward Decentralized Reserves</h4>
+<p class="text-sm text-on-surface-variant font-light line-clamp-2">How sovereign individuals are repositioning assets in a multi-polar global economy.</p>
+</div>
+</div>
+<div class="flex gap-8 items-start group">
+<div class="relative w-48 h-32 flex-shrink-0 rounded-lg overflow-hidden grayscale group-hover:grayscale-0 transition-all duration-500">
+<img class="w-full h-full object-cover" data-alt="close up of a high-end luxury watch movement showing intricate gears and mechanics" src="https://lh3.googleusercontent.com/aida-public/AB6AXuCD_sOSIg2NyVFD2qQUaeptyihk-Ou3zjjyxVpa0SQk5r-C71OLNMl9RO6o98fGLBuWslW_ClsiqB1hnphEWTiu-ZnztABPuOyjpQZTGSkjV0frJ43pcuQqUZJ5oGoKkEMga6z9WbxVoqmBknYby5ngPv99lJ6Xk7tv_tKjy4qsmGY7VR25CrZZU5ONqcuApUDA5HnopGmK4Xy9AY17AtfjOoZpMtLpXOVT7gr8nklcGa0gED3a6phelnj03yOO1UyWh3fdx9GzLKGk"/>
+</div>
+<div>
+<span class="text-primary text-[10px] font-label uppercase tracking-widest mb-2 block">Alpha Report</span>
+<h4 class="text-lg font-bold mb-2 group-hover:text-primary transition-colors">Private Equity Liquidity Optimization</h4>
+<p class="text-sm text-on-surface-variant font-light line-clamp-2">Navigating the secondary markets for pre-IPO sovereign interests.</p>
+</div>
+</div>
+</div>
+</section>
+</main>
+<!-- Footer (Shared Component Execution) -->
+<footer class="w-full py-12 px-12 mt-auto border-t border-[#45464c]/15 bg-[#0f1419]">
+<div class="flex flex-col md:flex-row justify-between items-center w-full max-w-[1600px] mx-auto gap-8">
+<div class="flex items-center gap-12">
+<span class="font-inter text-xs tracking-widest uppercase text-[#e9c349]">The Sovereign Ledger</span>
+<div class="flex gap-6">
+<a class="font-inter text-xs tracking-widest uppercase text-slate-500 hover:text-[#e9c349] transition-colors" href="#">Legal</a>
+<a class="font-inter text-xs tracking-widest uppercase text-slate-500 hover:text-[#e9c349] transition-colors" href="#">Privacy</a>
+<a class="font-inter text-xs tracking-widest uppercase text-slate-500 hover:text-[#e9c349] transition-colors" href="#">Security</a>
+<a class="font-inter text-xs tracking-widest uppercase text-slate-500 hover:text-[#e9c349] transition-colors" href="#">Terms</a>
+</div>
+</div>
+<div class="flex items-center gap-8">
+<div class="flex gap-4">
+<span class="material-symbols-outlined text-slate-500 hover:text-[#e9c349] cursor-pointer">share</span>
+<span class="material-symbols-outlined text-slate-500 hover:text-[#e9c349] cursor-pointer">public</span>
+</div>
+<p class="font-inter text-xs tracking-widest uppercase text-slate-500">© 2024 The Sovereign Ledger. All Rights Reserved.</p>
+</div>
+</div>
+</footer>
+</body></html>

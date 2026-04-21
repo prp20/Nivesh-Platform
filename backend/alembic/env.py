@@ -22,14 +22,13 @@ if config.config_file_name is not None:
 # add your model's MetaData object here
 # for 'autogenerate' support
 from app.database import Base
+from app.config import settings
 
 target_metadata = Base.metadata
 
-# Set the sqlalchemy.url from config (convert async to sync for migrations)
-if not config.get_main_option("sqlalchemy.url"):
-    # Use default database URL from env - convert async to sync for migrations
-    db_url = "postgresql://nivesh_admin:nivesh_password_123@localhost:5432/nivesh_db"
-    config.set_main_option("sqlalchemy.url", db_url)
+# Set the sqlalchemy.url from app settings (convert async to sync for migrations)
+db_url = settings.DATABASE_URL.replace("postgresql+asyncpg://", "postgresql://")
+config.set_main_option("sqlalchemy.url", db_url)
 
 # other values from the config, defined by the needs of env.py,
 # can be acquired:

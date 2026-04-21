@@ -14,8 +14,9 @@ const authService = {
         return response.data;
     },
 
-    getMe: async () => {
-        const response = await apiClient.get('/auth/me');
+    getMe: async (token) => {
+        const config = token ? { headers: { Authorization: `Bearer ${token}` } } : {};
+        const response = await apiClient.get('/auth/me', config);
         return response.data;
     },
 };

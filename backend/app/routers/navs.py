@@ -23,5 +23,6 @@ async def get_nav_history(
     scheme_code: str,
     limit: int = Query(100, ge=1, le=5000),
     session: AsyncSession = Depends(get_db),
+    # Public access for dashboard charts
 ):
     return await crud.get_fund_nav_history(session, scheme_code, limit)
