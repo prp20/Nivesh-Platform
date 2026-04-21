@@ -36,12 +36,32 @@ echo   NOTE: For a better experience with colour output
 echo         and richer error handling, use setup.ps1:
 echo         powershell -ExecutionPolicy RemoteSigned -File setup\setup.ps1
 echo.
+echo.
 echo   Project root: %PROJECT_ROOT%
 echo.
 
 :: =============================================================================
+:: STEP 0 — Check Git
+:: =============================================================================
+echo [STEP 0] Checking Git...
+git --version >nul 2>&1
+if errorlevel 1 (
+    echo [WARN] Git not found. Attempting to install via winget...
+    winget install --id Git.Git -e --source winget --accept-package-agreements --accept-source-agreements
+    if errorlevel 1 (
+        echo [ERROR] Failed to install Git. Please install Git manually.
+        pause
+        exit /b 1
+    )
+    echo [OK] Git installed.
+) else (
+    for /f "tokens=3" %%v in ('git --version 2^>^&1') do echo [OK]    Git %%v detected.
+)
+
+:: =============================================================================
 :: STEP 1 — Check Python and Install if missing
 :: =============================================================================
+echo.
 echo [STEP 1] Checking Python...
 
 python --version >nul 2>&1
@@ -85,6 +105,53 @@ if errorlevel 1 (
 ) else (
   for /f %%v in ('node --version 2^>^&1') do echo [OK]    Node.js %%v detected.
   for /f %%v in ('npm --version 2^>^&1') do echo [OK]    npm %%v detected.
+)
+
+:: =============================================================================
+:: STEP 2.5 — Clone Project Repository (Optional)
+:: =============================================================================
+echo.
+echo [STEP 2.5] Cloning Project Repository
+echo.
+
+set /p DO_CLONE="  Do you want to clone or update the repository? (y/N): "
+if /i not "!DO_CLONE!"=="y" (
+    echo [INFO]  Skipping repository cloning/update.
+) else (
+    set REPO_URL=https://github.com/prp20/Nivesh-Platform
+    set /p BRANCH_NAME="    Enter branch to clone/update [main]: "
+    if "!BRANCH_NAME!"=="" set BRANCH_NAME=main
+
+    git rev-parse --is-inside-work-tree >nul 2>&1
+    if not errorlevel 1 (
+        for /f "tokens=*" %%a in ('git remote get-url origin 2^>nul') do set CURRENT_REMOTE=%%a
+        echo !CURRENT_REMOTE! | findstr /i "Nivesh-Platform" >nul
+        if not errorlevel 1 (
+            echo [INFO]  Already inside the Nivesh-Platform repository.
+            set /p SWITCH_BRANCH="    Do you want to switch to/update branch '!BRANCH_NAME!'? (y/N): "
+            if /i "!SWITCH_BRANCH!"=="y" (
+                git fetch origin
+                git checkout !BRANCH_NAME! || git checkout -b !BRANCH_NAME! origin/!BRANCH_NAME!
+                git pull origin !BRANCH_NAME!
+                echo [OK]    Updated to !BRANCH_NAME!.
+            )
+        ) else (
+            goto :clone_repo
+        )
+    ) else (
+        :clone_repo
+        echo [INFO]  Cloning %REPO_URL% (branch: %BRANCH_NAME%)...
+        git clone -b %BRANCH_NAME% %REPO_URL% nivesh-cloned
+        cd /d nivesh-cloned
+        set "PROJECT_ROOT=%CD%"
+        set "BACKEND_DIR=%PROJECT_ROOT%\backend"
+        set "FRONTEND_DIR=%PROJECT_ROOT%\frontend"
+        set "VENV_DIR=%BACKEND_DIR%\venv"
+        set "BACKEND_ENV_FILE=%BACKEND_DIR%\.env"
+        set "FRONTEND_ENV_FILE=%FRONTEND_DIR%\.env"
+        set "COMPOSE_FILE=%BACKEND_DIR%\docker-compose.yml"
+        echo [OK]    Cloned successfully into nivesh-cloned.
+    )
 )
 
 :: =============================================================================
@@ -204,6 +271,20 @@ if "!SECRET_KEY!"=="" (
   set "SECRET_KEY=dev-secret-%mydate%-%mytime%-%RANDOM%-%RANDOM%"
 )
 
+:: ── API Keys ──────────────────────────────────────────────────────────────────
+echo.
+echo [INFO]  Enter your API keys (leave blank to skip).
+echo.
+set /p GROQ_API_KEY="  Enter GROQ_API_KEY: "
+set /p ENABLE_LS="  Enable LangSmith tracing? (y/N): "
+if /i "!ENABLE_LS!"=="y" (
+    set LANGCHAIN_TRACING_V2=true
+    set /p LANGSMITH_API_KEY="  Enter LANGSMITH_API_KEY: "
+) else (
+    set LANGCHAIN_TRACING_V2=false
+    set LANGSMITH_API_KEY=
+)
+
 :: Backend .env
 set WRITE_BACKEND_ENV=1
 if exist "%BACKEND_ENV_FILE%" (
@@ -234,6 +315,11 @@ if "%WRITE_BACKEND_ENV%"=="1" (
     echo ADMIN_PASSWORD_HASH=
     echo.
     echo # -- Third-party APIs ^(if needed^) -------------------------------------------
+    echo GROQ_API_KEY=!GROQ_API_KEY!
+    echo LANGCHAIN_TRACING_V2=!LANGCHAIN_TRACING_V2!
+    echo LANGCHAIN_PROJECT=Nivesh_platform
+    echo LANGSMITH_ENDPOINT="https://api.smith.langchain.com"
+    echo LANGSMITH_API_KEY=!LANGSMITH_API_KEY!
     echo # ALPHA_VANTAGE_APIKEY=your_key_here
     echo # SUPABASE_PASSWORD=your_password_here
   ) > "%BACKEND_ENV_FILE%"

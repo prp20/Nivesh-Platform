@@ -7,17 +7,19 @@
 #   ./setup/setup.sh
 #
 # What this script does:
-#   1.  Check Python 3.10+
-#   2.  Check Node.js 18+ (nvm auto-install if missing)
-#   3.  PostgreSQL setup — Docker (auto) or external URL
-#   4.  Python virtual environment + dependencies (excluding TA-Lib)
-#   5.  Environment configuration + Admin JWT
-#   6.  Start Docker PostgreSQL (if chosen)
-#   7.  Database migrations
-#   8.  Optional data seeding
-#   9.  Frontend build
-#   10. TA-Lib installation (C library + pip install)
-#   11. Start FastAPI server
+#   1.  Check Git
+#   2.  Check Python 3.10+
+#   3.  Check Node.js 18+ (nvm auto-install if missing)
+#   4.  Clone/Update repository
+#   5.  PostgreSQL setup — Docker (auto) or external URL
+#   6.  Python virtual environment + dependencies (excluding TA-Lib)
+#   7.  Environment configuration + Admin JWT
+#   8.  Start Docker PostgreSQL (if chosen)
+#   9.  Database migrations
+#   10. Optional data seeding
+#   11. Frontend build
+#   12. TA-Lib installation (C library + pip install)
+#   13. Start FastAPI server
 # =============================================================================
 
 set -euo pipefail
@@ -52,6 +54,23 @@ echo "  ║     Nivesh Platform — Setup Script    ║"
 echo "  ╚═══════════════════════════════════════╝"
 echo -e "${NC}"
 info "Project root : ${PROJECT_ROOT}"
+
+# =============================================================================
+# STEP 0 — Check Git
+# =============================================================================
+step "Step 0: Checking Git"
+
+if ! command -v git &>/dev/null; then
+  warn "Git not found. Attempting to install..."
+  if command -v apt-get &>/dev/null; then
+    sudo apt-get update -qq && sudo apt-get install -y git
+    success "Git installed."
+  else
+    error "Git not found and could not be installed automatically. Please install Git and try again."
+  fi
+else
+  success "Git detected."
+fi
 
 # =============================================================================
 # STEP 1 — Check Python
@@ -107,6 +126,61 @@ else
   nvm install 20
   nvm use 20
   success "Node.js 20 installed and activated."
+fi
+
+# =============================================================================
+# STEP 2.5 — Clone/Update Project Repository (Optional)
+# =============================================================================
+step "Step 2.5: Clone Project Repository"
+
+read -rp "  Do you want to clone or update the repository? (y/N): " DO_CLONE
+if [[ ! "$DO_CLONE" =~ ^[Yy]$ ]]; then
+  info "Skipping repository cloning/update."
+else
+  REPO_URL="https://github.com/prp20/Nivesh-Platform"
+  read -rp "    Enter branch to clone/update [main]: " BRANCH_NAME
+  BRANCH_NAME="${BRANCH_NAME:-main}"
+
+  # Check if we are already in a git repo
+  if git rev-parse --is-inside-work-tree &>/dev/null; then
+    CURRENT_REMOTE=$(git remote get-url origin 2>/dev/null || echo "")
+    if [[ "$CURRENT_REMOTE" == *"$REPO_URL"* ]]; then
+      info "Already inside the Nivesh-Platform repository."
+      read -rp "    Do you want to switch to/update branch '${BRANCH_NAME}'? (y/N): " SWITCH_BRANCH
+      if [[ "$SWITCH_BRANCH" =~ ^[Yy]$ ]]; then
+        git fetch origin
+        git checkout "${BRANCH_NAME}" || git checkout -b "${BRANCH_NAME}" "origin/${BRANCH_NAME}"
+        git pull origin "${BRANCH_NAME}" || true
+        success "Updated to ${BRANCH_NAME}."
+      fi
+    else
+      info "Cloning ${REPO_URL} (branch: ${BRANCH_NAME})..."
+      git clone -b "${BRANCH_NAME}" "${REPO_URL}" nivesh-cloned
+      cd nivesh-cloned
+      PROJECT_ROOT="$(pwd)"
+      # Re-resolve paths after cloning
+      BACKEND_DIR="${PROJECT_ROOT}/backend"
+      FRONTEND_DIR="${PROJECT_ROOT}/frontend"
+      VENV_DIR="${BACKEND_DIR}/venv"
+      BACKEND_ENV_FILE="${BACKEND_DIR}/.env"
+      FRONTEND_ENV_FILE="${FRONTEND_DIR}/.env"
+      TALIB_SRC_DIR="${PROJECT_ROOT}/ta-lib"
+      success "Cloned successfully into $(basename "${PROJECT_ROOT}")."
+    fi
+  else
+    info "Cloning ${REPO_URL} (branch: ${BRANCH_NAME})..."
+    git clone -b "${BRANCH_NAME}" "${REPO_URL}" nivesh-cloned
+    cd nivesh-cloned
+    PROJECT_ROOT="$(pwd)"
+    # Re-resolve paths after cloning
+    BACKEND_DIR="${PROJECT_ROOT}/backend"
+    FRONTEND_DIR="${PROJECT_ROOT}/frontend"
+    VENV_DIR="${BACKEND_DIR}/venv"
+    BACKEND_ENV_FILE="${BACKEND_DIR}/.env"
+    FRONTEND_ENV_FILE="${FRONTEND_DIR}/.env"
+    TALIB_SRC_DIR="${PROJECT_ROOT}/ta-lib"
+    success "Cloned successfully into $(basename "${PROJECT_ROOT}")."
+  fi
 fi
 
 # =============================================================================
@@ -202,8 +276,22 @@ rm -f "$TEMP_REQ"
 # =============================================================================
 step "Step 5: Environment Configuration"
 
-# Generate a random SECRET_KEY
-SECRET_KEY=$(python3 -c "import secrets; print(secrets.token_urlsafe(32))" 2>/dev/null || echo "change-me-to-a-random-string")
+# ── API Keys ──────────────────────────────────────────────────────────────────
+echo ""
+info "Enter your API keys (leave blank to skip)."
+echo ""
+read -rsp "  Enter GROQ_API_KEY: " GROQ_API_KEY
+echo ""
+
+read -rp "  Enable LangSmith tracing? (y/N): " ENABLE_LS
+if [[ "$ENABLE_LS" =~ ^[Yy]$ ]]; then
+  LANGCHAIN_TRACING_V2=true
+  read -rsp "  Enter LANGSMITH_API_KEY: " LANGSMITH_API_KEY
+  echo ""
+else
+  LANGCHAIN_TRACING_V2=false
+  LANGSMITH_API_KEY=""
+fi
 
 # Backend .env
 WRITE_BACKEND_ENV=true
@@ -238,6 +326,11 @@ ADMIN_USERNAME=
 ADMIN_PASSWORD_HASH=
 
 # -- Third-party APIs (if needed) --------------------------------------------
+GROQ_API_KEY=${GROQ_API_KEY}
+LANGCHAIN_TRACING_V2=${LANGCHAIN_TRACING_V2}
+LANGCHAIN_PROJECT=Nivesh_platform
+LANGSMITH_ENDPOINT="https://api.smith.langchain.com"
+LANGSMITH_API_KEY=${LANGSMITH_API_KEY}
 # ALPHA_VANTAGE_APIKEY=your_key_here
 # SUPABASE_PASSWORD=your_password_here
 EOF

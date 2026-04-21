@@ -8,17 +8,19 @@
 #   Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope CurrentUser
 #
 # What this script does:
-#   1.  Check Python 3.10+ (winget auto-install if missing)
-#   2.  Check Node.js 18+ (winget auto-install if missing)
-#   3.  PostgreSQL setup — Docker (auto) or external URL
-#   4.  Python virtual environment + dependencies (excluding TA-Lib)
-#   5.  Environment configuration + Admin JWT
-#   6.  Start Docker PostgreSQL (if chosen)
-#   7.  Database migrations
-#   8.  Optional data seeding
-#   9.  Frontend build
-#   10. TA-Lib installation
-#   11. Start FastAPI server
+#   1.  Check Git
+#   2.  Check Python 3.10+ (winget auto-install if missing)
+#   3.  Check Node.js 18+ (winget auto-install if missing)
+#   4.  Clone/Update repository
+#   5.  PostgreSQL setup — Docker (auto) or external URL
+#   6.  Python virtual environment + dependencies (excluding TA-Lib)
+#   7.  Environment configuration + Admin JWT
+#   8.  Start Docker PostgreSQL (if chosen)
+#   9.  Database migrations
+#   10. Optional data seeding
+#   11. Frontend build
+#   12. TA-Lib installation
+#   13. Start FastAPI server
 # =============================================================================
 
 #Requires -Version 5.1
@@ -50,6 +52,24 @@ Write-Host "  ║     Nivesh Platform — Setup Script    ║" -ForegroundColor 
 Write-Host "  ╚═══════════════════════════════════════╝" -ForegroundColor Cyan
 Write-Host ""
 Write-Info "Project root : $ProjectRoot"
+
+# =============================================================================
+# STEP 0 — Check Git
+# =============================================================================
+Write-Step "Step 0: Checking Git"
+
+if (Get-Command git -ErrorAction SilentlyContinue) {
+    $gitVer = & git --version
+    Write-Success "$gitVer detected."
+} else {
+    Write-Warn "Git not found. Attempting to install via winget..."
+    & winget install --id Git.Git -e --source winget --accept-package-agreements --accept-source-agreements
+    if ($LASTEXITCODE -ne 0) {
+        Write-Fatal "Failed to install Git. Please install Git from https://git-scm.com and re-run this script."
+    }
+    Write-Warn "Git installed. Please restart this PowerShell window for PATH changes to take effect, then re-run this script."
+    exit 0
+}
 
 # =============================================================================
 # STEP 1 — Check Python
@@ -99,6 +119,59 @@ if (Get-Command node -ErrorAction SilentlyContinue) {
   }
   Write-Warn "Node.js installed. Please restart this PowerShell window for PATH changes to take effect, then re-run this script."
   exit 0
+}
+
+# =============================================================================
+# STEP 2.5 — Clone Project Repository (Optional)
+# =============================================================================
+Write-Step "Step 2.5: Clone Project Repository"
+
+$DoClone = Read-Host "  Do you want to clone or update the repository? (y/N)"
+if ($DoClone -notmatch "^[Yy]$") {
+    Write-Info "Skipping repository cloning/update."
+} else {
+    $RepoUrl = "https://github.com/prp20/Nivesh-Platform"
+    $BranchName = Read-Host "    Enter branch to clone/update [main]"
+    if ([string]::IsNullOrWhiteSpace($BranchName)) { $BranchName = "main" }
+
+    $IsRepo = $false
+    try {
+      if (& git rev-parse --is-inside-work-tree 2>$null) { $IsRepo = $true }
+    } catch {}
+
+    if ($IsRepo) {
+        $CurrentRemote = & git remote get-url origin 2>$null
+        if ($CurrentRemote -like "*Nivesh-Platform*") {
+            Write-Info "Already inside the Nivesh-Platform repository."
+            $SwitchBranch = Read-Host "    Do you want to switch to/update branch '$BranchName'? (y/N)"
+            if ($SwitchBranch -match "^[Yy]$") {
+                & git fetch origin
+                & git checkout $BranchName 2>$null
+                if ($LASTEXITCODE -ne 0) {
+                    & git checkout -b $BranchName "origin/$BranchName"
+                }
+                & git pull origin $BranchName
+                Write-Success "Updated to $BranchName."
+            }
+        } else {
+            clone_repo
+        }
+    } else {
+        function clone_repo {
+            Write-Info "Cloning $RepoUrl (branch: $BranchName)..."
+            & git clone -b $BranchName $RepoUrl nivesh-cloned
+            Set-Location nivesh-cloned
+            $ProjectRoot = (Get-Item .).FullName
+            # Re-resolve paths
+            $script:BackendDir     = Join-Path $ProjectRoot "backend"
+            $script:FrontendDir    = Join-Path $ProjectRoot "frontend"
+            $script:VenvDir        = Join-Path $BackendDir "venv"
+            $script:BackendEnvFile = Join-Path $BackendDir ".env"
+            $script:FrontendEnvFile= Join-Path $FrontendDir ".env"
+            Write-Success "Cloned successfully into nivesh-cloned."
+        }
+        clone_repo
+    }
 }
 
 # =============================================================================
@@ -203,6 +276,21 @@ try {
 # =============================================================================
 Write-Step "Step 5: Environment Configuration"
 
+# ── API Keys ──────────────────────────────────────────────────────────────────
+Write-Host ""
+Write-Info "Enter your API keys (leave blank to skip)."
+Write-Host ""
+$GroqApiKey = Read-Host "  Enter GROQ_API_KEY"
+
+$EnableLS = Read-Host "  Enable LangSmith tracing? (y/N)"
+if ($EnableLS -match "^[Yy]$") {
+    $LT_V2 = "true"
+    $LangsmithApiKey = Read-Host "  Enter LANGSMITH_API_KEY"
+} else {
+    $LT_V2 = "false"
+    $LangsmithApiKey = ""
+}
+
 # Generate cryptographically secure SECRET_KEY
 $SecretKey = & $PythonCmd -c "import secrets; print(secrets.token_urlsafe(32))"
 if ($LASTEXITCODE -ne 0 -or -not $SecretKey) {
@@ -242,6 +330,11 @@ ADMIN_USERNAME=
 ADMIN_PASSWORD_HASH=
 
 # -- Third-party APIs (if needed) --------------------------------------------
+GROQ_API_KEY=$GroqApiKey
+LANGCHAIN_TRACING_V2=$LT_V2
+LANGCHAIN_PROJECT=Nivesh_platform
+LANGSMITH_ENDPOINT="https://api.smith.langchain.com"
+LANGSMITH_API_KEY=$LangsmithApiKey
 # ALPHA_VANTAGE_APIKEY=your_key_here
 # SUPABASE_PASSWORD=your_password_here
 "@
