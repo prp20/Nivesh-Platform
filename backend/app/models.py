@@ -282,6 +282,10 @@ class FinancialRatio(Base):
     eps            = Column(Numeric(12, 4))
     book_value_ps  = Column(Numeric(12, 4))
     dividend_yield = Column(Numeric(8, 4))
+    market_cap     = Column(Numeric(18, 4))  # In Crores (INR)
+    low_52w        = Column(Numeric(12, 4))
+    high_52w       = Column(Numeric(12, 4))
+    revenue_per_share = Column(Numeric(12, 4))
     cfo_to_pat     = Column(Numeric(10, 3))
     computed_at    = Column(TIMESTAMP(timezone=True), server_default=func.now())
 

@@ -162,6 +162,8 @@ class BenchmarkMasterRead(BenchmarkMasterBase):
     created_at: datetime
     updated_at: datetime
     metrics: Optional[BenchmarkMetricsRead] = None
+    latest_close: Optional[float] = None
+    change_percent: Optional[float] = None
     model_config = ConfigDict(from_attributes=True)
 
 class BenchmarkMasterUpdate(BaseModel):
@@ -320,6 +322,11 @@ class StockScreenerResult(BaseModel):
     eps: Optional[float] = None
     interest_cov: Optional[float] = None
     cfo_to_pat: Optional[float] = None
+    market_cap: Optional[float] = None
+    low_52w: Optional[float] = None
+    high_52w: Optional[float] = None
+    revenue_per_share: Optional[float] = None
+    dividend_yield: Optional[float] = None
     rating_label: Optional[str] = None
     total_score: Optional[float] = None
 
