@@ -115,18 +115,19 @@ echo [STEP 2.5] Cloning Project Repository
 echo.
 
 set /p DO_CLONE="  Do you want to clone or update the repository? (y/N): "
-if /i not "!DO_CLONE!"=="y" (
-    echo [INFO]  Skipping repository cloning/update.
-) else (
-    set REPO_URL=https://github.com/prp20/Nivesh-Platform
+if /i "!DO_CLONE!"=="y" (
+    set "REPO_URL=https://github.com/prp20/Nivesh-Platform"
     set /p BRANCH_NAME="    Enter branch to clone/update [main]: "
     if "!BRANCH_NAME!"=="" set BRANCH_NAME=main
 
+    set "NEED_CLONE=1"
     git rev-parse --is-inside-work-tree >nul 2>&1
     if not errorlevel 1 (
-        for /f "tokens=*" %%a in ('git remote get-url origin 2^>nul') do set CURRENT_REMOTE=%%a
-        echo !CURRENT_REMOTE! | findstr /i "Nivesh-Platform" >nul
+        set "CURRENT_REMOTE="
+        for /f "tokens=*" %%a in ('git remote get-url origin 2^>nul') do set "CURRENT_REMOTE=%%a"
+        echo "!CURRENT_REMOTE!" | findstr /i "Nivesh-Platform" >nul
         if not errorlevel 1 (
+            set "NEED_CLONE=0"
             echo [INFO]  Already inside the Nivesh-Platform repository.
             set /p SWITCH_BRANCH="    Do you want to switch to/update branch '!BRANCH_NAME!'? (y/N): "
             if /i "!SWITCH_BRANCH!"=="y" (
@@ -135,22 +136,27 @@ if /i not "!DO_CLONE!"=="y" (
                 git pull origin !BRANCH_NAME!
                 echo [OK]    Updated to !BRANCH_NAME!.
             )
-        ) else (
-            goto :clone_repo
         )
-    ) else (
-        :clone_repo
-        echo [INFO]  Cloning %REPO_URL% (branch: %BRANCH_NAME%)...
-        git clone -b %BRANCH_NAME% %REPO_URL% nivesh-cloned
-        cd /d nivesh-cloned
-        set "PROJECT_ROOT=%CD%"
-        set "BACKEND_DIR=%PROJECT_ROOT%\backend"
-        set "FRONTEND_DIR=%PROJECT_ROOT%\frontend"
-        set "VENV_DIR=%BACKEND_DIR%\venv"
-        set "BACKEND_ENV_FILE=%BACKEND_DIR%\.env"
-        set "FRONTEND_ENV_FILE=%FRONTEND_DIR%\.env"
-        set "COMPOSE_FILE=%BACKEND_DIR%\docker-compose.yml"
-        echo [OK]    Cloned successfully into nivesh-cloned.
+    )
+
+    if "!NEED_CLONE!"=="1" (
+        echo [INFO]  Cloning !REPO_URL! ^(branch: !BRANCH_NAME!^)...
+        git clone -b "!BRANCH_NAME!" "!REPO_URL!" nivesh-cloned
+        if not errorlevel 1 (
+            cd /d nivesh-cloned
+            set "PROJECT_ROOT=%CD%"
+            set "BACKEND_DIR=!PROJECT_ROOT!\backend"
+            set "FRONTEND_DIR=!PROJECT_ROOT!\frontend"
+            set "VENV_DIR=!BACKEND_DIR!\venv"
+            set "BACKEND_ENV_FILE=!BACKEND_DIR!\.env"
+            set "FRONTEND_ENV_FILE=!FRONTEND_DIR!\.env"
+            set "COMPOSE_FILE=!BACKEND_DIR!\docker-compose.yml"
+            echo [OK]    Cloned successfully into nivesh-cloned.
+        ) else (
+            echo [ERROR] Failed to clone repository.
+            pause
+            exit /b 1
+        )
     )
 )
 
@@ -171,13 +177,13 @@ set USE_DOCKER=0
 if "%PG_CHOICE%"=="2" (
   echo.
   echo   -- URL format examples -------------------------------------------------------
-  echo   Local / self-hosted PostgreSQL (port 5432):
+  echo   Local / self-hosted PostgreSQL ^(port 5432^):
   echo     postgresql+asyncpg://user:password@localhost:5432/dbname
   echo.
-  echo   Supabase - use Session Pooler (port 6543, NOT 5432):
+  echo   Supabase - use Session Pooler ^(port 6543, NOT 5432^):
   echo     postgresql+asyncpg://postgres.^<ref^>:^<password^>@aws-0-^<region^>.pooler.supabase.com:6543/postgres
-  echo   [WARN]  asyncpg is NOT compatible with Supabase port 5432 (PgBouncer mode).
-  echo   [WARN]  Always use port 6543 (Session Pooler) for Supabase.
+  echo   [WARN]  asyncpg is NOT compatible with Supabase port 5432 ^(PgBouncer mode^).
+  echo   [WARN]  Always use port 6543 ^(Session Pooler^) for Supabase.
   echo   ---------------------------------------------------------------------------
   echo.
   set /p DATABASE_URL="  PostgreSQL URL: "
@@ -211,12 +217,12 @@ echo.
 cd /d "%PROJECT_ROOT%"
 
 if exist "%VENV_DIR%" (
-  echo [WARN]  Virtual environment already exists at %VENV_DIR%
+  echo [WARN]  Virtual environment already exists at !VENV_DIR!
   set /p DELETE_VENV="  Do you want to delete it and create a fresh one? (y/N): "
   if /i "!DELETE_VENV!"=="y" (
     echo [INFO]  Deleting existing virtual environment...
     rmdir /s /q "%VENV_DIR%"
-    echo [INFO]  Creating virtual environment at %VENV_DIR%...
+    echo [INFO]  Creating virtual environment at !VENV_DIR!...
     python -m venv "%VENV_DIR%"
     if errorlevel 1 (
       echo [ERROR] Failed to create virtual environment.
@@ -228,7 +234,7 @@ if exist "%VENV_DIR%" (
     echo [INFO]  Proceeding with existing virtual environment.
   )
 ) else (
-  echo [INFO]  Creating virtual environment at %VENV_DIR%...
+  echo [INFO]  Creating virtual environment at !VENV_DIR!...
   python -m venv "%VENV_DIR%"
   if errorlevel 1 (
     echo [ERROR] Failed to create virtual environment.
@@ -330,7 +336,7 @@ if "%WRITE_BACKEND_ENV%"=="1" (
     echo # ALPHA_VANTAGE_APIKEY=your_key_here
     echo # SUPABASE_PASSWORD=your_password_here
   ) > "%BACKEND_ENV_FILE%"
-  echo [OK]    backend\.env written to %BACKEND_ENV_FILE%
+  echo [OK]    backend\.env written to !BACKEND_ENV_FILE!
 )
 
 :: ── Admin credentials ─────────────────────────────────────────────────────────
@@ -363,7 +369,7 @@ if "%WRITE_FRONTEND_ENV%"=="1" (
     echo # For production: /api/v1 (same origin -- backend serves frontend)
     echo VITE_API_URL=/api/v1
   ) > "%FRONTEND_ENV_FILE%"
-  echo [OK]    frontend\.env written to %FRONTEND_ENV_FILE%
+  echo [OK]    frontend\.env written to !FRONTEND_ENV_FILE!
 )
 
 :: =============================================================================
@@ -525,7 +531,7 @@ if "!SEED_MF!"=="1" (
 if "!SEED_STOCKS!"=="1" (
   echo.
   echo   How many years of price history to backfill?
-  echo   [1] 1 year   [2] 2 years   [5] 5 years   [10] 10 years   [M] Max (all available)
+  echo   [1] 1 year   [2] 2 years   [5] 5 years   [10] 10 years   [M] Max ^(all available^)
   set /p BACKFILL_CHOICE="  Enter choice [5]: "
   if "!BACKFILL_CHOICE!"=="" set BACKFILL_CHOICE=5
   set BACKFILL_PERIOD=5y
