@@ -42,30 +42,27 @@ const AppContent = () => {
       </div>
   );
 
-  if (!user) return (
-    <Routes>
-      <Route path="/login" element={<Login />} />
-      <Route path="*" element={<Navigate to="/login" replace />} />
-    </Routes>
-  );
-
   return (
     <Layout>
       <Routes>
+        {/* Public Routes */}
         <Route path="/" element={<Navigate to="/dashboard" replace />} />
         <Route path="/dashboard" element={<Dashboard />} />
-        <Route path="/portfolio" element={<Portfolio />} />
-        <Route path="/stocks" element={<StockListing />} />
-        <Route path="/stocks/:symbol" element={<StockDetailRoute />} />
-        <Route path="/stock-compare" element={<StockCompare />} />
-        <Route path="/screener" element={<Screener />} />
-        <Route path="/mf" element={<MFListing />} />
-        <Route path="/mf/:schemeCode" element={<MFDetailRoute />} />
-        <Route path="/compare" element={<MFCompare />} />
-        <Route path="/indices" element={<IndicesListing />} />
-        <Route path="/indices/:benchmarkCode" element={<IndexDetailRoute />} />
-        <Route path="/admin" element={<Admin />} />
-        {/* <Route path="/login" element={<Login />} /> */}
+        <Route path="/login" element={!user ? <Login /> : <Navigate to="/dashboard" replace />} />
+        
+        {/* Protected Routes */}
+        <Route path="/portfolio" element={user ? <Portfolio /> : <Navigate to="/login" replace />} />
+        <Route path="/stocks" element={user ? <StockListing /> : <Navigate to="/login" replace />} />
+        <Route path="/stocks/:symbol" element={user ? <StockDetailRoute /> : <Navigate to="/login" replace />} />
+        <Route path="/stock-compare" element={user ? <StockCompare /> : <Navigate to="/login" replace />} />
+        <Route path="/screener" element={user ? <Screener /> : <Navigate to="/login" replace />} />
+        <Route path="/mf" element={user ? <MFListing /> : <Navigate to="/login" replace />} />
+        <Route path="/mf/:schemeCode" element={user ? <MFDetailRoute /> : <Navigate to="/login" replace />} />
+        <Route path="/compare" element={user ? <MFCompare /> : <Navigate to="/login" replace />} />
+        <Route path="/indices" element={user ? <IndicesListing /> : <Navigate to="/login" replace />} />
+        <Route path="/indices/:benchmarkCode" element={user ? <IndexDetailRoute /> : <Navigate to="/login" replace />} />
+        <Route path="/admin" element={user ? <Admin /> : <Navigate to="/login" replace />} />
+        
         <Route path="*" element={<Navigate to="/dashboard" replace />} />
       </Routes>
     </Layout>

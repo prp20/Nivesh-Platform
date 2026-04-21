@@ -112,7 +112,7 @@ const MFDetail = () => {
     ];
 
     return (
-        <div className="p-6 md:p-12 lg:p-16 xl:p-24 2xl:p-32 w-full animate-fadeIn flex flex-col gap-16 transition-all duration-500">
+        <div className="p-6 md:p-10 lg:p-12 2xl:p-16 w-full animate-fadeIn flex flex-col gap-16 transition-all duration-500">
             {/* Compact Asset Header */}
             <header className="mb-12 flex flex-col md:flex-row items-start md:items-center justify-between gap-8 pt-8 border-b border-outline-variant/10 pb-8">
               <div className="flex items-center gap-6">
@@ -355,10 +355,7 @@ const MFDetail = () => {
                 </div>
             </div>
 
-            <footer className="mt-20 py-16 border-t border-white/5 opacity-30 italic text-[11px] tracking-[0.6em] uppercase font-black text-center leading-relaxed">
-                Autonomous Decentralized Feed: Sync Interval T-1s • Ledger Identification Artifacts Verified <br/>
-                Sovereign Protocol Core-ID: {fund.isin || fund.scheme_code}
-            </footer>
+
 
             <CompareDock />
         </div>

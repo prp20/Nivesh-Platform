@@ -130,8 +130,8 @@ const MFListing = () => {
     }
 
     return (
-        <div className="min-h-screen bg-surface text-on-surface pb-32">
-            <div className="max-w-[1600px] mx-auto px-6 pt-12">
+        <div className="bg-surface text-on-surface pb-32">
+            <div className="px-6 md:px-10 lg:px-12 2xl:px-16 pt-12">
                 
                 {/* Center-Aligned Command Bar */}
                 <div className="flex flex-col items-center mb-20 gap-10">
@@ -371,11 +371,7 @@ const MFListing = () => {
 
                 <CompareDock />
                 
-                <footer className="mt-32 py-12 border-t border-outline-variant/10 text-center">
-                    <p className="text-[11px] font-black tracking-[0.4em] text-slate-600 uppercase">
-                        NIVESH PLATFORM <span className="text-primary/40 mx-2">●</span> COPYRIGHT 2026
-                    </p>
-                </footer>
+
             </div>
         </div>
     );

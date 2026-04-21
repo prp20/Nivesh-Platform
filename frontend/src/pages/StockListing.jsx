@@ -136,7 +136,7 @@ const StockListing = () => {
     }
 
     return (
-        <div className="p-6 md:p-10 lg:p-12 2xl:p-16 max-w-screen-2xl mx-auto w-full animate-fadeIn flex flex-col gap-16 transition-all duration-500 relative pb-64 bg-surface text-on-surface">
+        <div className="p-6 md:p-10 lg:p-12 2xl:p-16 w-full animate-fadeIn flex flex-col gap-16 transition-all duration-500 relative pb-64 bg-surface text-on-surface">
             {/* Header - Ultra Scale */}
             {/* Center-aligned Filter Suite */}
             <header className="mb-20 flex flex-col items-center gap-10 pt-4 relative z-50">
@@ -211,7 +211,7 @@ const StockListing = () => {
                         animate={{ opacity: 1, scale: 1 }}
                         exit={{ opacity: 0, scale: 1.05 }}
                         transition={{ duration: 0.5, ease: "circOut" }}
-                        className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4 3xl:grid-cols-5 gap-12 xl:gap-16"
+                        className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5 gap-8 xl:gap-10 2xl:gap-12"
                     >
                         {list.length === 0 ? (
                             <div className="col-span-full text-center py-12 text-slate-500 font-label uppercase tracking-widest text-xs">No signals found</div>
@@ -476,9 +476,7 @@ const StockListing = () => {
                 )}
             </AnimatePresence>
 
-            <footer className="mt-20 py-16 border-t border-white/5 opacity-30 italic text-[11px] tracking-[0.6em] uppercase font-black text-center leading-relaxed">
-                NIVESH PLATFORM Copyright {new Date().getFullYear()}
-            </footer>
+
         </div>
     );
 };

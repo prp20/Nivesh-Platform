@@ -47,7 +47,7 @@ const Portfolio = () => {
     }
 
     return (
-        <div className="p-6 md:p-10 lg:p-12 2xl:p-16 max-w-screen-2xl mx-auto w-full animate-fadeIn flex flex-col gap-12 transition-all duration-500">
+        <div className="p-6 md:p-10 lg:p-12 2xl:p-16 w-full animate-fadeIn flex flex-col gap-12 transition-all duration-500">
             {/* Compact Header */}
             <header className="flex flex-col xl:flex-row items-start xl:items-center justify-between gap-8 pt-8">
                 <div className="space-y-1">
@@ -149,9 +149,7 @@ const Portfolio = () => {
             </div>
 
 
-            <footer className="mt-20 py-16 border-t border-white/5 opacity-30 italic text-[11px] tracking-[0.6em] uppercase font-black text-center leading-relaxed">
-                Ledger Verification Hash: ELITE-P-4402X • Sovereign Protocol Active • Wealth Distribution Consensus Reached
-            </footer>
+
         </div>
     );
 };
