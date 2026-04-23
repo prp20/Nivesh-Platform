@@ -203,9 +203,6 @@ async def _ingest_chunk(stocks: list, period: str) -> int:
 
 def _extract_ticker_df(df: pd.DataFrame, yf_symbol: str, num_tickers: int) -> pd.DataFrame:
     """Extract a single ticker's data from a (possibly multi-ticker) DataFrame."""
-    if num_tickers == 1:
-        return df
-    
     try:
         # Try direct access (standard case)
         if yf_symbol in df.columns.levels[0]:

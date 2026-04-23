@@ -196,64 +196,9 @@ if ($DoClone -notmatch "^[Yy]$") {
 }
 
 # =============================================================================
-# STEP 3 — PostgreSQL setup
+# STEP 3 — Python virtual environment + dependencies (excluding TA-Lib)
 # =============================================================================
-Write-Step "Step 3: PostgreSQL Setup"
-
-Write-Host ""
-Write-Host "  How do you want to connect to PostgreSQL?" -ForegroundColor White
-Write-Host "  [1] Docker  — auto-managed, starts postgres:16-alpine (default)"
-Write-Host "  [2] External — I will provide my own connection URL"
-Write-Host ""
-$PgChoice = Read-Host "  Enter choice [1]"
-if ([string]::IsNullOrWhiteSpace($PgChoice)) { $PgChoice = "1" }
-
-$UseDocker = $false
-$DatabaseUrl = ""
-
-if ($PgChoice -eq "2") {
-  Write-Host ""
-  Write-Host "  ── URL format examples ────────────────────────────────────────────────" -ForegroundColor White
-  Write-Host "  Local / self-hosted PostgreSQL (port 5432):"
-  Write-Host "    postgresql+asyncpg://user:password@localhost:5432/dbname"
-  Write-Host ""
-  Write-Host "  Supabase — use Session Pooler (port 6543, NOT 5432):" -ForegroundColor White
-  Write-Host "    postgresql+asyncpg://postgres.<ref>:<password>@aws-0-<region>.pooler.supabase.com:6543/postgres"
-  Write-Warn "asyncpg is NOT compatible with Supabase port 5432 (PgBouncer transaction mode)."
-  Write-Warn "Always use port 6543 (Session Pooler) for Supabase."
-  Write-Host "  ───────────────────────────────────────────────────────────────────────"
-  Write-Host ""
-  $DatabaseUrl = Read-Host "  PostgreSQL URL"
-  if ([string]::IsNullOrWhiteSpace($DatabaseUrl)) {
-    Write-Fatal "No URL entered. Aborting."
-  }
-  if (-not $DatabaseUrl.StartsWith("postgresql")) {
-    Write-Fatal "URL must start with 'postgresql'. Got: $DatabaseUrl"
-  }
-  Write-Success "Using external PostgreSQL URL."
-} else {
-  $DatabaseUrl = "postgresql+asyncpg://nivesh_admin:nivesh_password_123@localhost:5432/nivesh_db"
-  $UseDocker = $true
-  Write-Success "Will use Docker-managed PostgreSQL."
-}
-
-# Verify Docker if needed
-if ($UseDocker) {
-  if (-not (Get-Command docker -ErrorAction SilentlyContinue)) {
-    Write-Fatal "Docker not found. Install Docker Desktop from https://docker.com, or choose option [2] for an external PostgreSQL URL."
-  }
-  try {
-    & docker info 2>&1 | Out-Null
-    Write-Success "Docker is available."
-  } catch {
-    Write-Fatal "Docker daemon is not running. Start Docker Desktop and try again."
-  }
-}
-
-# =============================================================================
-# STEP 4 — Python virtual environment + dependencies (excluding TA-Lib)
-# =============================================================================
-Write-Step "Step 4: Python Virtual Environment"
+Write-Step "Step 3: Python Virtual Environment"
 
 Set-Location $ProjectRoot
 
@@ -294,15 +239,66 @@ try {
   if ($LASTEXITCODE -ne 0) {
     Write-Fatal "pip install failed. Check the error output above."
   }
-  Write-Success "Python dependencies installed (TA-Lib excluded — installed in Step 10)."
+  Write-Success "Python dependencies installed (TA-Lib excluded — installed in Step 9)."
 } finally {
   Remove-Item $TempReq -Force -ErrorAction SilentlyContinue
 }
 
 # =============================================================================
-# STEP 5 — Environment Configuration & Admin JWT
+# STEP 4 — Environment Configuration & Admin JWT
 # =============================================================================
-Write-Step "Step 5: Environment Configuration"
+Write-Step "Step 4: Environment Configuration"
+
+# ── PostgreSQL Setup ──────────────────────────────────────────────────────────
+Write-Host ""
+Write-Host "  How do you want to connect to PostgreSQL?" -ForegroundColor White
+Write-Host "  [1] Docker  — auto-managed, starts postgres:16-alpine (default)"
+Write-Host "  [2] External — I will provide my own connection URL"
+Write-Host ""
+$PgChoice = Read-Host "  Enter choice [1]"
+if ([string]::IsNullOrWhiteSpace($PgChoice)) { $PgChoice = "1" }
+
+$UseDocker = $false
+$DatabaseUrl = ""
+
+if ($PgChoice -eq "2") {
+  Write-Host ""
+  Write-Host "  ── URL format examples ────────────────────────────────────────────────" -ForegroundColor White
+  Write-Host "  Local / self-hosted PostgreSQL (port 5432):"
+  Write-Host "    postgresql+asyncpg://user:password@localhost:5432/dbname"
+  Write-Host ""
+  Write-Host "  Supabase — use Session Pooler (port 6543, NOT 5432):" -ForegroundColor White
+  Write-Host "    postgresql+asyncpg://postgres.<ref>:<password>@aws-0-<region>.pooler.supabase.com:6543/postgres"
+  Write-Warn "asyncpg is NOT compatible with Supabase port 5432 (PgBouncer transaction mode)."
+  Write-Warn "Always use port 6543 (Session Pooler) for Supabase."
+  Write-Host "  ───────────────────────────────────────────────────────────────────────"
+  Write-Host ""
+  $DatabaseUrl = Read-Host "  PostgreSQL URL"
+  if ([string]::IsNullOrWhiteSpace($DatabaseUrl)) {
+    Write-Fatal "No URL entered. Aborting."
+  }
+  if (-not $DatabaseUrl.StartsWith("postgresql")) {
+    Write-Fatal "URL must start with 'postgresql'. Got: $DatabaseUrl"
+  }
+  Write-Success "Using external PostgreSQL URL."
+} else {
+  $DatabaseUrl = "postgresql+asyncpg://nivesh_admin:nivesh_password_123@localhost:5432/nivesh_db"
+  $UseDocker = $true
+  Write-Success "Will use Docker-managed PostgreSQL."
+}
+
+# Verify Docker if selected
+if ($UseDocker) {
+  if (-not (Get-Command docker -ErrorAction SilentlyContinue)) {
+    Write-Fatal "Docker not found. Install Docker Desktop from https://docker.com, or choose option [2] for an external PostgreSQL URL."
+  }
+  try {
+    & docker info 2>&1 | Out-Null
+    Write-Success "Docker is available."
+  } catch {
+    Write-Fatal "Docker daemon is not running. Start Docker Desktop and try again."
+  }
+}
 
 # ── API Keys ──────────────────────────────────────────────────────────────────
 Write-Host ""
@@ -405,10 +401,10 @@ VITE_API_URL=/api/v1
 }
 
 # =============================================================================
-# STEP 6 — Start Docker PostgreSQL (if chosen)
+# STEP 5 — Start Docker PostgreSQL (if chosen)
 # =============================================================================
 if ($UseDocker) {
-  Write-Step "Step 6: Starting Docker PostgreSQL"
+  Write-Step "Step 5: Starting Docker PostgreSQL"
   $ComposeFile = Join-Path $BackendDir "docker-compose.yml"
 
   Write-Info "Starting PostgreSQL container via Docker Compose..."
@@ -429,14 +425,14 @@ if ($UseDocker) {
     Write-Fatal "PostgreSQL did not become ready after 30 seconds. Check: docker compose -f backend\docker-compose.yml logs postgres"
   }
 } else {
-  Write-Step "Step 6: PostgreSQL (External — skipping Docker)"
+  Write-Step "Step 5: PostgreSQL (External — skipping Docker)"
   Write-Info "Using your external PostgreSQL. Ensure it is reachable."
 }
 
 # =============================================================================
-# STEP 7 — Database Setup
+# STEP 6 — Database Setup
 # =============================================================================
-Write-Step "Step 7: Database Setup"
+Write-Step "Step 6: Database Setup"
 
 Set-Location $BackendDir
 
@@ -482,9 +478,9 @@ if ($LASTEXITCODE -ne 0) { Write-Fatal "alembic upgrade head failed. Check datab
 Write-Success "Stock tables ready."
 
 # =============================================================================
-# STEP 8 — Optional seeding
+# STEP 7 — Data Seeding (Optional)
 # =============================================================================
-Write-Step "Step 8: Data Seeding (Optional)"
+Write-Step "Step 7: Data Seeding (Optional)"
 
 Write-Host ""
 Write-Warn "Seeding fetches live data from AMFI, yfinance, and screener.in — this can take 30-120 minutes."
@@ -557,9 +553,9 @@ if ($SeedFundamentals) {
 }
 
 # =============================================================================
-# STEP 9 — Build frontend
+# STEP 8 — Build frontend
 # =============================================================================
-Write-Step "Step 9: Building Frontend"
+Write-Step "Step 8: Building Frontend"
 
 Set-Location $FrontendDir
 
@@ -582,9 +578,9 @@ if (-not (Test-Path $DistDir)) {
 Write-Success "Frontend built and ready at $DistDir"
 
 # =============================================================================
-# STEP 10 — TA-Lib Installation
+# STEP 9 — TA-Lib Installation
 # =============================================================================
-Write-Step "Step 10: TA-Lib Installation"
+Write-Step "Step 9: TA-Lib Installation"
 
 Write-Info "TA-Lib >= 0.6.8 includes pre-built Windows wheels — attempting pip install..."
 Write-Host ""
@@ -604,9 +600,9 @@ if ($LASTEXITCODE -ne 0) {
 Write-Success "TA-Lib installed."
 
 # =============================================================================
-# STEP 11 — Start API server
+# STEP 10 — Start API server
 # =============================================================================
-Write-Step "Step 11: Starting FastAPI Server"
+Write-Step "Step 10: Starting FastAPI Server"
 
 Write-Host ""
 Write-Host "  Setup complete! Starting Nivesh API..." -ForegroundColor Green

@@ -182,14 +182,27 @@ async def get_stock(
             ROUND(
                 (p.close - p2.close) / NULLIF(p2.close, 0) * 100, 2
             ) AS change_pct,
-            r.rating_label,
-            r.total_score,
-            r.fundamental_score,
-            r.technical_score,
-            ti.rsi_14,
-            ti.macd_hist,
-            ti.sma_200,
-            ti.sma_50
+            -- Valuation
+            r.pe_ratio, r.pb_ratio, r.ps_ratio, r.ev_ebitda, r.ev_sales, r.market_cap, r.dividend_yield, r.dividend_per_share,
+            -- Profitability
+            r.roe, r.roce, r.roa, r.roic, r.pat_margin, r.ebitda_margin, r.operating_margin,
+            -- Solvency & Leverage
+            r.debt_equity, r.net_debt, r.net_debt_ebitda, r.interest_cov, r.current_ratio, r.quick_ratio,
+            -- Growth
+            r.revenue_growth, r.pat_growth, r.eps_growth,
+            -- Efficiency
+            r.asset_turnover, r.inventory_turnover, r.receivables_days, r.payable_days, r.cash_conv_cycle,
+            -- Cash Flow
+            r.fcf, r.fcf_margin, r.fcf_yield, r.capex_to_revenue, r.cfo_to_pat,
+            -- Quality
+            r.piotroski_f_score, r.altman_z_score,
+            -- Per Share
+            r.eps, r.book_value_ps,
+            -- Technical Indicators
+            ti.rsi_14, ti.macd_hist, ti.macd_line, ti.macd_signal,
+            ti.sma_20, ti.sma_50, ti.sma_200, ti.ema_9, ti.ema_21,
+            ti.obv, ti.vwap_20, ti.cci_20, ti.beta_1y, ti.rs_6m_vs_nifty,
+            ti.pct_from_52w_high, ti.pct_from_52w_low
         FROM stocks s
         LEFT JOIN LATERAL (
             SELECT close, high, low, volume, price_date
@@ -199,11 +212,15 @@ async def get_stock(
             SELECT close FROM price_data WHERE stock_id = s.id ORDER BY price_date DESC LIMIT 1 OFFSET 1
         ) p2 ON TRUE
         LEFT JOIN LATERAL (
-            SELECT rating_label, total_score, fundamental_score, technical_score
-            FROM stock_ratings WHERE stock_id = s.id ORDER BY rated_on DESC LIMIT 1
+            SELECT *
+            FROM financial_ratios WHERE stock_id = s.id AND period_type = 'annual' ORDER BY period_end DESC LIMIT 1
         ) r ON TRUE
         LEFT JOIN LATERAL (
-            SELECT rsi_14, macd_hist, sma_200, sma_50
+            SELECT rating_label, total_score, fundamental_score, technical_score
+            FROM stock_ratings WHERE stock_id = s.id ORDER BY rated_on DESC LIMIT 1
+        ) r_rt ON TRUE
+        LEFT JOIN LATERAL (
+            SELECT *
             FROM technical_indicators WHERE stock_id = s.id AND timeframe = '1d' ORDER BY ind_date DESC LIMIT 1
         ) ti ON TRUE
         WHERE s.symbol = :symbol AND s.is_active = TRUE

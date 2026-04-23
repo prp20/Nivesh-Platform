@@ -153,12 +153,16 @@ def normalize_shareholding(raw: dict) -> list:
 
 # ─── Validation ───────────────────────────────────────────────────────────────
 
-REQUIRED_PL_KEYS = {"revenue", "net_profit", "operating_profit"}
-REQUIRED_BS_KEYS = {"total_assets", "borrowings"}
+REQUIRED_PL_KEYS = {"revenue", "sales", "net_profit", "operating_profit"}
+REQUIRED_BS_KEYS = {"total_assets", "borrowings", "shareholders_equity", "equity_capital"}
 REQUIRED_CF_KEYS = {"cash_from_operating_activity"}
 
 def validate_pl(data: dict) -> tuple[bool, set]:
-    missing = REQUIRED_PL_KEYS - set(data.get("data", {}).keys())
+    keys = set(data.get("data", {}).keys())
+    missing = {"net_profit", "operating_profit"} - keys
+    # Revenue or Sales must be present
+    if "revenue" not in keys and "sales" not in keys:
+        missing.add("revenue/sales")
     return len(missing) == 0, missing
 
 def validate_bs(data: dict) -> tuple[bool, set]:

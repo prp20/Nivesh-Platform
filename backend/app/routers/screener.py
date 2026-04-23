@@ -24,6 +24,12 @@ SORT_COLUMNS = SortColumnMap(
         "revenue_growth": "r.revenue_growth",
         "pat_margin": "r.pat_margin",
         "symbol": "s.symbol",
+        "ev_ebitda": "r.ev_ebitda",
+        "roic": "r.roic",
+        "piotroski_f_score": "r.piotroski_f_score",
+        "beta": "ti.beta_1y",
+        "relative_strength": "ti.rs_6m_vs_nifty",
+        "vol_ratio": "ti.volume_ratio",
     }
 )
 
@@ -55,6 +61,17 @@ async def screener(
     sector: Optional[str] = None,
     market_cap_cat: Optional[str] = None,
     rating_label: Optional[str] = None,
+    # Advanced Fundamental Filters
+    min_roic: Optional[float] = None,
+    min_ev_ebitda: Optional[float] = None,
+    max_ev_ebitda: Optional[float] = None,
+    min_piotroski: Optional[int] = None,
+    min_fcf_yield: Optional[float] = None,
+    # Advanced Technical Filters
+    min_beta: Optional[float] = None,
+    max_beta: Optional[float] = None,
+    min_rs_6m: Optional[float] = None,
+    min_volume_ratio: Optional[float] = None,
     # Pagination & sorting
     page: int = Query(1, ge=1, le=10000),
     limit: int = Query(25, ge=1, le=100),
@@ -132,6 +149,17 @@ async def screener(
     builder.add("s.sector", "=", sector, "sector")
     builder.add("s.market_cap_cat", "=", market_cap_cat, "market_cap_cat")
     builder.add("sr.rating_label", "=", rating_label, "rating_label")
+    
+    # Advanced Fundamental
+    builder.add("r.roic", ">=", min_roic, "min_roic")
+    builder.add_range("r.ev_ebitda", min_ev_ebitda, max_ev_ebitda, "min_ev_ebitda", "max_ev_ebitda")
+    builder.add("r.piotroski_f_score", ">=", min_piotroski, "min_piotroski")
+    builder.add("r.fcf_yield", ">=", min_fcf_yield, "min_fcf_yield")
+    
+    # Advanced Technical
+    builder.add_range("ti.beta_1y", min_beta, max_beta, "min_beta", "max_beta")
+    builder.add("ti.rs_6m_vs_nifty", ">=", min_rs_6m, "min_rs_6m")
+    builder.add("ti.volume_ratio", ">=", min_volume_ratio, "min_volume_ratio")
 
     where_clause = builder.build_where()
     params = builder.get_params()
@@ -154,12 +182,18 @@ async def screener(
             r.pe_ratio,    r.pb_ratio,    r.debt_equity,
             r.revenue_growth, r.pat_growth, r.eps,
             r.interest_cov, r.cfo_to_pat,
+            r.ev_ebitda,    r.roic,        r.fcf_yield,
+            r.piotroski_f_score, r.altman_z_score,
             m.market_cap, m.dividend_yield, m.low_52w, m.high_52w, m.revenue_per_share,
-            sr.rating_label, sr.total_score
+            sr.rating_label, sr.total_score,
+            ti.beta_1y, ti.rs_6m_vs_nifty, 
+            ti.pct_from_52w_high, ti.pct_from_52w_low,
+            ti.volume_ratio
         FROM stocks s
         LEFT JOIN LATERAL (
             SELECT roe, roce, pat_margin, pe_ratio, pb_ratio, debt_equity,
-                   revenue_growth, pat_growth, eps, interest_cov, cfo_to_pat, ebitda_margin
+                   revenue_growth, pat_growth, eps, interest_cov, cfo_to_pat, ebitda_margin,
+                   ev_ebitda, roic, fcf_yield, piotroski_f_score, altman_z_score
             FROM financial_ratios
             WHERE stock_id = s.id AND period_type = 'annual'
             ORDER BY period_end DESC LIMIT 1
@@ -178,6 +212,12 @@ async def screener(
             SELECT rating_label, total_score
             FROM stock_ratings WHERE stock_id = s.id ORDER BY rated_on DESC LIMIT 1
         ) sr ON TRUE
+        LEFT JOIN LATERAL (
+            SELECT beta_1y, rs_6m_vs_nifty, pct_from_52w_high, pct_from_52w_low, volume_ratio
+            FROM technical_indicators 
+            WHERE stock_id = s.id AND timeframe = '1d'
+            ORDER BY ind_date DESC LIMIT 1
+        ) ti ON TRUE
         WHERE {where_clause}
         ORDER BY {sort_col} {order_dir} NULLS LAST
         LIMIT :limit OFFSET :offset
@@ -188,10 +228,16 @@ async def screener(
         FROM stocks s
         LEFT JOIN LATERAL (
             SELECT roe, roce, pat_margin, pe_ratio, pb_ratio, debt_equity,
-                   revenue_growth, pat_growth, interest_cov, cfo_to_pat, ebitda_margin
+                   revenue_growth, pat_growth, interest_cov, cfo_to_pat, ebitda_margin,
+                   ev_ebitda, roic, fcf_yield, piotroski_f_score
             FROM financial_ratios WHERE stock_id = s.id AND period_type = 'annual'
             ORDER BY period_end DESC LIMIT 1
         ) r ON TRUE
+        LEFT JOIN LATERAL (
+            SELECT beta_1y, rs_6m_vs_nifty, volume_ratio
+            FROM technical_indicators WHERE stock_id = s.id AND timeframe = '1d'
+            ORDER BY ind_date DESC LIMIT 1
+        ) ti ON TRUE
         LEFT JOIN LATERAL (
             SELECT rating_label FROM stock_ratings WHERE stock_id = s.id ORDER BY rated_on DESC LIMIT 1
         ) sr ON TRUE
@@ -237,11 +283,11 @@ async def get_ratios(
         raise HTTPException(404, f"Stock '{symbol}' not found")
 
     sql = """
-        SELECT period_end, period_type, pe_ratio, pb_ratio, ps_ratio, roe, roce, roa,
+        SELECT period_end, period_type, pe_ratio, pb_ratio, ps_ratio, ev_ebitda, roe, roce, roic, roa,
                pat_margin, ebitda_margin, debt_equity, interest_cov, current_ratio,
                revenue_growth, pat_growth, eps_growth, eps, book_value_ps, 
                dividend_yield, market_cap, low_52w, high_52w, revenue_per_share,
-               cfo_to_pat, computed_at
+               cfo_to_pat, piotroski_f_score, altman_z_score, computed_at
         FROM financial_ratios
         WHERE stock_id = :sid AND period_type = :pt
         ORDER BY period_end DESC
