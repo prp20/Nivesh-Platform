@@ -22,10 +22,10 @@ export default function StockDetail() {
   const [ratios, setRatios] = useState(null);
   const [priceHistory, setPriceHistory] = useState([]);
   const [syncingPrices, setSyncingPrices] = useState(false);
-  const [syncingFundamentals, setSyncingFundamentals] = useState(false);
   const [agentInsights, setAgentInsights] = useState(null);
   const [loadingInsights, setLoadingInsights] = useState(false);
   const [isSummaryExpanded, setIsSummaryExpanded] = useState(false);
+  const [isRatiosExpanded, setIsRatiosExpanded] = useState(false);
   const fundamentalsPollRef = useRef(null);
   const safetyTimeoutRef = useRef(null);
 
@@ -63,38 +63,32 @@ export default function StockDetail() {
   }, [symbol, detail?.symbol, activeTimeframe]);
 
   const handleSyncDaily = async () => {
-    setSyncingPrices(true);
-    try {
-      await stockService.triggerDeepPriceSync(symbol, "1y");
-      await stockService.triggerTechnicalAnalysis(symbol);
-      await stockService.triggerRatingCompute(symbol);
-      const tf = timeframes.find(t => t.id === activeTimeframe) || timeframes[2];
-      const hist = await stockService.getPriceHistory(symbol, { interval: tf.interval, limit: tf.limit });
-      setPriceHistory(hist.data);
-      dispatch(fetchStockDetail(symbol));
-      toast.success('Price data synced successfully');
-    } catch (error) {
-      console.error('Sync failed:', error);
-      toast.error('Failed to sync price data. Please try again.');
-    } finally {
-      setSyncingPrices(false);
-    }
-  };
-
-  const handleSyncFundamentals = async () => {
     // Clear any existing poll
     if (fundamentalsPollRef.current) {
       clearInterval(fundamentalsPollRef.current);
       fundamentalsPollRef.current = null;
     }
 
-    setSyncingFundamentals(true);
-    let timeoutId = null;
+    setSyncingPrices(true);
+    const triggerTime = new Date();
 
     try {
-      const triggerTime = new Date();
-      await stockService.triggerScreenerScrape(symbol, true); // Returns immediately (background job)
+      // 1. Deep Price Sync (1y history)
+      await stockService.triggerDeepPriceSync(symbol, "1y");
+      
+      // 2. Price-Dependent Ratio Refresh (PE, PB, etc.)
+      await stockService.triggerPriceRefresh(symbol);
+      
+      // 3. Technical Analysis (RSI, MACD, etc.)
+      await stockService.triggerTechnicalAnalysis(symbol);
+      
+      // 4. Start Fundamental Scrape (Background)
+      await stockService.triggerScreenerScrape(symbol, true);
+      
+      // 5. Recompute Composite Ratings
+      await stockService.triggerRatingCompute(symbol);
 
+      // Polling for Fundamental Scrape completion
       const stopPolling = () => {
         if (fundamentalsPollRef.current) {
           clearInterval(fundamentalsPollRef.current);
@@ -113,21 +107,28 @@ export default function StockDetail() {
             j => j.job_name === 'fundamental_scrape_single' &&
               new Date(j.started_at) >= triggerTime
           );
+
           if (job?.status === 'SUCCESS') {
             stopPolling();
-            const [rat, fund] = await Promise.all([
+            const [rat, fund, hist] = await Promise.all([
               stockService.getRatios(symbol),
-              stockService.getFundamentals(symbol, { statement_type: stmtType, limit: 5 })
+              stockService.getFundamentals(symbol, { statement_type: stmtType, limit: 5 }),
+              stockService.getPriceHistory(symbol, { 
+                interval: (timeframes.find(t => t.id === activeTimeframe) || timeframes[2]).interval, 
+                limit: (timeframes.find(t => t.id === activeTimeframe) || timeframes[2]).limit 
+              })
             ]);
+
             if (rat.records?.length > 0) setRatios(rat.records[0]);
             setFundamentals(fund);
+            setPriceHistory(hist.data);
             dispatch(fetchStockDetail(symbol));
-            toast.success('Fundamental data synced successfully');
-            setSyncingFundamentals(false);
+            toast.success('Full market and fundamental data synchronised');
+            setSyncingPrices(false);
           } else if (job?.status === 'FAILED') {
             stopPolling();
-            toast.error('Fundamental sync failed on the server. Check pipeline logs.');
-            setSyncingFundamentals(false);
+            toast.error('Fundamental sync failed on the server.');
+            setSyncingPrices(false);
           }
         } catch (pollErr) {
           console.error('Status poll error:', pollErr);
@@ -136,17 +137,17 @@ export default function StockDetail() {
 
       fundamentalsPollRef.current = setInterval(poll, 5000);
 
-      // Safety timeout: reset button after 5 minutes regardless
+      // Safety timeout
       safetyTimeoutRef.current = setTimeout(() => {
         stopPolling();
-        setSyncingFundamentals(false);
-        toast.error('Fundamental sync timed out. Check the Admin pipeline status page.');
+        setSyncingPrices(false);
+        toast.error('Sync timed out. Price data refreshed, but fundamentals pending.');
       }, 300000);
 
     } catch (error) {
-      console.error('Failed to trigger fundamental sync:', error);
-      toast.error('Failed to start fundamental sync. Please try again.');
-      setSyncingFundamentals(false);
+      console.error('Sync failed:', error);
+      toast.error('Failed to sync asset data. Please try again.');
+      setSyncingPrices(false);
     }
   };
 
@@ -241,18 +242,11 @@ export default function StockDetail() {
               <button
                 onClick={handleSyncDaily}
                 disabled={syncingPrices}
-                className="p-2.5 hover:bg-white/5 rounded-lg transition-colors text-slate-400 hover:text-emerald-500"
-                title="Sync Market Data"
+                className="flex items-center gap-2 px-4 py-2.5 hover:bg-white/5 rounded-lg transition-all text-slate-400 hover:text-primary group"
+                title="Sync Market Data (Prices, Ratios & Fundamentals)"
               >
-                <span className={`material-symbols-outlined text-xl ${syncingPrices ? 'animate-spin' : ''}`}>sync</span>
-              </button>
-              <button
-                onClick={handleSyncFundamentals}
-                disabled={syncingFundamentals}
-                className="p-2.5 hover:bg-white/5 rounded-lg transition-colors text-slate-400 hover:text-primary"
-                title="Sync Fundamentals"
-              >
-                <span className={`material-symbols-outlined text-xl ${syncingFundamentals ? 'animate-spin' : ''}`}>database</span>
+                <span className={`material-symbols-outlined text-xl ${syncingPrices ? 'animate-spin text-primary' : 'group-hover:rotate-180 transition-transform duration-700'}`}>sync</span>
+                <span className="text-[10px] font-black uppercase tracking-widest hidden md:block">{syncingPrices ? 'Synchronising...' : 'Sync Market Data'}</span>
               </button>
             </div>
             <div className="bg-surface-container-low border border-outline-variant/20 px-4 py-2 rounded-xl flex items-center gap-3">
@@ -441,14 +435,51 @@ export default function StockDetail() {
                   </div>
 
                   <section>
-                    <h3 className="font-headline text-3xl font-bold italic mb-8 tracking-tighter">Capitalization & Multiples</h3>
+                    <div className="flex items-center justify-between mb-8">
+                      <h3 className="font-headline text-3xl font-bold italic tracking-tighter text-white">Capitalization & Multiples</h3>
+                      <button
+                        onClick={() => setIsRatiosExpanded(!isRatiosExpanded)}
+                        className="flex items-center gap-2 group px-4 py-2 hover:bg-white/5 rounded-xl transition-all"
+                      >
+                        <span className="text-[10px] font-black text-primary uppercase tracking-[0.2em]">{isRatiosExpanded ? 'Standard View' : 'View Full Lattice'}</span>
+                        <span className={`material-symbols-outlined text-primary text-sm transition-transform duration-300 ${isRatiosExpanded ? 'rotate-180' : ''}`}>
+                          expand_more
+                        </span>
+                      </button>
+                    </div>
+                    
                     <div className="grid grid-cols-2 md:grid-cols-3 gap-1">
+                      {/* Core Ratios (Always Visible) */}
                       <DataCell label="Sector" value={detail.sector} />
                       <DataCell label="P/E Ratio" value={ratios?.pe_ratio?.toFixed(1) || '—'} />
                       <DataCell label="P/B Ratio" value={ratios?.pb_ratio?.toFixed(1) || '—'} />
                       <DataCell label="ROE" value={ratios?.roe ? `${ratios.roe.toFixed(1)}%` : '—'} />
                       <DataCell label="D/E Ratio" value={ratios?.debt_equity?.toFixed(2) || '—'} />
                       <DataCell label="Rating" value={detail.rating_label ? detail.rating_label.replace("_", " ") : '—'} highlight />
+
+                      {/* Extended Ratios (Shown on Expand) */}
+                      {isRatiosExpanded && (
+                        <>
+                          <DataCell label="Market Cap" value={ratios?.market_cap ? `₹${ratios.market_cap.toLocaleString('en-IN', { maximumFractionDigits: 0 })} Cr` : '—'} />
+                          <DataCell label="EPS" value={ratios?.eps?.toFixed(1) || '—'} />
+                          <DataCell label="Book Value PS" value={ratios?.book_value_ps?.toFixed(1) || '—'} />
+                          <DataCell label="P/S Ratio" value={ratios?.ps_ratio?.toFixed(1) || '—'} />
+                          <DataCell label="EV/EBITDA" value={ratios?.ev_ebitda?.toFixed(1) || '—'} />
+                          <DataCell label="ROCE" value={ratios?.roce?.toFixed(1) ? `${ratios.roce.toFixed(1)}%` : '—'} />
+                          <DataCell label="ROA" value={ratios?.roa?.toFixed(1) ? `${ratios.roa.toFixed(1)}%` : '—'} />
+                          <DataCell label="Net Margin" value={ratios?.pat_margin?.toFixed(1) ? `${ratios.pat_margin.toFixed(1)}%` : '—'} />
+                          <DataCell label="EBITDA Margin" value={ratios?.ebitda_margin?.toFixed(1) ? `${ratios.ebitda_margin.toFixed(1)}%` : '—'} />
+                          <DataCell label="Rev Growth" value={ratios?.revenue_growth?.toFixed(1) ? `${ratios.revenue_growth.toFixed(1)}%` : '—'} />
+                          <DataCell label="PAT Growth" value={ratios?.pat_growth?.toFixed(1) ? `${ratios.pat_growth.toFixed(1)}%` : '—'} />
+                          <DataCell label="EPS Growth" value={ratios?.eps_growth?.toFixed(1) ? `${ratios.eps_growth.toFixed(1)}%` : '—'} />
+                          <DataCell label="Div Yield" value={ratios?.dividend_yield?.toFixed(1) ? `${ratios.dividend_yield.toFixed(1)}%` : '—'} />
+                          <DataCell label="Interest Cov" value={ratios?.interest_cov?.toFixed(1) || '—'} />
+                          <DataCell label="Current Ratio" value={ratios?.current_ratio?.toFixed(2) || '—'} />
+                          <DataCell label="Piotroski Score" value={ratios?.piotroski_f_score || '—'} />
+                          <DataCell label="CFO / PAT" value={ratios?.cfo_to_pat?.toFixed(2) || '—'} />
+                          <DataCell label="Altman Z" value={ratios?.altman_z_score?.toFixed(2) || '—'} />
+                        </>
+                      )}
                     </div>
                   </section>
 

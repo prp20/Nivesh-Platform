@@ -36,6 +36,13 @@ async def fetch_financials_node(state: ScoringState, db: AsyncSession) -> Dict[s
         grouped_data = await fetch_statements(stock_id, period_type, db)
         total_count = sum(len(v) for v in grouped_data.values())
         
+        if total_count == 0:
+            return {
+                "status": "FAILED",
+                "error": f"No {period_type} financial statements found in database for stock_id {stock_id}. Run a fundamental scrape first.",
+                "logs": state.get("logs", []) + ["Fetch failed: 0 statements found"]
+            }
+
         return {
             "statements_data": grouped_data,
             "status": "FETCHED",

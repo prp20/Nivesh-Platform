@@ -448,11 +448,11 @@ def _compute_piotroski_f_score(pl: dict, bs: dict, cf: dict) -> Optional[int]:
     c = cf.get("data", {})
     
     def val(key, data_dict=d):
-        vals = data_dict.get(key, [])
+        vals = [v for v in data_dict.get(key, []) if v is not None and str(v).lower() != "n/a"]
         return vals[-1] if vals else None
 
     def prev(key, data_dict=d):
-        vals = data_dict.get(key, [])
+        vals = [v for v in data_dict.get(key, []) if v is not None and str(v).lower() != "n/a"]
         return vals[-2] if len(vals) >= 2 else None
 
     # Profitability (4 pts)
