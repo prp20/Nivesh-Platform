@@ -142,7 +142,8 @@ async def _compute_and_store(stock_id: int, symbol: str, nifty_history: list = N
     roc_14     = last(talib.ROC(cl, timeperiod=14))
     
     # VWAP (approximate: cumulative Σ(P*V)/ΣV)
-    vwap_all = np.cumsum(cl * vol) / np.cumsum(vol)
+    cum_vol = np.cumsum(vol)
+    vwap_all = np.where(cum_vol > 0, np.cumsum(cl * vol) / cum_vol, cl)
     vwap_20  = vwap_all[-1] if len(vwap_all) > 0 else None
 
     # ── Relative Metrics (vs Nifty) ───────────────────────────────────────────
