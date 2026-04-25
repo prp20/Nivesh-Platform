@@ -483,73 +483,62 @@ Write-Success "Stock tables ready."
 Write-Step "Step 7: Data Seeding (Optional)"
 
 Write-Host ""
-Write-Warn "Seeding fetches live data from AMFI, yfinance, and screener.in — this can take 30-120 minutes."
+Write-Warn "Seeding Master data from CSV is FAST (5 min). Syncing history takes 30-90 min."
 Write-Host ""
 Write-Host "  What data would you like to seed?"
-Write-Host "  [1] Mutual Fund data only          (benchmarks + funds + NAV history,  30-60 min)"
-Write-Host "  [2] Stock data only                (18 stocks + 5y price history,      20-40 min)"
-Write-Host "  [3] Stock data + Fundamentals      (stocks + screener.in data,         35-55 min)"
-Write-Host "  [4] Both MF + Stocks               (recommended for full platform,     50-100 min)"
-Write-Host "  [5] All  (MF + Stocks + Fundamentals)                                  65-115 min"
-Write-Host "  [6] Skip seeding                   (run seed scripts manually later)"
+Write-Host "  [1] Stocks (Master + 1y History)               (15-20 min)"
+Write-Host "  [2] Mutual Funds (Master + NAV Sync)           (35-60 min)"
+Write-Host "  [3] Master Data ONLY (Stocks + MF - CSVs)      (5-10 min)"
+Write-Host "  [4] History Sync (All Master + 5y History)     (60-90 min)"
+Write-Host "  [5] Full Production Sync (All + Fundamentals)  (70-110 min)"
+Write-Host "  [6] Skip seeding"
 Write-Host ""
 $SeedChoice = Read-Host "  Enter choice [6]"
 if ([string]::IsNullOrWhiteSpace($SeedChoice)) { $SeedChoice = "6" }
 
-$SeedMf           = $SeedChoice -in @("1","4","5")
-$SeedStocks       = $SeedChoice -in @("2","3","4","5")
-$SeedFundamentals = $SeedChoice -in @("3","5")
-
-if (-not ($SeedMf -or $SeedStocks -or $SeedFundamentals)) {
-  Write-Info "Skipping seeding."
-}
-
-if ($SeedMf) {
-  Start-TimedOp "Seeding benchmark indices"
-  & $PythonCmd scripts\seed_indices.py
-  End-TimedOp
-
-  Start-TimedOp "Seeding fund master records"
-  & $PythonCmd scripts\seed_funds.py
-  End-TimedOp
-
-  Write-Warn "NAV sync fetches data for every active fund — expected 30-60 minutes."
-  Start-TimedOp "NAV sync + metrics computation"
-  & $PythonCmd scripts\sync_data.py
-  End-TimedOp
-}
-
-if ($SeedStocks) {
-  Write-Host ""
-  Write-Host "  How many years of price history to backfill?" -ForegroundColor White
-  Write-Host "  [1] 1 year   [2] 2 years   [5] 5 years   [10] 10 years   [M] Max (all available)"
-  $BackfillChoice = Read-Host "  Enter choice [5]"
-  if ([string]::IsNullOrWhiteSpace($BackfillChoice)) { $BackfillChoice = "5" }
-  $BackfillPeriod = switch ($BackfillChoice.ToLower()) {
-    "1"   { "1y"  }
-    "2"   { "2y"  }
-    "10"  { "10y" }
-    "m"   { "max" }
-    "max" { "max" }
-    default { "5y" }
+switch ($SeedChoice) {
+  "1" {
+    Start-TimedOp "Seeding Markets & Stocks (Master)"
+    & $PythonCmd scripts\seed\seed_master_data.py stocks
+    End-TimedOp
+    
+    Start-TimedOp "Backfilling Stock & Index Prices (1y)"
+    & $PythonCmd scripts\seed\backfill_prices.py 1y
+    End-TimedOp
   }
-  Write-Info "Using backfill period: $BackfillPeriod"
-
-  Start-TimedOp "Seeding stock master (18 large-cap stocks + 3 indices)"
-  & $PythonCmd scripts\seed\seed_stock_master.py
-  End-TimedOp
-
-  Write-Warn "Price backfill ($BackfillPeriod) fetches OHLCV from yfinance — expected 20-40 minutes."
-  Start-TimedOp "Price history backfill ($BackfillPeriod)"
-  & $PythonCmd scripts\seed\backfill_prices.py $BackfillPeriod
-  End-TimedOp
-}
-
-if ($SeedFundamentals) {
-  Write-Warn "Fundamental scraping from screener.in — expected 5-15 minutes."
-  Start-TimedOp "Seeding fundamental data"
-  & $PythonCmd scripts\seed\seed_fundamentals.py
-  End-TimedOp
+  "2" {
+    Start-TimedOp "Seeding Markets & Mutual Funds (Master)"
+    & $PythonCmd scripts\seed\seed_master_data.py funds
+    End-TimedOp
+    
+    Write-Warn "Syncing NAV history (30-60 min). Do not interrupt."
+    Start-TimedOp "Syncing NAV history"
+    & $PythonCmd scripts\sync_data.py
+    End-TimedOp
+  }
+  "3" {
+    Start-TimedOp "Seeding All Master Data from CSV"
+    & $PythonCmd scripts\seed\seed_master_data.py all
+    End-TimedOp
+  }
+  "4" {
+    Write-Info "Running History Sync (All Master + 5y History)."
+    & $PythonCmd scripts\seed\seed_master_data.py all
+    & $PythonCmd scripts\sync_data.py
+    & $PythonCmd scripts\seed\backfill_prices.py 5y
+    Write-Success "History sync complete."
+  }
+  "5" {
+    Write-Info "Running Full Production Sync (All + Fundamentals)."
+    & $PythonCmd scripts\seed\seed_master_data.py all
+    & $PythonCmd scripts\sync_data.py
+    & $PythonCmd scripts\seed\backfill_prices.py 5y
+    & $PythonCmd scripts\seed\seed_fundamentals.py
+    Write-Success "Full sync complete."
+  }
+  Default {
+    Write-Info "Skipping seeding."
+  }
 }
 
 # =============================================================================

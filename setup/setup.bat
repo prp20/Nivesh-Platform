@@ -478,80 +478,55 @@ echo [OK]    Stock tables ready.
 echo.
 echo [STEP 7] Data Seeding (Optional)
 echo.
-echo [WARN]  Seeding fetches live data from AMFI, yfinance, and screener.in -- this can take 30-120 minutes.
+echo [WARN]  Seeding Master data from CSV is FAST (5 min). Syncing history takes 30-90 min.
 echo.
 echo   What data would you like to seed?
-echo   [1] Mutual Fund data only          ^(benchmarks + funds + NAV history,  30-60 min^)
-echo   [2] Stock data only                ^(18 stocks + 5y price history,      20-40 min^)
-echo   [3] Stock data + Fundamentals      ^(stocks + screener.in data,         35-55 min^)
-echo   [4] Both MF + Stocks               ^(recommended for full platform,     50-100 min^)
-echo   [5] All ^(MF + Stocks + Fundamentals^)                                   65-115 min
-echo   [6] Skip seeding                   ^(run seed scripts manually later^)
+echo   [1] Stocks (Master + 1y History)               ^(15-20 min^)
+echo   [2] Mutual Funds (Master + NAV Sync)           ^(35-60 min^)
+echo   [3] Master Data ONLY (Stocks + MF - CSVs)      ^(5-10 min^)
+echo   [4] History Sync (All Master + 5y History)     ^(60-90 min^)
+echo   [5] Full Production Sync (All + Fundamentals)  ^(70-110 min^)
+echo   [6] Skip seeding
 echo.
 set /p SEED_CHOICE="  Enter choice [6]: "
 if "!SEED_CHOICE!"=="" set SEED_CHOICE=6
 
-set SEED_MF=0
-set SEED_STOCKS=0
-set SEED_FUNDAMENTALS=0
-if "!SEED_CHOICE!"=="1" set SEED_MF=1
-if "!SEED_CHOICE!"=="2" set SEED_STOCKS=1
+if "!SEED_CHOICE!"=="1" (
+  echo [INFO]  Seeding Markets ^& Stocks (Master)...
+  python scripts\seed\seed_master_data.py stocks
+  echo [INFO]  Backfilling Stock ^& Index Prices (1y)...
+  python scripts\seed\backfill_prices.py 1y
+  echo [OK]    Stocks seeded and backfilled.
+)
+if "!SEED_CHOICE!"=="2" (
+  echo [INFO]  Seeding Markets ^& Mutual Funds (Master)...
+  python scripts\seed\seed_master_data.py funds
+  echo [WARN]  Syncing NAV history (30-60 min). Do not interrupt.
+  python scripts\sync_data.py
+  echo [OK]    Mutual Funds seeded and synced.
+)
 if "!SEED_CHOICE!"=="3" (
-  set SEED_STOCKS=1
-  set SEED_FUNDAMENTALS=1
+  echo [INFO]  Seeding All Master Data from CSV...
+  python scripts\seed\seed_master_data.py all
+  echo [OK]    Master Data seeded.
 )
 if "!SEED_CHOICE!"=="4" (
-  set SEED_MF=1
-  set SEED_STOCKS=1
+  echo [INFO]  Running History Sync (All Master + 5y History).
+  python scripts\seed\seed_master_data.py all
+  python scripts\sync_data.py
+  python scripts\seed\backfill_prices.py 5y
+  echo [OK]    History sync complete.
 )
 if "!SEED_CHOICE!"=="5" (
-  set SEED_MF=1
-  set SEED_STOCKS=1
-  set SEED_FUNDAMENTALS=1
-)
-
-if "!SEED_MF!"=="1" (
-  echo [INFO]  Seeding benchmark indices...
-  python scripts\seed_indices.py
-  echo [OK]    Benchmark indices seeded.
-
-  echo [INFO]  Seeding fund master records...
-  python scripts\seed_funds.py
-  echo [OK]    Fund master seeded.
-
-  echo [INFO]  Fetching NAV history and computing metrics ^(30-60 minutes^)...
+  echo [INFO]  Running Full Production Sync (All + Fundamentals).
+  python scripts\seed\seed_master_data.py all
   python scripts\sync_data.py
-  echo [OK]    Fund NAV history and metrics complete.
-)
-
-if "!SEED_STOCKS!"=="1" (
-  echo.
-  echo   How many years of price history to backfill?
-  echo   [1] 1 year   [2] 2 years   [5] 5 years   [10] 10 years   [M] Max ^(all available^)
-  set /p BACKFILL_CHOICE="  Enter choice [5]: "
-  if "!BACKFILL_CHOICE!"=="" set BACKFILL_CHOICE=5
-  set BACKFILL_PERIOD=5y
-  if "!BACKFILL_CHOICE!"=="1"  set BACKFILL_PERIOD=1y
-  if "!BACKFILL_CHOICE!"=="2"  set BACKFILL_PERIOD=2y
-  if "!BACKFILL_CHOICE!"=="10" set BACKFILL_PERIOD=10y
-  if /i "!BACKFILL_CHOICE!"=="m"   set BACKFILL_PERIOD=max
-  if /i "!BACKFILL_CHOICE!"=="max" set BACKFILL_PERIOD=max
-  echo [INFO]  Using backfill period: !BACKFILL_PERIOD!
-
-  echo [INFO]  Seeding stock master...
-  python scripts\seed\seed_stock_master.py
-  echo [OK]    Stock master seeded.
-
-  echo [WARN]  Price backfill ^(!BACKFILL_PERIOD!^) fetches OHLCV from yfinance -- expected 20-40 minutes.
-  echo [INFO]  Do not interrupt this step.
-  python scripts\seed\backfill_prices.py !BACKFILL_PERIOD!
-  echo [OK]    Stock price history backfilled.
-)
-
-if "!SEED_FUNDAMENTALS!"=="1" (
-  echo [INFO]  Seeding fundamental data from screener.in ^(5-15 minutes^)...
+  python scripts\seed\backfill_prices.py 5y
   python scripts\seed\seed_fundamentals.py
-  echo [OK]    Fundamental data seeded.
+  echo [OK]    Full sync complete.
+)
+if "!SEED_CHOICE!"=="6" (
+  echo [INFO]  Skipping seeding.
 )
 
 :: =============================================================================

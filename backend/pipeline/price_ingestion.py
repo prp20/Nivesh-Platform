@@ -107,6 +107,34 @@ async def run_backfill(period: str = "5y", progress_callback=None):
             )
             # Polite delay for backfill to avoid overwhelming external API
             await asyncio.sleep(2)
+async def run_index_backfill(period: str = "5y", progress_callback=None):
+    """
+    Fetch full price history for all indices in benchmark_master.
+    
+    Args:
+        period: Time period to backfill ("1y", "2y", "3y", "5y", etc.)
+    """
+    indices = await _fetch_benchmark_indices()
+    if not indices:
+        logger.info("No indices found in benchmark_master to backfill.")
+        return
+
+    async with audit_job("index_backfill", records_in=len(indices)) as audit:
+        # For indices, we usually have few (10-20), so we can do them in one batch
+        # but for safety against timeout, we use the same chunking if needed.
+        count = await _ingest_benchmarks_chunk(indices, period=period)
+        audit.records_out = count
+        await audit.update_progress(len(indices))
+        
+        if progress_callback:
+            if asyncio.iscoroutinefunction(progress_callback):
+                await progress_callback(len(indices), len(indices), len(indices))
+            else:
+                progress_callback(len(indices), len(indices), len(indices))
+
+        logger.info(f"Index backfill complete: {count} rows for {len(indices)} indices")
+
+
 async def run_price_sync_one(symbol: str, period: str = "1y") -> int:
     """Fetches full price history for a single stock to correct data errors."""
     async with raw_connection() as conn:

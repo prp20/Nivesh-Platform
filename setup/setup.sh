@@ -476,12 +476,12 @@ echo ""
 warn "Seeding fetches live data from AMFI, yfinance, and screener.in — this can take 30-120 minutes."
 echo ""
 echo "  What data would you like to seed?"
-echo "  [1] Mutual Fund data only          (benchmarks + funds + NAV history,  30-60 min)"
-echo "  [2] Stock data only                (18 stocks + max price history,      20-40 min)"
-echo "  [3] Stock data + Fundamentals      (stocks + screener.in data,         35-55 min)"
-echo "  [4] Both MF + Stocks               (recommended for full platform,     50-100 min)"
-echo "  [5] All  (MF + Stocks + Fundamentals)                                  65-115 min"
-echo "  [6] Skip seeding                   (run seed scripts manually later)"
+echo "  [1] Mutual Fund data only          [benchmarks + funds + NAV history,  30-60 min]"
+echo "  [2] Stock data only                [18 stocks + max price history,      20-40 min]"
+echo "  [3] Stock data + Fundamentals      [stocks + screener.in data,         35-55 min]"
+echo "  [4] Both MF + Stocks               [recommended for full platform,     50-100 min]"
+echo "  [5] All  [MF + Stocks + Fundamentals]                                  65-115 min"
+echo "  [6] Skip seeding                   [run seed scripts manually later]"
 echo ""
 read -rp "  Enter choice [6]: " SEED_CHOICE
 SEED_CHOICE="${SEED_CHOICE:-6}"
@@ -513,7 +513,7 @@ fi
 if [[ "$SEED_STOCKS" == true ]]; then
   echo ""
   echo "  How many years of price history to backfill?"
-  echo "  [1] 1 year   [2] 2 years   [5] 5 years   [10] 10 years   [M] Max (all available)"
+  echo "  [1] 1 year   [2] 2 years   [5] 5 years   [10] 10 years   [M] Max [all available]"
   read -rp "  Enter choice [5]: " BACKFILL_CHOICE
   BACKFILL_CHOICE="${BACKFILL_CHOICE:-5}"
   case "${BACKFILL_CHOICE,,}" in
@@ -525,11 +525,11 @@ if [[ "$SEED_STOCKS" == true ]]; then
   esac
   info "Using backfill period: ${BACKFILL_PERIOD}"
 
-  time_run "Seeding stock master (18 large-cap stocks + 3 indices)" \
+  time_run "Seeding stock master [18 large-cap stocks + 3 indices]" \
     python3 scripts/seed/seed_stock_master.py
 
-  warn "Price backfill (${BACKFILL_PERIOD}) fetches OHLCV from yfinance — expected 20–40 minutes."
-  time_run "Price history backfill (${BACKFILL_PERIOD})" \
+  warn "Price backfill [${BACKFILL_PERIOD}] fetches OHLCV from yfinance — expected 20–40 minutes."
+  time_run "Price history backfill [${BACKFILL_PERIOD}]" \
     python3 scripts/seed/backfill_prices.py "${BACKFILL_PERIOD}"
 fi
 
@@ -546,11 +546,11 @@ step "Step 8: Building Frontend"
 
 cd "${FRONTEND_DIR}"
 
-info "Installing frontend dependencies (npm install)..."
+info "Installing frontend dependencies [npm install]..."
 npm install --legacy-peer-deps
 success "Frontend dependencies installed."
 
-info "Building frontend for production (npm run build)..."
+info "Building frontend for production [npm run build]..."
 npm run build
 if [[ ! -d "${FRONTEND_DIR}/dist" ]]; then
   error "Frontend build failed. Check npm run build output above."
@@ -668,7 +668,7 @@ echo -e "${YELLOW}  Use the admin username and password you set in Step 4.${NC}"
 if [[ "${TALIB_PY_INSTALLED:-false}" == false ]]; then
   echo ""
   echo -e "${YELLOW}  [NOTE] TA-Lib not installed — technical analysis features unavailable.${NC}"
-  echo -e "${YELLOW}         Run: pip install TA-Lib   (after installing the C library)${NC}"
+  echo -e "${YELLOW}         Run: pip install TA-Lib   [after installing the C library]${NC}"
 fi
 echo ""
 
@@ -678,4 +678,4 @@ exec uvicorn app.main:app \
   --port "${NIVESH_PORT:-8000}" \
   --workers "${NIVESH_WORKERS:-1}" \
   --log-level info
-  # Tip: add --reload above for development hot-reload (not recommended for production)
+  # Tip: add --reload above for development hot-reload [not recommended for production]
