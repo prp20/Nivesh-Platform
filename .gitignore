@@ -15,4 +15,4 @@ backend/__pycache__
 CLAUDE.md
 .claude/
 memory/*
-local_tests/*
+local_tests/*.worktrees/
