@@ -161,16 +161,32 @@ New Alembic migration: `002_add_fund_analysis.py`
 
 ## LLM Verdict Node
 
+### Single prompts file
+
+**All prompts live exclusively in `mf_analyser/prompts/prompts.py`.** No prompt strings exist anywhere else in the codebase. `verdict_nodes.py` imports and calls functions from this file — it contains no prompt text itself.
+
+This means an end user who wants to refine tone, add constraints, change the output schema, or swap analyst persona only ever edits one file.
+
+`prompts.py` exports three things:
+
+```python
+SYSTEM_PROMPT: str                       # analyst persona + JSON-only instruction
+def build_user_prompt(state: MFAnalysisState) -> str   # assembles the data block
+FALLBACK_VERDICT_TEMPLATE: str           # used when Groq call fails
+```
+
 ### Prompt structure
 
-**System:** `"You are a SEBI-registered mutual fund analyst. Analyze the data and return a JSON object only — no prose outside JSON."`
+**`SYSTEM_PROMPT`:** `"You are a SEBI-registered mutual fund analyst. Analyze the data and return a JSON object only — no prose outside JSON."`
 
-**User:** Structured block with 3 sections:
+**`build_user_prompt()`:** Assembles a structured block with 3 sections:
 1. Fund identity (name, category, AMC, AUM, expense ratio)
 2. Performance & risk metrics (CAGR, Sharpe, Sortino, alpha, drawdown, beta, capture ratios)
 3. Peer context section — included only if `peers_available=True` (rank, percentile, category medians)
 
 **Required JSON keys:** `verdict_label`, `verdict_text`, `key_strengths` (list), `key_risks` (list)
+
+**`FALLBACK_VERDICT_TEMPLATE`:** Plain-text template used by the deterministic fallback when the LLM call fails. Interpolated with metric values at runtime.
 
 ### Deterministic fallback
 
@@ -207,7 +223,9 @@ backend/
 │   │   ├── peer_nodes.py     # fetch_peers_node, rank_peers_node, skip_peers_node
 │   │   └── verdict_nodes.py  # generate_verdict_node (Groq LLM call)
 │   └── prompts/
-│       └── verdict_prompt.py # system + user prompt template builders
+│       └── prompts.py        # ALL prompts in one file — system prompt, user
+│                             # prompt template, deterministic fallback text.
+│                             # End users modify only this file to tune the LLM.
 │
 ├── app/
 │   ├── models.py             # + FundAnalysis, 3 new cols on FundMetrics
