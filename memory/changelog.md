@@ -1,5 +1,26 @@
 # Changelog
 
+## 2026-04-21 — Session: v2.0.0 release notes, branch merge verification, GitHub issue triage
+
+### Branch Merge Checks
+- Verified `feature/fundamental_agentic_analysis` → `main`: no conflicts, clean merge
+- Verified `feature/fundamental_agentic_analysis` → `dev`: no conflicts, clean merge
+- Verified `dev` → `main`: no conflicts, clean merge
+- Confirmed PRs #55 and #56 already merged; main at commit 889a21b
+
+### Files Modified
+- `RELEASE_NOTES.md` — v2.0.0 "The Intelligence Layer" release notes prepended (covers AI scoring engine, 250+ stocks, frontend overhaul, backend hardening, setup improvements, docs overhaul, breaking changes, upgrade instructions)
+
+### GitHub Issues Closed
+- #17 closed: Deterministic LangGraph fundamental analysis (delivered in v2.0.0)
+- #54 closed: Update StockDetail display with correct insights (StockDetail.jsx redesigned)
+- #19 closed: Clean mockup design for every page (full frontend overhaul + Stitch designs)
+
+### Memory Updated
+- `memory/project_status_2026_04_21.md` — new project status record for v2.0.0
+- `memory/changelog.md` — updated (this entry)
+- `memory/MEMORY.md` — index updated with v2.0.0 status entry
+
 ## 2026-04-16 — Session: Auth bypass removal, setup script fixes, fundamentals UX
 
 ### Issues Fixed

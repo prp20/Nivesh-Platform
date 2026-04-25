@@ -495,7 +495,10 @@ async def trigger_fundamental_scoring_one(
     result = await run_fundamental_scorer(stock.id, sym, db, period_type=period_type, score_version=score_version)
     
     if result.get("status") == "FAILED":
-        raise HTTPException(status_code=500, detail=f"Scoring failed: {result.get('error')}")
+        error_msg = result.get("error", "Unknown error")
+        # Distinguish between data issues (422) and code/infra issues (500)
+        status_code = 422 if any(msg in error_msg for msg in ["No annual financial", "Insufficient history"]) else 500
+        raise HTTPException(status_code=status_code, detail=f"Scoring failed: {error_msg}")
         
     return result
 

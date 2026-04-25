@@ -161,57 +161,10 @@ if /i "!DO_CLONE!"=="y" (
 )
 
 :: =============================================================================
-:: STEP 3 — PostgreSQL setup
+:: STEP 3 — Python virtual environment + dependencies
 :: =============================================================================
 echo.
-echo [STEP 3] PostgreSQL Setup
-echo.
-echo   How do you want to connect to PostgreSQL?
-echo   [1] Docker  -- auto-managed, starts postgres:16-alpine (default)
-echo   [2] External -- I will provide my own connection URL
-echo.
-set /p PG_CHOICE="  Enter choice [1]: "
-if "%PG_CHOICE%"=="" set PG_CHOICE=1
-
-set USE_DOCKER=0
-if "%PG_CHOICE%"=="2" (
-  echo.
-  echo   -- URL format examples -------------------------------------------------------
-  echo   Local / self-hosted PostgreSQL ^(port 5432^):
-  echo     postgresql+asyncpg://user:password@localhost:5432/dbname
-  echo.
-  echo   Supabase - use Session Pooler ^(port 6543, NOT 5432^):
-  echo     postgresql+asyncpg://postgres.^<ref^>:^<password^>@aws-0-^<region^>.pooler.supabase.com:6543/postgres
-  echo   [WARN]  asyncpg is NOT compatible with Supabase port 5432 ^(PgBouncer mode^).
-  echo   [WARN]  Always use port 6543 ^(Session Pooler^) for Supabase.
-  echo   ---------------------------------------------------------------------------
-  echo.
-  set /p DATABASE_URL="  PostgreSQL URL: "
-  if "!DATABASE_URL!"=="" (
-    echo [ERROR] No URL entered. Aborting.
-    pause
-    exit /b 1
-  )
-  echo [OK]    Using external PostgreSQL URL.
-) else (
-  set DATABASE_URL=postgresql+asyncpg://nivesh_admin:nivesh_password_123@localhost:5432/nivesh_db
-  set USE_DOCKER=1
-  echo [OK]    Will use Docker-managed PostgreSQL.
-
-  docker --version >nul 2>&1
-  if errorlevel 1 (
-    echo [ERROR] Docker not found. Install Docker Desktop from https://docker.com
-    echo         Or choose option [2] and provide an external PostgreSQL URL.
-    pause
-    exit /b 1
-  )
-)
-
-:: =============================================================================
-:: STEP 4 — Python virtual environment + dependencies
-:: =============================================================================
-echo.
-echo [STEP 4] Python Virtual Environment
+echo [STEP 3] Python Virtual Environment
 echo.
 
 cd /d "%PROJECT_ROOT%"
@@ -269,10 +222,53 @@ del "%TEMP%\req_temp.txt" /q
 echo [OK]    Python dependencies installed.
 
 :: =============================================================================
-:: STEP 5 — Environment Configuration
+:: STEP 4 — Environment Configuration
 :: =============================================================================
 echo.
-echo [STEP 5] Environment Configuration
+echo [STEP 4] Environment Configuration
+echo.
+
+:: ── PostgreSQL Setup ──────────────────────────────────────────────────────────
+echo   How do you want to connect to PostgreSQL?
+echo   [1] Docker  -- auto-managed, starts postgres:16-alpine (default)
+echo   [2] External -- I will provide my own connection URL
+echo.
+set /p PG_CHOICE="  Enter choice [1]: "
+if "!PG_CHOICE!"=="" set PG_CHOICE=1
+
+set USE_DOCKER=0
+if "!PG_CHOICE!"=="2" (
+  echo.
+  echo   -- URL format examples -------------------------------------------------------
+  echo   Local / self-hosted PostgreSQL ^(port 5432^):
+  echo     postgresql+asyncpg://user:password@localhost:5432/dbname
+  echo.
+  echo   Supabase - use Session Pooler ^(port 6543, NOT 5432^):
+  echo     postgresql+asyncpg://postgres.^<ref^>:^<password^>@aws-0-^<region^>.pooler.supabase.com:6543/postgres
+  echo   [WARN]  asyncpg is NOT compatible with Supabase port 5432 ^(PgBouncer mode^).
+  echo   [WARN]  Always use port 6543 ^(Session Pooler^) for Supabase.
+  echo   ---------------------------------------------------------------------------
+  echo.
+  set /p DATABASE_URL="  PostgreSQL URL: "
+  if "!DATABASE_URL!"=="" (
+    echo [ERROR] No URL entered. Aborting.
+    pause
+    exit /b 1
+  )
+  echo [OK]    Using external PostgreSQL URL.
+) else (
+  set DATABASE_URL=postgresql+asyncpg://nivesh_admin:nivesh_password_123@localhost:5432/nivesh_db
+  set USE_DOCKER=1
+  echo [OK]    Will use Docker-managed PostgreSQL.
+
+  docker --version >nul 2>&1
+  if errorlevel 1 (
+    echo [ERROR] Docker not found. Install Docker Desktop from https://docker.com
+    echo         Or choose option [2] and provide an external PostgreSQL URL.
+    pause
+    exit /b 1
+  )
+)
 echo.
 
 :: Generate cryptographically secure SECRET_KEY using Python
@@ -373,11 +369,11 @@ if "%WRITE_FRONTEND_ENV%"=="1" (
 )
 
 :: =============================================================================
-:: STEP 6 — Start Docker PostgreSQL (if chosen)
+:: STEP 5 — Start Docker PostgreSQL (if chosen)
 :: =============================================================================
 echo.
 if "%USE_DOCKER%"=="1" (
-  echo [STEP 6] Starting Docker PostgreSQL
+  echo [STEP 5] Starting Docker PostgreSQL
   echo.
   echo [INFO]  Starting PostgreSQL via Docker Compose...
   docker compose -f "%COMPOSE_FILE%" up -d postgres
@@ -407,15 +403,15 @@ if "%USE_DOCKER%"=="1" (
     exit /b 1
   )
 ) else (
-  echo [STEP 6] PostgreSQL (External -- skipping Docker)
+  echo [STEP 5] PostgreSQL (External -- skipping Docker)
   echo [INFO]  Using your external PostgreSQL. Ensure it is reachable.
 )
 
 :: =============================================================================
-:: STEP 7 — Database Setup
+:: STEP 6 — Database Setup
 :: =============================================================================
 echo.
-echo [STEP 7] Database Setup
+echo [STEP 6] Database Setup
 echo.
 
 cd /d "%BACKEND_DIR%"
@@ -477,92 +473,67 @@ if errorlevel 1 (
 echo [OK]    Stock tables ready.
 
 :: =============================================================================
-:: STEP 8 — Optional seeding
+:: STEP 7 — Data Seeding (Optional)
 :: =============================================================================
 echo.
-echo [STEP 8] Data Seeding (Optional)
+echo [STEP 7] Data Seeding (Optional)
 echo.
-echo [WARN]  Seeding fetches live data from AMFI, yfinance, and screener.in -- this can take 30-120 minutes.
+echo [WARN]  Seeding Master data from CSV is FAST (5 min). Syncing history takes 30-90 min.
 echo.
 echo   What data would you like to seed?
-echo   [1] Mutual Fund data only          ^(benchmarks + funds + NAV history,  30-60 min^)
-echo   [2] Stock data only                ^(18 stocks + 5y price history,      20-40 min^)
-echo   [3] Stock data + Fundamentals      ^(stocks + screener.in data,         35-55 min^)
-echo   [4] Both MF + Stocks               ^(recommended for full platform,     50-100 min^)
-echo   [5] All ^(MF + Stocks + Fundamentals^)                                   65-115 min
-echo   [6] Skip seeding                   ^(run seed scripts manually later^)
+echo   [1] Stocks (Master + 1y History)               ^(15-20 min^)
+echo   [2] Mutual Funds (Master + NAV Sync)           ^(35-60 min^)
+echo   [3] Master Data ONLY (Stocks + MF - CSVs)      ^(5-10 min^)
+echo   [4] History Sync (All Master + 5y History)     ^(60-90 min^)
+echo   [5] Full Production Sync (All + Fundamentals)  ^(70-110 min^)
+echo   [6] Skip seeding
 echo.
 set /p SEED_CHOICE="  Enter choice [6]: "
 if "!SEED_CHOICE!"=="" set SEED_CHOICE=6
 
-set SEED_MF=0
-set SEED_STOCKS=0
-set SEED_FUNDAMENTALS=0
-if "!SEED_CHOICE!"=="1" set SEED_MF=1
-if "!SEED_CHOICE!"=="2" set SEED_STOCKS=1
+if "!SEED_CHOICE!"=="1" (
+  echo [INFO]  Seeding Markets ^& Stocks (Master)...
+  python scripts\seed\seed_master_data.py stocks
+  echo [INFO]  Backfilling Stock ^& Index Prices (1y)...
+  python scripts\seed\backfill_prices.py 1y
+  echo [OK]    Stocks seeded and backfilled.
+)
+if "!SEED_CHOICE!"=="2" (
+  echo [INFO]  Seeding Markets ^& Mutual Funds (Master)...
+  python scripts\seed\seed_master_data.py funds
+  echo [WARN]  Syncing NAV history (30-60 min). Do not interrupt.
+  python scripts\sync_data.py
+  echo [OK]    Mutual Funds seeded and synced.
+)
 if "!SEED_CHOICE!"=="3" (
-  set SEED_STOCKS=1
-  set SEED_FUNDAMENTALS=1
+  echo [INFO]  Seeding All Master Data from CSV...
+  python scripts\seed\seed_master_data.py all
+  echo [OK]    Master Data seeded.
 )
 if "!SEED_CHOICE!"=="4" (
-  set SEED_MF=1
-  set SEED_STOCKS=1
+  echo [INFO]  Running History Sync (All Master + 5y History).
+  python scripts\seed\seed_master_data.py all
+  python scripts\sync_data.py
+  python scripts\seed\backfill_prices.py 5y
+  echo [OK]    History sync complete.
 )
 if "!SEED_CHOICE!"=="5" (
-  set SEED_MF=1
-  set SEED_STOCKS=1
-  set SEED_FUNDAMENTALS=1
-)
-
-if "!SEED_MF!"=="1" (
-  echo [INFO]  Seeding benchmark indices...
-  python scripts\seed_indices.py
-  echo [OK]    Benchmark indices seeded.
-
-  echo [INFO]  Seeding fund master records...
-  python scripts\seed_funds.py
-  echo [OK]    Fund master seeded.
-
-  echo [INFO]  Fetching NAV history and computing metrics ^(30-60 minutes^)...
+  echo [INFO]  Running Full Production Sync (All + Fundamentals).
+  python scripts\seed\seed_master_data.py all
   python scripts\sync_data.py
-  echo [OK]    Fund NAV history and metrics complete.
-)
-
-if "!SEED_STOCKS!"=="1" (
-  echo.
-  echo   How many years of price history to backfill?
-  echo   [1] 1 year   [2] 2 years   [5] 5 years   [10] 10 years   [M] Max ^(all available^)
-  set /p BACKFILL_CHOICE="  Enter choice [5]: "
-  if "!BACKFILL_CHOICE!"=="" set BACKFILL_CHOICE=5
-  set BACKFILL_PERIOD=5y
-  if "!BACKFILL_CHOICE!"=="1"  set BACKFILL_PERIOD=1y
-  if "!BACKFILL_CHOICE!"=="2"  set BACKFILL_PERIOD=2y
-  if "!BACKFILL_CHOICE!"=="10" set BACKFILL_PERIOD=10y
-  if /i "!BACKFILL_CHOICE!"=="m"   set BACKFILL_PERIOD=max
-  if /i "!BACKFILL_CHOICE!"=="max" set BACKFILL_PERIOD=max
-  echo [INFO]  Using backfill period: !BACKFILL_PERIOD!
-
-  echo [INFO]  Seeding stock master...
-  python scripts\seed\seed_stock_master.py
-  echo [OK]    Stock master seeded.
-
-  echo [WARN]  Price backfill ^(!BACKFILL_PERIOD!^) fetches OHLCV from yfinance -- expected 20-40 minutes.
-  echo [INFO]  Do not interrupt this step.
-  python scripts\seed\backfill_prices.py !BACKFILL_PERIOD!
-  echo [OK]    Stock price history backfilled.
-)
-
-if "!SEED_FUNDAMENTALS!"=="1" (
-  echo [INFO]  Seeding fundamental data from screener.in ^(5-15 minutes^)...
+  python scripts\seed\backfill_prices.py 5y
   python scripts\seed\seed_fundamentals.py
-  echo [OK]    Fundamental data seeded.
+  echo [OK]    Full sync complete.
+)
+if "!SEED_CHOICE!"=="6" (
+  echo [INFO]  Skipping seeding.
 )
 
 :: =============================================================================
-:: STEP 9 — Build frontend
+:: STEP 8 — Building Frontend
 :: =============================================================================
 echo.
-echo [STEP 9] Building Frontend
+echo [STEP 8] Building Frontend
 echo.
 
 cd /d "%FRONTEND_DIR%"
@@ -591,10 +562,10 @@ if not exist "%FRONTEND_DIR%\dist" (
 echo [OK]    Frontend built and ready at %FRONTEND_DIR%\dist
 
 :: =============================================================================
-:: STEP 10 — Install Ta-lib (Moved to last)
+:: STEP 9 — Install Ta-lib (Moved to last)
 :: =============================================================================
 echo.
-echo [STEP 10] Install Ta-lib
+echo [STEP 9] Install Ta-lib
 echo.
 echo   TA-Lib ^>= 0.6.8 includes pre-built Windows wheels.
 echo   pip install will be attempted. If it fails, you have these options:
@@ -613,10 +584,10 @@ if errorlevel 1 (
 echo [OK]    TA-Lib installed.
 
 :: =============================================================================
-:: STEP 11 — Start API server
+:: STEP 10 — Start API server
 :: =============================================================================
 echo.
-echo [STEP 11] Starting FastAPI Server
+echo [STEP 10] Starting FastAPI Server
 echo.
 echo   Setup complete! Starting Nivesh API...
 echo.

@@ -140,7 +140,7 @@ async def _store_pl(stock_id: int, raw_pl: dict, checksum: str, conn):
         logger.warning(f"stock_id={stock_id} P&L missing keys: {missing}")
         # Store anyway — partial data is better than no data
         # But alert if REQUIRED fields are missing
-        if "revenue" not in normalised["data"] and "net_profit" not in normalised["data"]:
+        if "revenue" not in normalised["data"] and "sales" not in normalised["data"] and "net_profit" not in normalised["data"]:
             logger.error(f"stock_id={stock_id} P&L critically incomplete — skipping")
             return
 

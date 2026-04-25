@@ -249,10 +249,18 @@ class ScreenerFilterInput(BaseModel):
     # Quality filters
     min_cfo_to_pat: Optional[float] = None
 
-    # Stock filters
-    sector: Optional[str] = None
-    market_cap_cat: Optional[str] = None
-    rating_label: Optional[str] = None
+    # Fundamental Filters (Advanced)
+    min_roic: Optional[float] = None
+    min_ev_ebitda: Optional[float] = None
+    max_ev_ebitda: Optional[float] = None
+    min_piotroski: Optional[int] = None
+    min_fcf_yield: Optional[float] = None
+
+    # Technical Filters (Advanced)
+    min_beta: Optional[float] = None
+    max_beta: Optional[float] = None
+    min_rs_6m: Optional[float] = None
+    min_volume_ratio: Optional[float] = None
 
     # Pagination
     page: int = 1
@@ -330,6 +338,20 @@ class StockScreenerResult(BaseModel):
     rating_label: Optional[str] = None
     total_score: Optional[float] = None
 
+    # New Fundamental Metrics
+    ev_ebitda: Optional[float] = None
+    roic: Optional[float] = None
+    fcf_yield: Optional[float] = None
+    piotroski_f_score: Optional[int] = None
+    altman_z_score: Optional[float] = None
+
+    # New Technical Metrics
+    beta_1y: Optional[float] = None
+    rs_6m_vs_nifty: Optional[float] = None
+    pct_from_52w_high: Optional[float] = None
+    pct_from_52w_low: Optional[float] = None
+    volume_ratio: Optional[float] = None
+
 
 class ScreenerResponse(BaseModel):
     """Response for screener endpoint."""
@@ -396,10 +418,29 @@ class StockDetailResult(BaseModel):
     total_score: Optional[float] = None
     fundamental_score: Optional[float] = None
     technical_score: Optional[float] = None
+    
+    # Technicals
     rsi_14: Optional[float] = None
     macd_hist: Optional[float] = None
     sma_200: Optional[float] = None
     sma_50: Optional[float] = None
+    obv: Optional[float] = None
+    vwap_20: Optional[float] = None
+    cci_20: Optional[float] = None
+    beta_1y: Optional[float] = None
+    rs_6m_vs_nifty: Optional[float] = None
+    
+    # Fundamentals (Lates/TTM)
+    pe_ratio: Optional[float] = None
+    pb_ratio: Optional[float] = None
+    ebitda_margin: Optional[float] = None
+    roe: Optional[float] = None
+    roce: Optional[float] = None
+    ev_ebitda: Optional[float] = None
+    piotroski_f_score: Optional[int] = None
+    debt_equity: Optional[float] = None
+    pct_from_52w_high: Optional[float] = None
+    pct_from_52w_low: Optional[float] = None
 
 
 # ============================================================================

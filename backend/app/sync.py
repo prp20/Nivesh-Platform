@@ -186,36 +186,46 @@ async def sync_fund_data(session: AsyncSession, scheme_code: str, job_id: Option
                 await crud.update_sync_job(session, job_id, status="FAILED", message="Insufficient data for analysis")
             return
 
+        def to_float(val):
+            if val is None: return None
+            try:
+                # Handle numpy types and other numeric types
+                if hasattr(val, "item"): # numpy types have .item()
+                    return float(val.item())
+                return float(val)
+            except (TypeError, ValueError):
+                return val
+
         metrics_payload = {
             "scheme_code": scheme_code,
-            "current_nav": calc_results["current_nav"],
+            "current_nav": to_float(calc_results["current_nav"]),
             "nav_date": calc_results["nav_date"],
-            "aum_in_crores": aum,
-            "expense_ratio": expense_ratio,
-            "fund_rating": fund_rating,
-            "volatility": volatility,
-            "cagr_3year": calc_results.get("cagr_3year"),
-            "cagr_5year": calc_results.get("cagr_5year"),
-            "absolute_return_1y": calc_results.get("absolute_return_1y"),
-            "absolute_return_3y": calc_results.get("absolute_return_3y"),
-            "absolute_return_5y": calc_results.get("absolute_return_5y"),
-            "absolute_return_10y": calc_results.get("absolute_return_10y"),
-            "short_term_return_6m": calc_results.get("short_term_return_6m"),
-            "upside_capture": calc_results.get("upside_capture"),
-            "downside_capture": calc_results.get("downside_capture"),
-            "sharpe_ratio": calc_results.get("sharpe"),
-            "sortino_ratio": calc_results.get("sortino"),
-            "alpha": calc_results.get("alpha"),
-            "beta": calc_results.get("beta"),
-            "standard_deviation": calc_results.get("std_dev"),
-            "maximum_drawdown": calc_results.get("max_drawdown"),
-            "tracking_error": calc_results.get("tracking_error"),
-            "information_ratio": calc_results.get("information_ratio"),
+            "aum_in_crores": to_float(aum),
+            "expense_ratio": to_float(expense_ratio),
+            "fund_rating": to_float(fund_rating),
+            "volatility": to_float(volatility),
+            "cagr_3year": to_float(calc_results.get("cagr_3year")),
+            "cagr_5year": to_float(calc_results.get("cagr_5year")),
+            "absolute_return_1y": to_float(calc_results.get("absolute_return_1y")),
+            "absolute_return_3y": to_float(calc_results.get("absolute_return_3y")),
+            "absolute_return_5y": to_float(calc_results.get("absolute_return_5y")),
+            "absolute_return_10y": to_float(calc_results.get("absolute_return_10y")),
+            "short_term_return_6m": to_float(calc_results.get("short_term_return_6m")),
+            "upside_capture": to_float(calc_results.get("upside_capture")),
+            "downside_capture": to_float(calc_results.get("downside_capture")),
+            "sharpe_ratio": to_float(calc_results.get("sharpe")),
+            "sortino_ratio": to_float(calc_results.get("sortino")),
+            "alpha": to_float(calc_results.get("alpha")),
+            "beta": to_float(calc_results.get("beta")),
+            "standard_deviation": to_float(calc_results.get("std_dev")),
+            "maximum_drawdown": to_float(calc_results.get("max_drawdown")),
+            "tracking_error": to_float(calc_results.get("tracking_error")),
+            "information_ratio": to_float(calc_results.get("information_ratio")),
             "final_verdict": calc_results.get("final_verdict"),
             "calculation_period_start_date": calc_results.get("calculation_period_start_date"),
             "calculation_period_end_date": calc_results.get("calculation_period_end_date"),
-            "data_completeness_percentage": calc_results.get("data_completeness_percentage"),
-            "has_sufficient_data": calc_results.get("has_sufficient_data", True),
+            "data_completeness_percentage": to_float(calc_results.get("data_completeness_percentage")),
+            "has_sufficient_data": bool(calc_results.get("has_sufficient_data", True)),
             "metrics_calculated_at": datetime.now(timezone.utc)
         }
         await crud.upsert_fund_metrics(session, metrics_payload)

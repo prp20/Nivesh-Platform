@@ -21,7 +21,10 @@ DAILY_KEYS = [
     "fiftyTwoWeekLow",
     "fiftyTwoWeekHigh",
     "priceToBook",
-    "dividendYield"
+    "dividendYield",
+    "enterpriseToEbitda",
+    "enterpriseToRevenue",
+    "dividendRate"
 ]
 
 FUNDAMENTAL_KEYS = [
@@ -32,7 +35,13 @@ FUNDAMENTAL_KEYS = [
     "debtToEquity",
     "revenuePerShare",
     "returnOnEquity",
-    "returnOnAssets"
+    "returnOnAssets",
+    "payoutRatio",
+    "totalDebt",
+    "totalCash",
+    "freeCashflow",
+    "grossMargins",
+    "operatingMargins"
 ]
 
 ALL_KEYS = DAILY_KEYS + FUNDAMENTAL_KEYS
@@ -111,7 +120,16 @@ def _process_info(info: Dict[str, Any], keys: List[str]) -> Dict[str, Any]:
         "debtToEquity": "debt_equity",
         "revenuePerShare": "revenue_per_share",
         "returnOnEquity": "roe",
-        "returnOnAssets": "roa"
+        "returnOnAssets": "roa",
+        "enterpriseToEbitda": "ev_ebitda",
+        "enterpriseToRevenue": "ev_sales",
+        "payoutRatio": "dividend_payout_ratio",
+        "dividendRate": "dividend_per_share",
+        "totalDebt": "net_debt", # will subtract cash below
+        "totalCash": "total_cash_yf", # temporary for calculation
+        "freeCashflow": "fcf",
+        "grossMargins": "gross_margin",
+        "operatingMargins": "operating_margin"
     }
 
     for yf_key in keys:
@@ -127,14 +145,23 @@ def _process_info(info: Dict[str, Any], keys: List[str]) -> Dict[str, Any]:
         if yf_key == "marketCap":
             # Convert to Crores (INR)
             data[db_col] = float(val) / 10_000_000
-        elif yf_key in ["returnOnEquity", "returnOnAssets"]:
+        elif yf_key in ["returnOnEquity", "returnOnAssets", "payoutRatio", "grossMargins", "operatingMargins"]:
             # Convert decimal (0.15) to percentage (15.0)
             data[db_col] = float(val) * 100
         elif yf_key == "dividendYield":
             # dividendYield is often decimal (0.015 = 1.5%)
             data[db_col] = float(val) * 100
+        elif yf_key in ["totalDebt", "totalCash", "freeCashflow"]:
+            # Convert to Crores
+            data[db_col] = float(val) / 10_000_000
         else:
             data[db_col] = float(val)
+
+    # Post-process: Net Debt = Total Debt - Total Cash (if both available)
+    if "total_cash_yf" in data:
+        cash = data.pop("total_cash_yf")
+        if "net_debt" in data:
+            data["net_debt"] = data["net_debt"] - cash
 
     return data
 

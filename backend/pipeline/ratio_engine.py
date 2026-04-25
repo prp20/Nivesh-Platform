@@ -76,7 +76,14 @@ async def compute_ratios_for_stock(stock_id: int, latest_close: Optional[float])
     def safe_div(num, denom):
         if num is None or denom is None or denom == 0:
             return None
-        return round(num / denom, 3)
+        try:
+            val = float(num) / float(denom)
+            import math
+            if not math.isfinite(val):
+                return None
+            return round(val, 3)
+        except:
+            return None
 
     # ─── Raw data extraction ───────────────────────────────────────────────────
     pat      = latest("net_profit")
@@ -87,20 +94,32 @@ async def compute_ratios_for_stock(stock_id: int, latest_close: Optional[float])
         (ebitda - deprec) if ebitda is not None and deprec is not None else None
     )
     interest = latest("interest")
-    equity   = latest("shareholders_equity") or latest("net_worth") or latest("total_equity") or latest("reserves")
+    # Handle equity summation (Equity Capital + Reserves)
+    equity_cap = latest("equity_capital", b) or 0.0
+    reserves   = latest("reserves", b) or 0.0
+    equity     = latest("shareholders_equity", b) or latest("net_worth", b) or (equity_cap + reserves)
+    
     tot_assets  = latest("total_assets", b)
-    borrowings  = latest("borrowings", b)
     curr_assets = latest("current_assets", b)
     curr_liab   = latest("current_liabilities", b)
     cfo         = latest("cash_from_operating_activity", c)
-    shares      = latest("shares_outstanding")    # in Crores
+    eps         = latest("eps_in_rs") or latest("eps")
+    shares      = latest("shares_outstanding") or latest("no_of_equity_shares") or safe_div(pat, eps) # in Crores
+    
+    # Handle label mismatch (Axis Bank uses 'borrowing')
+    borrowings  = latest("borrowings", b) or latest("borrowing", b) or 0.0
+    cash_equivalents = latest("cash_equivalents", b) or latest("cash_and_equivalents", b) or 0.0
+    
+    # Dividends
+    div_payout_pct = latest("dividend_payout") # raw % like 25
+    div_paid = latest("dividend_payout") # some stocks store amt
+    # Most Screener data has "dividend_payout" as a % of net profit
+    total_div_paid = (pat * (div_payout_pct / 100)) if pat and div_payout_pct else None
 
     # ─── Derived per-share values ──────────────────────────────────────────────
-    # screener.in stores shares in Crores; face value typically Rs 1 or Rs 2
-    # EPS = PAT (Cr) / Shares (Cr) * 100 gives per-share in paise; / 100 for Rs
-    # Simpler: screener often shows EPS directly — use that if available
     eps         = latest("eps_in_rs") or latest("eps") or safe_div(pat, shares)
     book_val_ps = safe_div(equity, shares)
+    dps         = safe_div(total_div_paid, shares)
 
     # ─── Compute all ratios ────────────────────────────────────────────────────
     roe_val = safe_div(pat, equity)
@@ -121,36 +140,85 @@ async def compute_ratios_for_stock(stock_id: int, latest_close: Optional[float])
     ebitda_margin_val = safe_div(ebitda, revenue)
     ebitda_margin = round(ebitda_margin_val * 100, 3) if ebitda_margin_val is not None else None
 
+    # Valuation (need market price)
+    mkt_cap = latest_close * (shares or 0) if latest_close and shares else None
+    ev = (mkt_cap + borrowings - cash_equivalents) if mkt_cap is not None and borrowings is not None else None
+    
+    # Cash Flow & Capex
+    capex = latest("capital_expenditures", c) or latest("fixed_assets_purchased", c) or 0.0
+    fcf = (cfo - abs(capex)) if cfo is not None else None
+
+    # Efficiency
+    inventory   = latest("inventory", b) or latest("inventories", b)
+    receivables = latest("trade_receivables", b) or latest("receivables", b)
+    payables    = latest("trade_payables", b) or latest("payables", b)
+    
+    # Quality Scores
+    piotroski = _compute_piotroski_f_score(pl, bs, cf)
+    altman_z  = _compute_altman_z_score(pat, revenue, tot_assets, equity, borrowings, curr_assets, curr_liab, mkt_cap)
+
     ratios = {
-        # Valuation (need market price)
+        # Valuation
         "pe_ratio":       safe_div(latest_close, eps) if eps and eps > 0 else None,
         "pb_ratio":       safe_div(latest_close, book_val_ps) if book_val_ps and book_val_ps > 0 else None,
-        "ps_ratio":       safe_div(latest_close * (shares or 0), revenue) if revenue else None,
+        "ps_ratio":       safe_div(mkt_cap, revenue) if mkt_cap and revenue else None,
+        "ev_ebitda":      safe_div(ev, ebitda),
+        "ev_sales":       safe_div(ev, revenue),
 
         # Profitability
         "roe":            roe,
         "roce":           roce,
         "roa":            roa,
+        "roic":           safe_div(ebit * 0.75, (equity + borrowings - cash_equivalents)) if ebit and equity else None, # 25% tax est
         "pat_margin":     pat_margin,
         "ebitda_margin":  ebitda_margin,
+        "operating_margin": safe_div(ebit, revenue) * 100 if ebit and revenue else None,
 
         # Leverage
         "debt_equity":    safe_div(borrowings, equity),
+        "net_debt":       (borrowings - cash_equivalents) if borrowings is not None else None,
+        "net_debt_ebitda": safe_div((borrowings - cash_equivalents), ebitda) if borrowings is not None else None,
         "interest_cov":   safe_div(ebit, interest),
         "current_ratio":  safe_div(curr_assets, curr_liab),
+        "quick_ratio":    safe_div((curr_assets - (inventory or 0)), curr_liab) if curr_assets and curr_liab else None,
+
+        # Efficiency
+        "asset_turnover":     safe_div(revenue, tot_assets),
+        "inventory_turnover": safe_div(revenue, inventory),
+        "receivables_days":   safe_div(receivables, revenue) * 365 if receivables and revenue else None,
+        "payable_days":       safe_div(payables, revenue * 0.7) * 365 if payables and revenue else None, # 70% COGS est
+        "cash_conv_cycle":    None, # Computed below
 
         # Growth
         "revenue_growth": yoy_growth("sales") or yoy_growth("revenue"),
         "pat_growth":     yoy_growth("net_profit"),
         "eps_growth":     yoy_growth("eps_in_rs") or yoy_growth("eps") or yoy_growth("net_profit"),
 
+        # Cash Flow
+        "fcf":            fcf,
+        "fcf_margin":     safe_div(fcf, revenue) * 100 if fcf and revenue else None,
+        "fcf_yield":      safe_div(fcf, mkt_cap) * 100 if fcf and mkt_cap else None,
+        "capex_to_revenue": safe_div(abs(capex), revenue) * 100 if capex and revenue else None,
+        "capex_to_depreciation": safe_div(abs(capex), deprec) if capex and deprec else None,
+
+        # Quality
+        "piotroski_f_score": piotroski,
+        "altman_z_score":  altman_z,
+        "roic":           safe_div(ebit * 0.75, (equity + borrowings - cash_equivalents)) if ebit and equity else None, # 25% tax est
+        "cfo_to_pat":     safe_div(cfo, pat),
+
         # Per-share
         "eps":            eps,
         "book_value_ps":  book_val_ps,
-
-        # Quality
-        "cfo_to_pat":     safe_div(cfo, pat),
+        "market_cap":     mkt_cap,
+        "dividend_yield": safe_div(dps, latest_close) * 100 if dps and latest_close else None,
+        "dividend_per_share": dps,
     }
+
+    # CCC = DIO + DSO - DPO
+    if ratios["inventory_turnover"] and ratios["receivables_days"] and ratios["payable_days"]:
+        dio = 365 / ratios["inventory_turnover"]
+        ratios["cash_conv_cycle"] = dio + ratios["receivables_days"] - ratios["payable_days"]
 
     # Use the latest period end from PL as the period_end for the ratio record
     period_end = await _get_latest_period_end(stock_id, "PL")
@@ -319,37 +387,113 @@ async def _upsert_ratios(stock_id: int, period_end: date, period_type: str, rati
     sql = """
         INSERT INTO financial_ratios
             (stock_id, period_end, period_type,
-             pe_ratio, pb_ratio, ps_ratio,
-             roe, roce, roa, pat_margin, ebitda_margin,
-             debt_equity, interest_cov, current_ratio,
+             pe_ratio, pb_ratio, ps_ratio, ev_ebitda, ev_sales,
+             roe, roce, roa, roic, pat_margin, ebitda_margin, operating_margin,
+             debt_equity, net_debt, net_debt_ebitda, interest_cov, current_ratio, quick_ratio,
+             asset_turnover, inventory_turnover, receivables_days, payable_days, cash_conv_cycle,
              revenue_growth, pat_growth, eps_growth,
-             eps, book_value_ps, cfo_to_pat,
+             fcf, fcf_margin, fcf_yield, capex_to_revenue, capex_to_depreciation,
+             piotroski_f_score, altman_z_score,
+             eps, book_value_ps, market_cap, cfo_to_pat,
+             dividend_yield, dividend_per_share,
              computed_at)
         VALUES
             ($1, $2, $3,
-             $4, $5, $6,
-             $7, $8, $9, $10, $11,
-             $12, $13, $14,
-             $15, $16, $17,
-             $18, $19, $20,
+             $4, $5, $6, $7, $8,
+             $9, $10, $11, $12, $13, $14, $15,
+             $16, $17, $18, $19, $20, $21,
+             $22, $23, $24, $25, $26,
+             $27, $28, $29,
+             $30, $31, $32, $33, $34,
+             $35, $36,
+             $37, $38, $39, $40, $41, $42,
              NOW())
         ON CONFLICT (stock_id, period_end, period_type)
         DO UPDATE SET
-            pe_ratio=$4, pb_ratio=$5, ps_ratio=$6,
-            roe=$7, roce=$8, roa=$9, pat_margin=$10, ebitda_margin=$11,
-            debt_equity=$12, interest_cov=$13, current_ratio=$14,
-            revenue_growth=$15, pat_growth=$16, eps_growth=$17,
-            eps=$18, book_value_ps=$19, cfo_to_pat=$20,
+            pe_ratio=$4, pb_ratio=$5, ps_ratio=$6, ev_ebitda=$7, ev_sales=$8,
+            roe=$9, roce=$10, roa=$11, roic=$12, pat_margin=$13, ebitda_margin=$14, operating_margin=$15,
+            debt_equity=$16, net_debt=$17, net_debt_ebitda=$18, interest_cov=$19, current_ratio=$20, quick_ratio=$21,
+            asset_turnover=$22, inventory_turnover=$23, receivables_days=$24, payable_days=$25, cash_conv_cycle=$26,
+            revenue_growth=$27, pat_growth=$28, eps_growth=$29,
+            fcf=$30, fcf_margin=$31, fcf_yield=$32, capex_to_revenue=$33, capex_to_depreciation=$34,
+            piotroski_f_score=$35, altman_z_score=$36,
+            eps=$37, book_value_ps=$38, market_cap=$39, cfo_to_pat=$40,
+            dividend_yield=$41, dividend_per_share=$42,
             computed_at=NOW()
     """
     r = ratios
     async with raw_connection() as conn:
         await conn.execute(sql,
             stock_id, period_end, period_type,
-            r.get("pe_ratio"),  r.get("pb_ratio"),  r.get("ps_ratio"),
-            r.get("roe"),       r.get("roce"),       r.get("roa"),
-            r.get("pat_margin"),r.get("ebitda_margin"),
-            r.get("debt_equity"), r.get("interest_cov"), r.get("current_ratio"),
+            r.get("pe_ratio"),  r.get("pb_ratio"),  r.get("ps_ratio"), r.get("ev_ebitda"), r.get("ev_sales"),
+            r.get("roe"),       r.get("roce"),       r.get("roa"),       r.get("roic"),      r.get("pat_margin"), r.get("ebitda_margin"), r.get("operating_margin"),
+            r.get("debt_equity"), r.get("net_debt"), r.get("net_debt_ebitda"), r.get("interest_cov"), r.get("current_ratio"), r.get("quick_ratio"),
+            r.get("asset_turnover"), r.get("inventory_turnover"), r.get("receivables_days"), r.get("payable_days"), r.get("cash_conv_cycle"),
             r.get("revenue_growth"), r.get("pat_growth"), r.get("eps_growth"),
-            r.get("eps"),       r.get("book_value_ps"), r.get("cfo_to_pat"),
+            r.get("fcf"),       r.get("fcf_margin"), r.get("fcf_yield"), r.get("capex_to_revenue"), r.get("capex_to_depreciation"),
+            r.get("piotroski_f_score"), r.get("altman_z_score"),
+            r.get("eps"),       r.get("book_value_ps"), r.get("market_cap"), r.get("cfo_to_pat"),
+            r.get("dividend_yield"), r.get("dividend_per_share")
         )
+
+# ─── Quality Scoring Logics ──────────────────────────────────────────────────
+
+def _compute_piotroski_f_score(pl: dict, bs: dict, cf: dict) -> Optional[int]:
+    """
+    Compute binary 9-point fundamental health score.
+    Returns 0-9.
+    """
+    d = pl.get("data", {})
+    b = bs.get("data", {})
+    c = cf.get("data", {})
+    
+    def val(key, data_dict=d):
+        vals = [v for v in data_dict.get(key, []) if v is not None and str(v).lower() != "n/a"]
+        return vals[-1] if vals else None
+
+    def prev(key, data_dict=d):
+        vals = [v for v in data_dict.get(key, []) if v is not None and str(v).lower() != "n/a"]
+        return vals[-2] if len(vals) >= 2 else None
+
+    # Profitability (4 pts)
+    roa = val("net_profit") / val("total_assets", b) if val("net_profit") and val("total_assets", b) else 0
+    p1 = 1 if roa > 0 else 0
+    p2 = 1 if (val("cash_from_operating_activity", c) or 0) > 0 else 0
+    
+    roa_prev = prev("net_profit") / prev("total_assets", b) if prev("net_profit") and prev("total_assets", b) else 0
+    p3 = 1 if roa > roa_prev else 0
+    p4 = 1 if (val("cash_from_operating_activity", c) or 0) > (val("net_profit") or 0) else 0
+
+    # Leverage (3 pts)
+    de = (val("borrowings", b) or val("borrowing", b) or 0) / (val("shareholders_equity", b) or 1)
+    de_prev = (prev("borrowings", b) or prev("borrowing", b) or 0) / (prev("shareholders_equity", b) or 1)
+    p5 = 1 if de < de_prev else 0
+    
+    cr = (val("current_assets", b) or 0) / (val("current_liabilities", b) or 1)
+    cr_prev = (prev("current_assets", b) or 0) / (prev("current_liabilities", b) or 1)
+    p6 = 1 if cr > cr_prev else 0
+    p7 = 1 if (val("shares_outstanding") or 0) <= (prev("shares_outstanding") or 999999) else 0
+
+    # Efficiency (2 pts)
+    gm = (val("operating_profit") or 0) / (val("sales") or 1)
+    gm_prev = (prev("operating_profit") or 0) / (prev("sales") or 1)
+    p8 = 1 if gm > gm_prev else 0
+    
+    at = (val("sales") or 0) / (val("total_assets", b) or 1)
+    at_prev = (prev("sales") or 0) / (prev("total_assets", b) or 1)
+    p9 = 1 if at > at_prev else 0
+
+    return p1 + p2 + p3 + p4 + p5 + p6 + p7 + p8 + p9
+
+def _compute_altman_z_score(pat, revenue, assets, equity, debt, curr_assets, curr_liabs, mkt_cap) -> Optional[float]:
+    """Simplified Z-Score: 1.2*X1 + 1.4*X2 + 3.3*X3 + 0.6*X4 + 1.0*X5"""
+    if not all([assets, revenue, equity, mkt_cap]): return None
+    try:
+        x1 = (curr_assets - curr_liabs) / assets
+        x2 = equity / assets # using equity as proxy for retained earnings
+        x3 = (pat * 1.4) / assets # proxy for EBIT
+        x4 = mkt_cap / (debt or 1)
+        x5 = revenue / assets
+        return round(1.2*x1 + 1.4*x2 + 3.3*x3 + 0.6*x4 + 1.0*x5, 3)
+    except:
+        return None

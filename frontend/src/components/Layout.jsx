@@ -183,7 +183,7 @@ const TopNavBar = ({ onMobileMenuClick, isMobileMenuOpen }) => {
     const tab = searchParams.get('tab');
 
     return (
-        <header className="w-full h-[64px] top-0 sticky bg-[#0f1419]/95 backdrop-blur-xl border-b border-white/5 shadow-[0_4px_24px_rgba(0,0,0,0.4)] flex items-center px-4 md:px-8 lg:px-12 z-50 gap-4">
+        <header className="w-full h-[64px] top-0 sticky bg-[#0f1419]/95 backdrop-blur-xl border-b border-white/5 shadow-[0_4px_24px_rgba(0,0,0,0.4)] flex items-center px-4 md:px-8 lg:px-12 z-[150] gap-4">
             {/* Brand */}
             <Link
                 to="/dashboard"
@@ -257,7 +257,7 @@ const TopNavBar = ({ onMobileMenuClick, isMobileMenuOpen }) => {
                                 initial={{ opacity: 0, y: 8, scale: 0.98 }}
                                 animate={{ opacity: 1, y: 0, scale: 1 }}
                                 exit={{ opacity: 0, y: 8, scale: 0.98 }}
-                                className="absolute top-full mt-3 left-0 right-0 bg-[#161c22] rounded-2xl shadow-[0_24px_60px_rgba(0,0,0,0.8)] border border-white/8 overflow-hidden z-[100] max-h-[480px] overflow-y-auto no-scrollbar"
+                                className="absolute top-full mt-3 left-0 right-0 bg-[#161c22] rounded-2xl shadow-[0_24px_60px_rgba(0,0,0,0.8)] border border-white/8 overflow-hidden z-[260] max-h-[480px] overflow-y-auto no-scrollbar"
                             >
                                 {hasResults ? (
                                     <div className="p-2 flex flex-col gap-1">
@@ -541,14 +541,14 @@ const Layout = ({ children }) => {
                             animate={{ opacity: 1 }}
                             exit={{ opacity: 0 }}
                             onClick={() => setIsMobileMenuOpen(false)}
-                            className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[60] lg:hidden"
+                            className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[360] lg:hidden"
                         />
                         <motion.aside
                             initial={{ x: '-100%' }}
                             animate={{ x: 0 }}
                             exit={{ x: '-100%' }}
                             transition={{ type: 'spring', damping: 28, stiffness: 240 }}
-                            className="fixed inset-y-0 left-0 w-72 bg-[#0f1419] z-[70] lg:hidden shadow-2xl border-r border-white/5"
+                            className="fixed inset-y-0 left-0 w-72 bg-[#0f1419] z-[370] lg:hidden shadow-2xl border-r border-white/5"
                         >
                             <div className="flex items-center justify-between px-5 py-4 border-b border-white/5">
                                 <Link

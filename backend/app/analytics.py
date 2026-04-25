@@ -48,7 +48,7 @@ def calculate_sharpe_ratio(returns: pd.Series, risk_free_rate: float = ANNUAL_RI
     if returns.empty or returns.std() == 0:
         return 0.0
     excess_returns = returns - (risk_free_rate / TRADING_DAYS_PER_YEAR)
-    return np.sqrt(TRADING_DAYS_PER_YEAR) * excess_returns.mean() / returns.std()
+    return float(np.sqrt(TRADING_DAYS_PER_YEAR) * excess_returns.mean() / returns.std())
 
 
 def calculate_sortino_ratio(returns: pd.Series, risk_free_rate: float = ANNUAL_RISK_FREE_RATE) -> float:

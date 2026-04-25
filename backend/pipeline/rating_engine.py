@@ -362,5 +362,16 @@ async def _upsert_rating(
             stock_id, rated_on, total_score, rating_label,
             fundamental_score, valuation_score, technical_score,
             momentum_score, shareholding_score,
-            json.dumps(score_breakdown),
+            json.dumps(to_json_safe(score_breakdown)),
         )
+
+def to_json_safe(obj):
+    """Recursively convert Decimals and other non-JSON types to floats/safe types."""
+    from decimal import Decimal
+    if isinstance(obj, dict):
+        return {k: to_json_safe(v) for k, v in obj.items()}
+    elif isinstance(obj, (list, tuple)):
+        return [to_json_safe(v) for v in obj]
+    elif isinstance(obj, Decimal):
+        return float(obj)
+    return obj

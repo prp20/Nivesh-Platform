@@ -205,10 +205,55 @@ else
 fi
 
 # =============================================================================
-# STEP 3 — PostgreSQL setup
+# STEP 3 — Python virtual environment + dependencies (excluding TA-Lib)
 # =============================================================================
-step "Step 3: PostgreSQL Setup"
+step "Step 3: Python Virtual Environment"
 
+cd "${PROJECT_ROOT}"
+
+if [[ -d "${VENV_DIR}" ]]; then
+  warn "Virtual environment already exists at ${VENV_DIR}."
+  read -rp "  Do you want to delete it and create a fresh one? (y/N): " DELETE_VENV
+  DELETE_VENV="${DELETE_VENV:-n}"
+  if [[ "$DELETE_VENV" =~ ^[Yy]$ ]]; then
+    info "Deleting existing virtual environment..."
+    rm -rf "${VENV_DIR}"
+    info "Creating virtual environment at ${VENV_DIR}..."
+    python3 -m venv "${VENV_DIR}"
+    success "Virtual environment created."
+  else
+    info "Proceeding with existing virtual environment."
+  fi
+else
+  info "Creating virtual environment at ${VENV_DIR}..."
+  python3 -m venv "${VENV_DIR}"
+  success "Virtual environment created."
+fi
+
+# shellcheck disable=SC1091
+source "${VENV_DIR}/bin/activate"
+success "Virtual environment activated."
+
+info "Upgrading pip..."
+pip install --upgrade pip --quiet
+
+info "Installing Python dependencies (excluding TA-Lib)..."
+TEMP_REQ=$(mktemp)
+grep -iv 'ta.lib\|ta-lib' "${BACKEND_DIR}/requirements.txt" > "$TEMP_REQ" || true
+if pip install --prefer-binary -r "$TEMP_REQ" --quiet; then
+  success "Python dependencies installed (TA-Lib excluded — installed in Step 9)."
+else
+  rm -f "$TEMP_REQ"
+  error "pip install failed. Check the output above for details."
+fi
+rm -f "$TEMP_REQ"
+
+# =============================================================================
+# STEP 4 — Environment Configuration & Admin JWT
+# =============================================================================
+step "Step 4: Environment Configuration"
+
+# ── PostgreSQL Setup ──────────────────────────────────────────────────────────
 echo ""
 echo "  How do you want to connect to PostgreSQL?"
 echo "  [1] Docker  — auto-managed, starts postgres:16-alpine (default)"
@@ -244,7 +289,7 @@ else
   success "Will use Docker-managed PostgreSQL (URL: ${DATABASE_URL})"
 fi
 
-# Verify Docker if needed
+# Verify Docker if selected
 if [[ "$USE_DOCKER" == true ]]; then
   if ! command -v docker &>/dev/null; then
     error "Docker not found. Install Docker Desktop from https://docker.com and try again, or choose option [2] for an external PostgreSQL URL."
@@ -254,55 +299,6 @@ if [[ "$USE_DOCKER" == true ]]; then
   fi
   success "Docker is available."
 fi
-
-# =============================================================================
-# STEP 4 — Python virtual environment + dependencies (excluding TA-Lib)
-# =============================================================================
-step "Step 4: Python Virtual Environment"
-
-cd "${PROJECT_ROOT}"
-
-if [[ -d "${VENV_DIR}" ]]; then
-  warn "Virtual environment already exists at ${VENV_DIR}."
-  read -rp "  Do you want to delete it and create a fresh one? (y/N): " DELETE_VENV
-  DELETE_VENV="${DELETE_VENV:-n}"
-  if [[ "$DELETE_VENV" =~ ^[Yy]$ ]]; then
-    info "Deleting existing virtual environment..."
-    rm -rf "${VENV_DIR}"
-    info "Creating virtual environment at ${VENV_DIR}..."
-    python3 -m venv "${VENV_DIR}"
-    success "Virtual environment created."
-  else
-    info "Proceeding with existing virtual environment."
-  fi
-else
-  info "Creating virtual environment at ${VENV_DIR}..."
-  python3 -m venv "${VENV_DIR}"
-  success "Virtual environment created."
-fi
-
-# shellcheck disable=SC1091
-source "${VENV_DIR}/bin/activate"
-success "Virtual environment activated."
-
-info "Upgrading pip..."
-pip install --upgrade pip --quiet
-
-info "Installing Python dependencies (excluding TA-Lib)..."
-TEMP_REQ=$(mktemp)
-grep -iv 'ta.lib\|ta-lib' "${BACKEND_DIR}/requirements.txt" > "$TEMP_REQ" || true
-if pip install --prefer-binary -r "$TEMP_REQ" --quiet; then
-  success "Python dependencies installed (TA-Lib excluded — installed in Step 10)."
-else
-  rm -f "$TEMP_REQ"
-  error "pip install failed. Check the output above for details."
-fi
-rm -f "$TEMP_REQ"
-
-# =============================================================================
-# STEP 5 — Environment Configuration & Admin JWT
-# =============================================================================
-step "Step 5: Environment Configuration"
 
 # ── API Keys ──────────────────────────────────────────────────────────────────
 echo ""
@@ -404,10 +400,10 @@ EOF
 fi
 
 # =============================================================================
-# STEP 6 — Start Docker PostgreSQL (if chosen)
+# STEP 5 — Start Docker PostgreSQL (if chosen)
 # =============================================================================
 if [[ "$USE_DOCKER" == true ]]; then
-  step "Step 6: Starting Docker PostgreSQL"
+  step "Step 5: Starting Docker PostgreSQL"
   info "Starting PostgreSQL container via Docker Compose..."
   docker compose -f "${BACKEND_DIR}/docker-compose.yml" up -d postgres
 
@@ -424,14 +420,14 @@ if [[ "$USE_DOCKER" == true ]]; then
     sleep 1
   done
 else
-  step "Step 6: PostgreSQL (External — skipping Docker)"
+  step "Step 5: PostgreSQL (External — skipping Docker)"
   info "Using your external PostgreSQL. Ensure it is reachable at the provided URL."
 fi
 
 # =============================================================================
-# STEP 7 — Database setup
+# STEP 6 — Database setup
 # =============================================================================
-step "Step 7: Database Setup"
+step "Step 6: Database Setup"
 
 cd "${BACKEND_DIR}"
 
@@ -472,20 +468,20 @@ info "Running Alembic migration for stock tables (idempotent)..."
 success "Stock tables ready."
 
 # =============================================================================
-# STEP 8 — Optional seeding
+# STEP 7 — Optional seeding
 # =============================================================================
-step "Step 8: Data Seeding (Optional)"
+step "Step 7: Data Seeding (Optional)"
 
 echo ""
 warn "Seeding fetches live data from AMFI, yfinance, and screener.in — this can take 30-120 minutes."
 echo ""
 echo "  What data would you like to seed?"
-echo "  [1] Mutual Fund data only          (benchmarks + funds + NAV history,  30-60 min)"
-echo "  [2] Stock data only                (18 stocks + max price history,      20-40 min)"
-echo "  [3] Stock data + Fundamentals      (stocks + screener.in data,         35-55 min)"
-echo "  [4] Both MF + Stocks               (recommended for full platform,     50-100 min)"
-echo "  [5] All  (MF + Stocks + Fundamentals)                                  65-115 min"
-echo "  [6] Skip seeding                   (run seed scripts manually later)"
+echo "  [1] Mutual Fund data only          [benchmarks + funds + NAV history,  30-60 min]"
+echo "  [2] Stock data only                [18 stocks + max price history,      20-40 min]"
+echo "  [3] Stock data + Fundamentals      [stocks + screener.in data,         35-55 min]"
+echo "  [4] Both MF + Stocks               [recommended for full platform,     50-100 min]"
+echo "  [5] All  [MF + Stocks + Fundamentals]                                  65-115 min"
+echo "  [6] Skip seeding                   [run seed scripts manually later]"
 echo ""
 read -rp "  Enter choice [6]: " SEED_CHOICE
 SEED_CHOICE="${SEED_CHOICE:-6}"
@@ -517,7 +513,7 @@ fi
 if [[ "$SEED_STOCKS" == true ]]; then
   echo ""
   echo "  How many years of price history to backfill?"
-  echo "  [1] 1 year   [2] 2 years   [5] 5 years   [10] 10 years   [M] Max (all available)"
+  echo "  [1] 1 year   [2] 2 years   [5] 5 years   [10] 10 years   [M] Max [all available]"
   read -rp "  Enter choice [5]: " BACKFILL_CHOICE
   BACKFILL_CHOICE="${BACKFILL_CHOICE:-5}"
   case "${BACKFILL_CHOICE,,}" in
@@ -529,11 +525,11 @@ if [[ "$SEED_STOCKS" == true ]]; then
   esac
   info "Using backfill period: ${BACKFILL_PERIOD}"
 
-  time_run "Seeding stock master (18 large-cap stocks + 3 indices)" \
+  time_run "Seeding stock master [18 large-cap stocks + 3 indices]" \
     python3 scripts/seed/seed_stock_master.py
 
-  warn "Price backfill (${BACKFILL_PERIOD}) fetches OHLCV from yfinance — expected 20–40 minutes."
-  time_run "Price history backfill (${BACKFILL_PERIOD})" \
+  warn "Price backfill [${BACKFILL_PERIOD}] fetches OHLCV from yfinance — expected 20–40 minutes."
+  time_run "Price history backfill [${BACKFILL_PERIOD}]" \
     python3 scripts/seed/backfill_prices.py "${BACKFILL_PERIOD}"
 fi
 
@@ -544,17 +540,17 @@ if [[ "$SEED_FUNDAMENTALS" == true ]]; then
 fi
 
 # =============================================================================
-# STEP 9 — Build frontend
+# STEP 8 — Build frontend
 # =============================================================================
-step "Step 9: Building Frontend"
+step "Step 8: Building Frontend"
 
 cd "${FRONTEND_DIR}"
 
-info "Installing frontend dependencies (npm install)..."
+info "Installing frontend dependencies [npm install]..."
 npm install --legacy-peer-deps
 success "Frontend dependencies installed."
 
-info "Building frontend for production (npm run build)..."
+info "Building frontend for production [npm run build]..."
 npm run build
 if [[ ! -d "${FRONTEND_DIR}/dist" ]]; then
   error "Frontend build failed. Check npm run build output above."
@@ -562,9 +558,9 @@ fi
 success "Frontend built and ready at ${FRONTEND_DIR}/dist/"
 
 # =============================================================================
-# STEP 10 — TA-Lib Installation
+# STEP 9 — TA-Lib Installation
 # =============================================================================
-step "Step 10: TA-Lib Installation"
+step "Step 9: TA-Lib Installation"
 
 cd "${BACKEND_DIR}"
 
@@ -654,9 +650,9 @@ else
 fi
 
 # =============================================================================
-# STEP 11 — Start API server
+# STEP 10 — Start API server
 # =============================================================================
-step "Step 11: Starting FastAPI Server"
+step "Step 10: Starting FastAPI Server"
 
 echo ""
 echo -e "${GREEN}${BOLD}  ╔══════════════════════════════════════════╗${NC}"
@@ -668,11 +664,11 @@ echo -e "${CYAN}  API docs        :  http://localhost:8000/docs${NC}"
 echo -e "${CYAN}  Health check    :  http://localhost:8000/api/health${NC}"
 echo ""
 echo -e "${YELLOW}  Login at        :  http://localhost:8000/login${NC}"
-echo -e "${YELLOW}  Use the admin username and password you set in Step 5.${NC}"
+echo -e "${YELLOW}  Use the admin username and password you set in Step 4.${NC}"
 if [[ "${TALIB_PY_INSTALLED:-false}" == false ]]; then
   echo ""
   echo -e "${YELLOW}  [NOTE] TA-Lib not installed — technical analysis features unavailable.${NC}"
-  echo -e "${YELLOW}         Run: pip install TA-Lib   (after installing the C library)${NC}"
+  echo -e "${YELLOW}         Run: pip install TA-Lib   [after installing the C library]${NC}"
 fi
 echo ""
 
@@ -682,4 +678,4 @@ exec uvicorn app.main:app \
   --port "${NIVESH_PORT:-8000}" \
   --workers "${NIVESH_WORKERS:-1}" \
   --log-level info
-  # Tip: add --reload above for development hot-reload (not recommended for production)
+  # Tip: add --reload above for development hot-reload [not recommended for production]
