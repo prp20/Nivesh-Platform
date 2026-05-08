@@ -2,6 +2,10 @@ import asyncio
 import sys
 import os
 
+# Load .env file explicitly so environment variables are available
+from dotenv import load_dotenv
+load_dotenv(os.path.join(os.path.dirname(__file__), '..', '.env'))
+
 # Add project root to sys.path
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
