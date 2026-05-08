@@ -5,31 +5,35 @@ Provides a unified async API for raw SQL operations that works with both
 PostgreSQL (asyncpg) and SQLite (aiosqlite). All dialect-specific translation
 (parameter style, upsert syntax) is handled here so callers stay clean.
 """
+import os
 import re
-import importlib
 import logging
 from contextlib import asynccontextmanager
 from typing import Any
 
-# Reload app.config so that any DATABASE_URL set via environment variable
-# (e.g. via monkeypatch in tests) is picked up when this module is reloaded.
-import app.config as _config_module
-importlib.reload(_config_module)
-from app.config import settings  # noqa: E402 — intentional post-reload import
-
 logger = logging.getLogger(__name__)
+
+# Default DATABASE_URL if none is set in the environment
+_DEFAULT_DATABASE_URL = (
+    "postgresql+asyncpg://nivesh_admin:nivesh_password_123@localhost:5432/nivesh_db"
+)
+
+
+def _database_url() -> str:
+    """Return the current DATABASE_URL, reading directly from the environment each call."""
+    return os.environ.get("DATABASE_URL", _DEFAULT_DATABASE_URL)
 
 
 def is_sqlite() -> bool:
     """Return True if DATABASE_URL points to a SQLite database."""
-    return settings.DATABASE_URL.startswith("sqlite")
+    return _database_url().startswith("sqlite")
 
 
 def _sqlite_path() -> str:
     """Extract the file path from a sqlite+aiosqlite:///./path URL."""
     # sqlite+aiosqlite:///./foo.db  →  ./foo.db
     # sqlite:///./foo.db           →  ./foo.db
-    return re.sub(r'^sqlite(?:\+aiosqlite)?:///', '', settings.DATABASE_URL)
+    return re.sub(r'^sqlite(?:\+aiosqlite)?:///', '', _database_url())
 
 
 def translate_sql(sql: str) -> str:
@@ -41,6 +45,10 @@ def translate_sql(sql: str) -> str:
       2. Upsert             INSERT INTO ... ON CONFLICT (...) DO UPDATE SET ...
                             →  INSERT OR REPLACE INTO ...  (ON CONFLICT stripped)
     PostgreSQL: returned unchanged.
+
+    Note: INSERT OR REPLACE deletes and re-inserts the conflicting row. Any column
+    not listed in the INSERT's column list will revert to its default value, unlike
+    ON CONFLICT DO UPDATE which only modifies the listed columns.
     """
     if not is_sqlite():
         return sql
@@ -52,7 +60,7 @@ def translate_sql(sql: str) -> str:
     if re.search(r'\bON\s+CONFLICT\b', sql, flags=re.IGNORECASE):
         # Strip everything from ON CONFLICT onwards
         sql = re.sub(
-            r'\s+ON\s+CONFLICT\b.*',
+            r'\s*ON\s+CONFLICT\b.*',
             '',
             sql,
             flags=re.IGNORECASE | re.DOTALL,
