@@ -19,6 +19,9 @@ depends_on = None
 
 
 def upgrade() -> None:
+    connection = op.get_bind()
+    if connection.dialect.name == 'sqlite':
+        return
     # financial_ratios is missing its unique constraint.
     # The pipeline uses: ON CONFLICT (stock_id, period_end, period_type)
     # Use IF NOT EXISTS guard so this is safe to re-run.
@@ -39,6 +42,9 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
+    connection = op.get_bind()
+    if connection.dialect.name == 'sqlite':
+        return
     op.execute("""
         ALTER TABLE financial_ratios
             DROP CONSTRAINT IF EXISTS uq_financial_ratios_stock_period_type;

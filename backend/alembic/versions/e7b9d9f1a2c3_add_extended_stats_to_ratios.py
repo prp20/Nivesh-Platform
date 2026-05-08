@@ -21,6 +21,9 @@ depends_on: Union[str, Sequence[str], None] = None
 def upgrade() -> None:
     """Add extended stats columns to financial_ratios table."""
     conn = op.get_bind()
+    # SQLite: tables are created by migration 003 — skip all PostgreSQL-specific DDL
+    if conn.dialect.name == 'sqlite':
+        return
     inspector = sa.inspect(conn)
     columns = [col['name'] for col in inspector.get_columns('financial_ratios')]
 
@@ -37,6 +40,8 @@ def upgrade() -> None:
 def downgrade() -> None:
     """Remove extended stats columns from financial_ratios table."""
     conn = op.get_bind()
+    if conn.dialect.name == 'sqlite':
+        return
     inspector = sa.inspect(conn)
     columns = [col['name'] for col in inspector.get_columns('financial_ratios')]
 

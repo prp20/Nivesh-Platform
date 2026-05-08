@@ -19,8 +19,11 @@ depends_on: Union[str, Sequence[str], None] = None
 
 
 def upgrade() -> None:
-    # Idempotency guard for column existence
+    # SQLite: tables are created by migration 003 — skip all PostgreSQL-specific DDL
     connection = op.get_bind()
+    if connection.dialect.name == 'sqlite':
+        return
+    # Idempotency guard for column existence
     inspector = sa.inspect(connection)
     columns = [c['name'] for c in inspector.get_columns('stocks')]
     if 'summary' in columns:
@@ -33,4 +36,7 @@ def upgrade() -> None:
 
 def downgrade() -> None:
     """Downgrade schema."""
+    connection = op.get_bind()
+    if connection.dialect.name == 'sqlite':
+        return
     op.drop_column('stocks', 'summary')
