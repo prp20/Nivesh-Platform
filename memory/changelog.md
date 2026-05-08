@@ -1,19 +1,28 @@
 # Changelog
 
-## 2026-05-08 — Session: SQLite support setup.sh fixes
+## 2026-05-08 — Session: SQLite support setup.sh & db_init.py fixes
 
 ### Issues Fixed
-- `setup/setup.sh` — Python invocation inconsistencies: replaced 9 `python3 scripts/` calls with `${VENV_DIR}/bin/python3` for consistent venv usage (lines 457, 468, 485, 543, 546, 550, 555, 559, 565)
-- `setup/setup.sh` — GROQ_API_KEY initialization: added default assignment to handle empty user input gracefully (line 324)
-- `setup/setup.sh` — Step 5 messaging: added SQLite detection to show "SQLite (skipping Docker)" instead of misleading "PostgreSQL (External)" message (lines 440-446)
+1. **setup/setup.sh** — Python invocation inconsistencies: replaced 9 `python3 scripts/` calls with `${VENV_DIR}/bin/python3` for consistent venv usage (lines 457, 468, 485, 543, 546, 550, 555, 559, 565)
+2. **setup/setup.sh** — GROQ_API_KEY initialization: added default assignment to handle empty user input gracefully (line 324)
+3. **setup/setup.sh** — Step 5 messaging: added SQLite detection to show "SQLite (skipping Docker)" instead of misleading "PostgreSQL (External)" message (lines 440-446)
+4. **db_init.py** — .env loading: added `load_dotenv()` to explicitly load `.env` file before checking dialect. Without this, `is_sqlite()` couldn't read DATABASE_URL, causing `CREATE EXTENSION pg_trgm;` to execute on SQLite (syntax error)
 
 ### Why These Fixes Matter
 1. **Python invocation**: Without explicit venv path, Python scripts could accidentally use system Python if venv activation fails, causing silent import errors in production
 2. **API key handling**: Uninitialized GROQ_API_KEY variable could cause parameter expansion issues in .env file
 3. **User experience**: SQLite selection should give clear, accurate feedback about what database is being used
+4. **SQLite initialization**: Without explicit .env loading, dialect detection fails and PostgreSQL-only DDL executes, breaking SQLite setup
 
-### Git Commit
+### Git Commits
 - Commit `5d75357`: "fix(setup.sh): resolve Python invocation inconsistencies and messaging issues"
+- Commit `420eda2`: "docs: update changelog for setup.sh fixes (2026-05-08)"
+- Commit `d04a608`: "fix(db_init.py): load .env file before checking dialect"
+
+### Result
+- ✅ SQLite database `nivesh.db` created with all 18 tables
+- ✅ Alembic migrations 001-003 completed successfully
+- ✅ Ready for optional seeding or API startup
 
 ## 2026-04-21 — Session: v2.0.0 release notes, branch merge verification, GitHub issue triage
 
