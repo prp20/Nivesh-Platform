@@ -173,7 +173,7 @@ class FundMetrics(Base):
 class Stock(Base):
     __tablename__ = "stocks"
 
-    id             = Column(Integer, primary_key=True)
+    id             = Column(Integer, primary_key=True, autoincrement=True)
     symbol         = Column(String(20), nullable=False, unique=True)
     nse_symbol     = Column(String(20))
     bse_code       = Column(String(10))
@@ -198,7 +198,7 @@ class PriceData(Base):
         Index('ix_price_data_stock_date_desc', 'stock_id', 'price_date'),
     )
 
-    id         = Column(BigInteger, primary_key=True)
+    id         = Column(BigInteger, primary_key=True, autoincrement=True)
     stock_id   = Column(Integer, ForeignKey("stocks.id", ondelete="CASCADE"), nullable=False)
     price_date = Column(Date, nullable=False)
     open       = Column(Numeric(12, 4))
@@ -217,7 +217,7 @@ class FinancialStatement(Base):
         Index('ix_financial_stmt_stock_period', 'stock_id', 'period_end'),
     )
 
-    id             = Column(Integer, primary_key=True)
+    id             = Column(Integer, primary_key=True, autoincrement=True)
     stock_id       = Column(Integer, ForeignKey("stocks.id", ondelete="CASCADE"), nullable=False)
     statement_type = Column(String(5), nullable=False)   # 'PL' | 'BS' | 'CF'
     period_type    = Column(String(10), nullable=False)  # 'annual' | 'quarterly'
@@ -237,7 +237,7 @@ class ShareholdingPattern(Base):
         Index('ix_shareholding_pattern_stock_period', 'stock_id', 'period_end'),
     )
 
-    id              = Column(Integer, primary_key=True)
+    id              = Column(Integer, primary_key=True, autoincrement=True)
     stock_id        = Column(Integer, ForeignKey("stocks.id", ondelete="CASCADE"), nullable=False)
     period_end      = Column(Date, nullable=False)
     promoter_pct    = Column(Numeric(6, 3))
@@ -257,7 +257,7 @@ class FinancialRatio(Base):
                          name='uq_financial_ratios_stock_period_type'),
     )
 
-    id             = Column(Integer, primary_key=True)
+    id             = Column(Integer, primary_key=True, autoincrement=True)
     stock_id       = Column(Integer, ForeignKey("stocks.id", ondelete="CASCADE"), nullable=False)
     period_end     = Column(Date, nullable=False)
     period_type    = Column(String(10), nullable=False)
@@ -355,7 +355,7 @@ class TechnicalIndicator(Base):
 class DetectedPattern(Base):
     __tablename__ = "detected_patterns"
 
-    id             = Column(Integer, primary_key=True)
+    id             = Column(Integer, primary_key=True, autoincrement=True)
     stock_id       = Column(Integer, ForeignKey("stocks.id", ondelete="CASCADE"), nullable=False)
     pattern_type   = Column(String(30), nullable=False)
     timeframe      = Column(String(5), nullable=False)
@@ -376,7 +376,7 @@ class StockRating(Base):
         UniqueConstraint("stock_id", "rated_on", name="uq_stock_rating_stock_date"),
     )
 
-    id                 = Column(Integer, primary_key=True)
+    id                 = Column(Integer, primary_key=True, autoincrement=True)
     stock_id           = Column(Integer, ForeignKey("stocks.id", ondelete="CASCADE"), nullable=False)
     rated_on           = Column(Date, nullable=False)
     total_score        = Column(Numeric(6, 3))
@@ -393,7 +393,7 @@ class StockRating(Base):
 class PipelineAudit(Base):
     __tablename__ = "pipeline_audit"
 
-    id          = Column(Integer, primary_key=True)
+    id          = Column(Integer, primary_key=True, autoincrement=True)
     job_name    = Column(String(60), nullable=False)
     stock_id    = Column(Integer, ForeignKey("stocks.id"))
     status      = Column(String(10), nullable=False)
@@ -412,7 +412,7 @@ class FundamentalScore(Base):
         Index('ix_fundamental_scores_stock_id', 'stock_id'),
     )
 
-    id                          = Column(Integer, primary_key=True)
+    id                          = Column(Integer, primary_key=True, autoincrement=True)
     stock_id                    = Column(Integer, ForeignKey("stocks.id", ondelete="CASCADE"), nullable=False)
     period_end                  = Column(Date, nullable=False)
     period_type                 = Column(String(10), nullable=False)
