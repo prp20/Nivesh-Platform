@@ -1,5 +1,20 @@
 # Changelog
 
+## 2026-05-08 — Session: SQLite support setup.sh fixes
+
+### Issues Fixed
+- `setup/setup.sh` — Python invocation inconsistencies: replaced 9 `python3 scripts/` calls with `${VENV_DIR}/bin/python3` for consistent venv usage (lines 457, 468, 485, 543, 546, 550, 555, 559, 565)
+- `setup/setup.sh` — GROQ_API_KEY initialization: added default assignment to handle empty user input gracefully (line 324)
+- `setup/setup.sh` — Step 5 messaging: added SQLite detection to show "SQLite (skipping Docker)" instead of misleading "PostgreSQL (External)" message (lines 440-446)
+
+### Why These Fixes Matter
+1. **Python invocation**: Without explicit venv path, Python scripts could accidentally use system Python if venv activation fails, causing silent import errors in production
+2. **API key handling**: Uninitialized GROQ_API_KEY variable could cause parameter expansion issues in .env file
+3. **User experience**: SQLite selection should give clear, accurate feedback about what database is being used
+
+### Git Commit
+- Commit `5d75357`: "fix(setup.sh): resolve Python invocation inconsistencies and messaging issues"
+
 ## 2026-04-21 — Session: v2.0.0 release notes, branch merge verification, GitHub issue triage
 
 ### Branch Merge Checks
