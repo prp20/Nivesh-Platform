@@ -321,6 +321,7 @@ echo ""
 info "Enter your API keys (leave blank to skip)."
 echo ""
 read -rsp "  Enter GROQ_API_KEY: " GROQ_API_KEY
+GROQ_API_KEY="${GROQ_API_KEY:-}"  # allow empty input
 echo ""
 
 read -rp "  Enable LangSmith tracing? (y/N): " ENABLE_LS
@@ -436,8 +437,13 @@ if [[ "$USE_DOCKER" == true ]]; then
     sleep 1
   done
 else
-  step "Step 5: PostgreSQL (External — skipping Docker)"
-  info "Using your external PostgreSQL. Ensure it is reachable at the provided URL."
+  if [[ "$USE_SQLITE" == true ]]; then
+    step "Step 5: SQLite (skipping Docker)"
+    info "Using local SQLite file at ${SQLITE_PATH}"
+  else
+    step "Step 5: PostgreSQL (External — skipping Docker)"
+    info "Using your external PostgreSQL. Ensure it is reachable at the provided URL."
+  fi
 fi
 
 # =============================================================================
@@ -448,7 +454,7 @@ step "Step 6: Database Setup"
 cd "${BACKEND_DIR}"
 
 info "Checking existing database state..."
-if python3 scripts/db_setup.py --check 2>/dev/null; then
+if "${VENV_DIR}/bin/python3" scripts/db_setup.py --check 2>/dev/null; then
   # Tables already exist — ask user what to do
   echo ""
   warn "Existing database tables detected."
@@ -465,7 +471,7 @@ if python3 scripts/db_setup.py --check 2>/dev/null; then
     read -rp "  Type YES to confirm: " DROP_CONFIRM
     if [[ "$DROP_CONFIRM" == "YES" ]]; then
       info "Dropping all tables..."
-      python3 scripts/db_setup.py --drop-all
+      "${VENV_DIR}/bin/python3" scripts/db_setup.py --drop-all
       success "All tables dropped."
     else
       info "Cancelled. Keeping existing data."
@@ -476,7 +482,7 @@ else
 fi
 
 info "Creating MF tables and enabling pg_trgm (SQLAlchemy create_all)..."
-python3 scripts/db_init.py
+"${VENV_DIR}/bin/python3" scripts/db_init.py
 success "MF tables ready."
 
 info "Running Alembic migration for stock tables (idempotent)..."
@@ -534,29 +540,29 @@ fi
 
 if [[ "$SEED_MF" == true ]]; then
   time_run "Seeding benchmark indices" \
-    python3 scripts/seed_indices.py
+    "${VENV_DIR}/bin/python3" scripts/seed_indices.py
 
   time_run "Seeding fund master records" \
-    python3 scripts/seed_funds.py
+    "${VENV_DIR}/bin/python3" scripts/seed_funds.py
 
   warn "NAV sync fetches data for every active fund — expected 30–60 minutes."
   time_run "NAV sync + metrics computation [${BACKFILL_PERIOD}]" \
-    python3 scripts/sync_data.py "${BACKFILL_PERIOD}"
+    "${VENV_DIR}/bin/python3" scripts/sync_data.py "${BACKFILL_PERIOD}"
 fi
 
 if [[ "$SEED_STOCKS" == true ]]; then
   time_run "Seeding stock master [18 large-cap stocks + 3 indices]" \
-    python3 scripts/seed/seed_stock_master.py
+    "${VENV_DIR}/bin/python3" scripts/seed/seed_stock_master.py
 
   warn "Price backfill [${BACKFILL_PERIOD}] fetches OHLCV from yfinance — expected 20–40 minutes."
   time_run "Price history backfill [${BACKFILL_PERIOD}]" \
-    python3 scripts/seed/backfill_prices.py "${BACKFILL_PERIOD}"
+    "${VENV_DIR}/bin/python3" scripts/seed/backfill_prices.py "${BACKFILL_PERIOD}"
 fi
 
 if [[ "$SEED_FUNDAMENTALS" == true ]]; then
   warn "Fundamental scraping from screener.in — expected 5–15 minutes."
   time_run "Seeding fundamental data" \
-    python3 scripts/seed/seed_fundamentals.py
+    "${VENV_DIR}/bin/python3" scripts/seed/seed_fundamentals.py
 fi
 
 # =============================================================================
