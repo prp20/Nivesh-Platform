@@ -1,5 +1,5 @@
 from sqlalchemy import Column, String, Numeric, TIMESTAMP, Date, Boolean, ForeignKey, text, Index, Integer, BigInteger, Text, UniqueConstraint
-from sqlalchemy.dialects.postgresql import JSONB
+from sqlalchemy import JSON
 from sqlalchemy.sql import func
 from sqlalchemy.orm import relationship
 import uuid
@@ -223,8 +223,8 @@ class FinancialStatement(Base):
     period_type    = Column(String(10), nullable=False)  # 'annual' | 'quarterly'
     period_end     = Column(Date, nullable=False)
     currency       = Column(String(5), default="INR")
-    data           = Column(JSONB, nullable=False)
-    raw_data       = Column(JSONB)
+    data           = Column(JSON, nullable=False)
+    raw_data       = Column(JSON)
     scraped_at     = Column(TIMESTAMP(timezone=True), server_default=func.now())
     raw_checksum   = Column(String(64))
 
@@ -366,7 +366,7 @@ class DetectedPattern(Base):
     direction      = Column(String(10))
     confidence     = Column(Numeric(4, 3))
     is_active      = Column(Boolean, default=True)
-    metadata_      = Column("metadata", JSONB)
+    metadata_      = Column("metadata", JSON)
     created_at     = Column(TIMESTAMP(timezone=True), server_default=func.now())
 
 
@@ -387,7 +387,7 @@ class StockRating(Base):
     momentum_score     = Column(Numeric(6, 3))
     quality_score      = Column(Numeric(6, 3))   # reserved for future quality metrics
     shareholding_score = Column(Numeric(6, 3))
-    score_breakdown_   = Column("score_breakdown", JSONB)
+    score_breakdown_   = Column("score_breakdown", JSON)
 
 
 class PipelineAudit(Base):
@@ -402,7 +402,7 @@ class PipelineAudit(Base):
     records_in  = Column(Integer, default=0)
     records_out = Column(Integer, default=0)
     error_msg   = Column(Text)
-    metadata_   = Column("metadata", JSONB)
+    metadata_   = Column("metadata", JSON)
 
 
 class FundamentalScore(Base):
