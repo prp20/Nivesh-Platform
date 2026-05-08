@@ -21,6 +21,10 @@ from sqlalchemy.ext.asyncio import create_async_engine
 from sqlalchemy import text
 
 
+def _is_sqlite(url: str) -> bool:
+    return url.startswith("sqlite")
+
+
 # Drop order must respect FK constraints (children before parents)
 MF_TABLES = [
     'sync_jobs',
@@ -57,15 +61,23 @@ def _get_engine():
 
 
 async def check_tables_exist() -> bool:
-    """Return True if any key tables exist in the public schema."""
+    """Return True if any key tables exist in the database."""
     engine = _get_engine()
     try:
         async with engine.connect() as conn:
-            placeholders = ", ".join(f"'{t}'" for t in KEY_TABLES)
-            result = await conn.execute(text(
-                f"SELECT COUNT(*) FROM information_schema.tables "
-                f"WHERE table_schema = 'public' AND table_name IN ({placeholders})"
-            ))
+            url = os.getenv("DATABASE_URL", "")
+            if _is_sqlite(url):
+                placeholders = ", ".join(f"'{t}'" for t in KEY_TABLES)
+                result = await conn.execute(text(
+                    f"SELECT COUNT(*) FROM sqlite_master "
+                    f"WHERE type='table' AND name IN ({placeholders})"
+                ))
+            else:
+                placeholders = ", ".join(f"'{t}'" for t in KEY_TABLES)
+                result = await conn.execute(text(
+                    f"SELECT COUNT(*) FROM information_schema.tables "
+                    f"WHERE table_schema = 'public' AND table_name IN ({placeholders})"
+                ))
             count = result.scalar()
             return (count or 0) > 0
     except Exception as e:

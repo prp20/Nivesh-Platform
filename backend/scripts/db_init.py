@@ -15,10 +15,12 @@ from app.models import (
 
 async def init_db():
     print("Connecting to database and ensuring table structures exist...")
+    from app.db_compat import is_sqlite
     async with engine.begin() as conn:
-        # pg_trgm is required for GIN trigram indexes on fund_master and stocks.
-        # Must be created before create_all, otherwise index creation fails.
-        await conn.execute(text("CREATE EXTENSION IF NOT EXISTS pg_trgm;"))
+        if not is_sqlite():
+            # pg_trgm is required for GIN trigram indexes on fund_master and stocks.
+            # Must be created before create_all, otherwise index creation fails.
+            await conn.execute(text("CREATE EXTENSION IF NOT EXISTS pg_trgm;"))
         # Import all models to ensure they are registered with the Base
         await conn.run_sync(Base.metadata.create_all)
     print("Database initialization complete.")
