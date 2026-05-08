@@ -137,3 +137,23 @@
 - backend/app/routers/pipeline.py: Added POST /api/v1/pipeline/mf-analysis/all admin bulk trigger
 - backend/pipeline/scheduler.py: Added weekly mf_analysis_weekly job (Sunday 03:00 IST)
 - backend/scripts/run_mf_analyser.py: CLI entry point for single-fund analysis
+
+## 2026-05-08 — db_compat abstraction layer (feature/sqllite-support)
+- backend/app/db_compat.py: Created — database dialect abstraction layer; translate_sql (positional params + upsert), is_sqlite, _sqlite_path, raw_connection context manager, db_execute, db_executemany, db_fetch, db_fetchrow; works with both asyncpg (PostgreSQL) and aiosqlite (SQLite)
+- backend/tests/test_db_compat.py: Created — 8 TDD unit tests covering translate_sql no-op (postgres), param translation (sqlite), upsert translation, is_sqlite detection, and round-trip execute/fetch/fetchrow over real aiosqlite DB; all 8 pass
+
+## 2026-05-08 — SQLite support (feature/sqllite-support)
+- backend/app/db_compat.py: NEW — dialect abstraction (is_sqlite, translate_sql, raw_connection, db_execute, db_fetch, db_fetchrow, db_executemany)
+- backend/app/models.py: JSONB → sa.JSON (5 columns)
+- backend/app/main.py: gate pg_trgm and audit_log JSONB on SQLite
+- backend/alembic/env.py: strip +aiosqlite from migration URL
+- backend/alembic/versions/001-005: SQLite early-exit guards added
+- backend/alembic/versions/003_sqlite_init.py: NEW — creates all tables for SQLite
+- backend/pipeline/*.py (8 files): import swap to db_compat API; NOW() → CURRENT_TIMESTAMP
+- backend/scripts/db_setup.py: gate information_schema on dialect
+- backend/scripts/db_init.py: gate pg_trgm on is_sqlite()
+- setup/setup.sh, setup.ps1: 3-way DB prompt (Docker / External / SQLite)
+- backend/.env.example: add SQLite URL example
+- backend/tests/conftest.py: remove JSONB workaround; all 16 tables in SQLite tests
+- backend/tests/test_db_compat.py: NEW — 8 unit tests for db_compat
+- backend/scripts/seed/seed_stock_master.py: migrated from asyncpg direct to db_compat API (raw_connection + db_execute); NOW() → CURRENT_TIMESTAMP; supports SQLite and PostgreSQL
