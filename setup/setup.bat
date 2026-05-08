@@ -491,18 +491,43 @@ echo.
 set /p SEED_CHOICE="  Enter choice [6]: "
 if "!SEED_CHOICE!"=="" set SEED_CHOICE=6
 
+set SEED_MF=0
+set SEED_STOCKS=0
+set SEED_FUNDAMENTALS=0
+
+if "!SEED_CHOICE!"=="1" set SEED_STOCKS=1
+if "!SEED_CHOICE!"=="2" set SEED_MF=1
+if "!SEED_CHOICE!"=="3" set SEED_STOCKS=1
+if "!SEED_CHOICE!"=="4" set SEED_STOCKS=1& set SEED_MF=1
+if "!SEED_CHOICE!"=="5" set SEED_STOCKS=1& set SEED_MF=1& set SEED_FUNDAMENTALS=1
+
+set BACKFILL_PERIOD=5y
+if not "!SEED_CHOICE!"=="3" if not "!SEED_CHOICE!"=="6" (
+  echo.
+  echo   How many years of history to backfill?
+  echo   [1] 1 year   [2] 2 years   [5] 5 years   [10] 10 years   [M] Max [all available]
+  set /p BACKFILL_CHOICE="  Enter choice [5]: "
+  if "!BACKFILL_CHOICE!"=="" set BACKFILL_CHOICE=5
+  if "!BACKFILL_CHOICE!"=="1" set BACKFILL_PERIOD=1y
+  if "!BACKFILL_CHOICE!"=="2" set BACKFILL_PERIOD=2y
+  if "!BACKFILL_CHOICE!"=="5" set BACKFILL_PERIOD=5y
+  if "!BACKFILL_CHOICE!"=="10" set BACKFILL_PERIOD=10y
+  if /i "!BACKFILL_CHOICE!"=="m" set BACKFILL_PERIOD=max
+  echo [INFO]  Using backfill period: !BACKFILL_PERIOD!
+)
+
 if "!SEED_CHOICE!"=="1" (
   echo [INFO]  Seeding Markets ^& Stocks (Master)...
   python scripts\seed\seed_master_data.py stocks
-  echo [INFO]  Backfilling Stock ^& Index Prices (1y)...
-  python scripts\seed\backfill_prices.py 1y
+  echo [INFO]  Backfilling Stock ^& Index Prices (!BACKFILL_PERIOD!)...
+  python scripts\seed\backfill_prices.py !BACKFILL_PERIOD!
   echo [OK]    Stocks seeded and backfilled.
 )
 if "!SEED_CHOICE!"=="2" (
   echo [INFO]  Seeding Markets ^& Mutual Funds (Master)...
   python scripts\seed\seed_master_data.py funds
-  echo [WARN]  Syncing NAV history (30-60 min). Do not interrupt.
-  python scripts\sync_data.py
+  echo [WARN]  Syncing NAV history (!BACKFILL_PERIOD!). Do not interrupt.
+  python scripts\sync_data.py !BACKFILL_PERIOD!
   echo [OK]    Mutual Funds seeded and synced.
 )
 if "!SEED_CHOICE!"=="3" (
@@ -511,17 +536,17 @@ if "!SEED_CHOICE!"=="3" (
   echo [OK]    Master Data seeded.
 )
 if "!SEED_CHOICE!"=="4" (
-  echo [INFO]  Running History Sync (All Master + 5y History).
+  echo [INFO]  Running History Sync (All Master + !BACKFILL_PERIOD! History).
   python scripts\seed\seed_master_data.py all
-  python scripts\sync_data.py
-  python scripts\seed\backfill_prices.py 5y
+  python scripts\sync_data.py !BACKFILL_PERIOD!
+  python scripts\seed\backfill_prices.py !BACKFILL_PERIOD!
   echo [OK]    History sync complete.
 )
 if "!SEED_CHOICE!"=="5" (
   echo [INFO]  Running Full Production Sync (All + Fundamentals).
   python scripts\seed\seed_master_data.py all
-  python scripts\sync_data.py
-  python scripts\seed\backfill_prices.py 5y
+  python scripts\sync_data.py !BACKFILL_PERIOD!
+  python scripts\seed\backfill_prices.py !BACKFILL_PERIOD!
   python scripts\seed\seed_fundamentals.py
   echo [OK]    Full sync complete.
 )

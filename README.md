@@ -10,9 +10,10 @@ A modern, full-stack financial analytics ecosystem for mutual fund tracking, sto
 
 - 📊 **Advanced Analytics** — Sharpe, Sortino, Information Ratio metrics
 - 🏦 **Mutual Fund Intelligence** — NAV tracking, benchmark comparison, risk profiling
+- 🤖 **AI Fund Analyser** — LangGraph agentic workflow generates SEBI-style verdicts (STRONG BUY / BUY / HOLD / AVOID) with peer ranking, category stats, and Groq LLM narrative
 - 📈 **Stock Market Ecosystem** — Real-time NSE/BSE data, fundamental analysis, technical indicators
 - 🔍 **Professional Screener** — 15+ filters for intelligent stock selection
-- ⚡ **Automated Pipeline** — Daily price sync, weekly fundamentals, scheduled ratio/rating computation
+- ⚡ **Automated Pipeline** — Daily price sync, weekly fundamentals + MF analysis, scheduled ratio/rating computation
 - 🔐 **Enterprise Auth** — JWT-based authentication with role-based access control
 - 📱 **Production-Ready** — React SPA served via FastAPI backend, fully containerized
 
@@ -68,6 +69,7 @@ The setup script will install dependencies, configure the database, build the fr
 **Backend:** FastAPI + SQLAlchemy 2.0 + asyncpg  
 **Database:** PostgreSQL 16  
 **Data Processing:** pandas, NumPy, TA-Lib  
+**AI / Agentic:** LangGraph + langchain-groq (Llama 3 70B) + LangSmith tracing  
 **Scheduling:** APScheduler (background jobs)  
 **Testing:** pytest + pytest-asyncio + in-memory SQLite
 

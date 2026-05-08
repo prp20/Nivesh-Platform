@@ -496,14 +496,33 @@ Write-Host ""
 $SeedChoice = Read-Host "  Enter choice [6]"
 if ([string]::IsNullOrWhiteSpace($SeedChoice)) { $SeedChoice = "6" }
 
+$BackfillPeriod = "5y"
+if ($SeedChoice -match "^[1245]$") {
+    Write-Host ""
+    Write-Host "  How many years of history to backfill?"
+    Write-Host "  [1] 1 year   [2] 2 years   [5] 5 years   [10] 10 years   [M] Max [all available]"
+    $BackfillChoice = Read-Host "  Enter choice [5]"
+    if ([string]::IsNullOrWhiteSpace($BackfillChoice)) { $BackfillChoice = "5" }
+    switch ($BackfillChoice.ToLower()) {
+        "1" { $BackfillPeriod = "1y" }
+        "2" { $BackfillPeriod = "2y" }
+        "5" { $BackfillPeriod = "5y" }
+        "10" { $BackfillPeriod = "10y" }
+        "m" { $BackfillPeriod = "max" }
+        "max" { $BackfillPeriod = "max" }
+        Default { $BackfillPeriod = "5y" }
+    }
+    Write-Info "Using backfill period: $BackfillPeriod"
+}
+
 switch ($SeedChoice) {
   "1" {
     Start-TimedOp "Seeding Markets & Stocks (Master)"
     & $PythonCmd scripts\seed\seed_master_data.py stocks
     End-TimedOp
     
-    Start-TimedOp "Backfilling Stock & Index Prices (1y)"
-    & $PythonCmd scripts\seed\backfill_prices.py 1y
+    Start-TimedOp "Backfilling Stock & Index Prices ($BackfillPeriod)"
+    & $PythonCmd scripts\seed\backfill_prices.py $BackfillPeriod
     End-TimedOp
   }
   "2" {
@@ -511,9 +530,9 @@ switch ($SeedChoice) {
     & $PythonCmd scripts\seed\seed_master_data.py funds
     End-TimedOp
     
-    Write-Warn "Syncing NAV history (30-60 min). Do not interrupt."
+    Write-Warn "Syncing NAV history ($BackfillPeriod). Do not interrupt."
     Start-TimedOp "Syncing NAV history"
-    & $PythonCmd scripts\sync_data.py
+    & $PythonCmd scripts\sync_data.py $BackfillPeriod
     End-TimedOp
   }
   "3" {
@@ -522,17 +541,17 @@ switch ($SeedChoice) {
     End-TimedOp
   }
   "4" {
-    Write-Info "Running History Sync (All Master + 5y History)."
+    Write-Info "Running History Sync (All Master + $BackfillPeriod History)."
     & $PythonCmd scripts\seed\seed_master_data.py all
-    & $PythonCmd scripts\sync_data.py
-    & $PythonCmd scripts\seed\backfill_prices.py 5y
+    & $PythonCmd scripts\sync_data.py $BackfillPeriod
+    & $PythonCmd scripts\seed\backfill_prices.py $BackfillPeriod
     Write-Success "History sync complete."
   }
   "5" {
     Write-Info "Running Full Production Sync (All + Fundamentals)."
     & $PythonCmd scripts\seed\seed_master_data.py all
-    & $PythonCmd scripts\sync_data.py
-    & $PythonCmd scripts\seed\backfill_prices.py 5y
+    & $PythonCmd scripts\sync_data.py $BackfillPeriod
+    & $PythonCmd scripts\seed\backfill_prices.py $BackfillPeriod
     & $PythonCmd scripts\seed\seed_fundamentals.py
     Write-Success "Full sync complete."
   }

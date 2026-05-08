@@ -155,45 +155,62 @@ async def run_price_sync_one(symbol: str, period: str = "1y") -> int:
 async def _ingest_chunk(stocks: list, period: str) -> int:
     """
     Download prices for a batch of stocks and upsert to DB.
-
-    Uses per-stock error tracking so failures don't block other stocks.
-    Returns total rows upserted; errors are logged with stock symbol for debugging.
     """
     if not stocks:
         return 0
 
     tickers_str = " ".join(s["yf_symbol"] for s in stocks)
-    df = None
 
-    # Download with exponential backoff retry
-    for attempt in range(MAX_API_RETRIES):
-        try:
-            # yfinance is blocking, run in thread to keep event loop free
-            df = await asyncio.to_thread(
-                yf.download,
-                tickers_str,
-                period=period,
-                interval="1d",
-                group_by="ticker",
-                auto_adjust=False,
-                progress=False,
-                threads=False,  # Sequential is safer against IP blocks
-                timeout=API_CALL_TIMEOUT_SECS,
-            )
-            if df is not None and not df.empty:
-                break
-        except Exception as e:
-            logger.warning(
-                f"yfinance download attempt {attempt+1}/{MAX_API_RETRIES} failed for chunk: {e}"
-            )
-            if attempt < MAX_API_RETRIES - 1:
-                wait_time = EXPONENTIAL_BACKOFF_BASE ** (attempt + 1)
-                await asyncio.sleep(wait_time)
-            continue
+    # Fallback logic: if requested period fails/empty, try shorter periods
+    periods_to_try = [period]
+    if period == "max":
+        periods_to_try.extend(["10y", "5y", "2y", "1y"])
+    elif period == "10y":
+        periods_to_try.extend(["5y", "2y", "1y"])
+    elif period == "5y":
+        periods_to_try.extend(["2y", "1y"])
+    elif period == "2y":
+        periods_to_try.append("1y")
+
+    df = None
+    actual_period = period
+
+    for p in periods_to_try:
+        # Download with exponential backoff retry for current period
+        for attempt in range(MAX_API_RETRIES):
+            try:
+                # yfinance is blocking, run in thread to keep event loop free
+                df = await asyncio.to_thread(
+                    yf.download,
+                    tickers_str,
+                    period=p,
+                    interval="1d",
+                    group_by="ticker",
+                    auto_adjust=False,
+                    progress=False,
+                    threads=False,  # Sequential is safer against IP blocks
+                    timeout=API_CALL_TIMEOUT_SECS,
+                )
+                if df is not None and not df.empty:
+                    actual_period = p
+                    break
+            except Exception as e:
+                logger.warning(
+                    f"yfinance download attempt {attempt+1}/{MAX_API_RETRIES} failed for chunk (period={p}): {e}"
+                )
+                if attempt < MAX_API_RETRIES - 1:
+                    wait_time = EXPONENTIAL_BACKOFF_BASE ** (attempt + 1)
+                    await asyncio.sleep(wait_time)
+                continue
+        
+        if df is not None and not df.empty:
+            if p != period:
+                logger.info(f"Fallback triggered: data for '{period}' not found, obtained data for '{p}' instead.")
+            break
 
     if df is None or df.empty:
         logger.error(
-            f"yfinance failed to download data for {len(stocks)} stocks after {MAX_API_RETRIES} attempts"
+            f"yfinance failed to download data for {len(stocks)} stocks after trying fallback periods: {periods_to_try}"
         )
         return 0
 
@@ -206,7 +223,7 @@ async def _ingest_chunk(stocks: list, period: str) -> int:
         try:
             stock_df = _extract_ticker_df(df, stock["yf_symbol"], len(stocks))
             if stock_df is None or stock_df.empty:
-                logger.warning(f"No price data from yfinance for {stock_symbol}")
+                logger.warning(f"No price data from yfinance for {stock_symbol} in period {actual_period}")
                 continue
 
             # Upsert this stock's prices (wrapped in transaction via ON CONFLICT)
@@ -257,31 +274,46 @@ async def _ingest_benchmarks_chunk(benchmarks: list, period: str) -> int:
         return 0
 
     tickers_str = " ".join(b["yf_symbol"] for b in benchmarks)
-    df = None
+    
+    # Fallback logic for benchmarks
+    periods_to_try = [period]
+    if period == "max":
+        periods_to_try.extend(["10y", "5y", "2y", "1y"])
+    elif period == "10y":
+        periods_to_try.extend(["5y", "2y", "1y"])
+    elif period == "5y":
+        periods_to_try.extend(["2y", "1y"])
+    elif period == "2y":
+        periods_to_try.append("1y")
 
-    for attempt in range(MAX_API_RETRIES):
-        try:
-            df = await asyncio.to_thread(
-                yf.download,
-                tickers_str,
-                period=period,
-                interval="1d",
-                group_by="ticker",
-                auto_adjust=False,
-                progress=False,
-                threads=False,
-                timeout=API_CALL_TIMEOUT_SECS,
-            )
-            if df is not None and not df.empty:
-                break
-        except Exception as e:
-            logger.warning(f"yfinance benchmark download attempt {attempt+1} failed: {e}")
-            if attempt < MAX_API_RETRIES - 1:
-                await asyncio.sleep(EXPONENTIAL_BACKOFF_BASE ** (attempt + 1))
-            continue
+    df = None
+    for p in periods_to_try:
+        for attempt in range(MAX_API_RETRIES):
+            try:
+                df = await asyncio.to_thread(
+                    yf.download,
+                    tickers_str,
+                    period=p,
+                    interval="1d",
+                    group_by="ticker",
+                    auto_adjust=False,
+                    progress=False,
+                    threads=False,
+                    timeout=API_CALL_TIMEOUT_SECS,
+                )
+                if df is not None and not df.empty:
+                    break
+            except Exception as e:
+                logger.warning(f"yfinance benchmark download attempt {attempt+1} (period={p}) failed: {e}")
+                if attempt < MAX_API_RETRIES - 1:
+                    await asyncio.sleep(EXPONENTIAL_BACKOFF_BASE ** (attempt + 1))
+                continue
+        
+        if df is not None and not df.empty:
+            break
 
     if df is None or df.empty:
-        logger.error("yfinance returned no data for benchmark chunk")
+        logger.error(f"yfinance returned no data for benchmark chunk after trying: {periods_to_try}")
         return 0
 
     total = 0

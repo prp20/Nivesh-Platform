@@ -117,3 +117,23 @@
   - Fixed Alembic section to reference migration filename instead of hardcoded table count
   - Added database access patterns section (get_db vs raw_connection)
   - Consolidated Fundamental Scraper section
+
+## 2026-04-25 12:41
+- docs/CODE_REVIEW.md: Created full codebase code review — 48 issues (9 critical, 18 high, 13 medium, 8 low) across backend and frontend, covering security, financial calculation correctness, React patterns, and data pipeline reliability
+
+## 2026-04-25 (mf-analyser implementation)
+- backend/mf_analyser/__init__.py: New module — LangGraph-based MF analysis workflow
+- backend/mf_analyser/state.py: MFAnalysisState TypedDict with full field set
+- backend/mf_analyser/prompts/prompts.py: All LLM prompt strings (SYSTEM_PROMPT, build_user_prompt, FALLBACK_VERDICT_TEMPLATE)
+- backend/mf_analyser/nodes/data_nodes.py: fetch_fund_node (loads FundMaster, NAV, benchmark) and persist_node (upserts fund_analysis, updates fund_metrics)
+- backend/mf_analyser/nodes/compute_nodes.py: compute_metrics_node (wraps analytics.compute_all_metrics)
+- backend/mf_analyser/nodes/peer_nodes.py: fetch_peers_node, rank_peers_node, skip_peers_node, route_peer_analysis (conditional edge)
+- backend/mf_analyser/nodes/verdict_nodes.py: generate_verdict_node (Groq llama3-70b, JSON parse, deterministic fallback)
+- backend/mf_analyser/graph.py: StateGraph assembly + run_mf_analyser() entry point
+- backend/app/models.py: Added FundAnalysis model; added analysis_verdict/analysis_summary/analysis_at to FundMetrics
+- backend/alembic/versions/002_add_fund_analysis.py: Idempotent migration — creates fund_analysis table, adds 3 cols to fund_metrics
+- backend/app/routers/mf_analysis.py: POST/GET /api/v1/mf-analysis/{scheme_code} + _run_bulk_mf_analysis helper
+- backend/app/main.py: Registered mf_analysis router
+- backend/app/routers/pipeline.py: Added POST /api/v1/pipeline/mf-analysis/all admin bulk trigger
+- backend/pipeline/scheduler.py: Added weekly mf_analysis_weekly job (Sunday 03:00 IST)
+- backend/scripts/run_mf_analyser.py: CLI entry point for single-fund analysis

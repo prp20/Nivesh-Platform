@@ -503,6 +503,24 @@ async def trigger_fundamental_scoring_one(
     return result
 
 
+@router.post("/funds/run/{scheme_code}", summary="Fund Run: Trigger end-to-end fund scoring pipeline")
+async def trigger_fund_scoring_one(
+    scheme_code: str,
+    admin: str = Depends(require_admin),
+    db: AsyncSession = Depends(get_db)
+):
+    """Synchronously runs the Fund Fetch -> Reason pipeline."""
+    from fund_scorer.graph import run_fund_scorer
+    
+    result = await run_fund_scorer(scheme_code, db)
+    
+    if result.get("status") == "FAILED":
+        error_msg = result.get("error", "Unknown error")
+        raise HTTPException(status_code=422, detail=f"Fund scoring failed: {error_msg}")
+        
+    return result
+
+
 @router.post("/fundamentals/bulk-run", summary="Bulk Run: Trigger scoring for multiple stocks")
 async def trigger_fundamental_scoring_bulk(
     req: BulkFundamentalScoreRequest,

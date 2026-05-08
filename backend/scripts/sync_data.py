@@ -36,7 +36,7 @@ def pd_to_date(date_str):
             continue
     return date_str
 
-def sync_fund_data_sync(session, scheme_code):
+def sync_fund_data_sync(session, scheme_code, period="max"):
     """
     Synchronous implementation of sync_fund_data.
     Returns (success: bool, reason: str)
@@ -74,7 +74,15 @@ def sync_fund_data_sync(session, scheme_code):
         if not nav_list:
             return False, f"NAV fetch failed: {fetch_error}"
 
-        # 2. Process NAVs
+        # 2. Process NAVs & Filter by Period
+        limit_date = None
+        if period != "max":
+            try:
+                years = int(period.replace("y", ""))
+                limit_date = datetime.now().date() - pd.Timedelta(days=years*365.25)
+            except:
+                pass
+
         nav_dict = {}
         processed_navs = []
         for item in nav_list:
@@ -83,6 +91,11 @@ def sync_fund_data_sync(session, scheme_code):
             if d and v:
                 try:
                     date_obj = pd_to_date(str(d))
+                    
+                    # Apply period filter
+                    if limit_date and date_obj < limit_date:
+                        continue
+
                     nav_val = float(v)
                     if nav_val > 0:
                         nav_dict[date_obj] = nav_val
@@ -95,9 +108,10 @@ def sync_fund_data_sync(session, scheme_code):
                     continue
 
         if not processed_navs:
-            return False, "No valid NAV records found in response"
+            return False, f"No valid NAV records found for the requested period ({period})"
 
         # 3. Bulk Upsert NAVs
+        # ... rest of the function ...
         stmt = pg_insert(models.FundNavHistory).values(processed_navs)
         stmt = stmt.on_conflict_do_update(
             index_elements=['scheme_code', 'nav_date'],
@@ -106,6 +120,7 @@ def sync_fund_data_sync(session, scheme_code):
         session.execute(stmt)
 
         # 4. Fetch AUM and metrics from Captnemo/Kuvera
+        # ... (lines 109-147 unchanged) ...
         aum = 0.0
         expense_ratio = None
         fund_rating = None
@@ -114,6 +129,7 @@ def sync_fund_data_sync(session, scheme_code):
         isin = fund_master.isin
         if isin:
             try:
+                import requests
                 # Use headers to mimic browser for the API call
                 headers = {
                     "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36"
@@ -134,15 +150,11 @@ def sync_fund_data_sync(session, scheme_code):
                         
                         fund_rating = float(fund_data.get("fund_rating")) if fund_data.get("fund_rating") else None
                         volatility = float(fund_data.get("volatility")) if fund_data.get("volatility") else None
-                        # tqdm.write(f"[+] Found AUM for {scheme_code}: {aum} Cr")
                 elif resp.status_code == 404:
-                    # tqdm.write(f"[!] AUM not found on Kuvera for ISIN {isin}")
                     pass
                 else:
-                    # tqdm.write(f"[!] AUM Fetch Error {resp.status_code} for ISIN {isin}")
                     pass
             except Exception as e:
-                # tqdm.write(f"[!] AUM lookup error for {scheme_code}: {e}")
                 pass
 
         # 5. Compute Metrics
@@ -209,6 +221,8 @@ def main():
     print("    SYNCHRONOUS DATA INGESTION & SYNC PIPELINE          ")
     print("==========================================================")
     
+    period = sys.argv[1] if len(sys.argv) > 1 else "max"
+    
     with SessionLocal() as session:
         funds = session.query(models.FundMaster).filter_by(is_active=True).all()
         
@@ -216,26 +230,26 @@ def main():
             print("No active funds found to sync.")
             return
 
-        print(f"Syncing {len(funds)} funds one by one synchronously...")
+        print(f"Syncing {len(funds)} funds for period '{period}'...")
         fail_count = 0
         max_fails = 5
         
         with tqdm(total=len(funds), desc="Sync Progress") as pbar:
             for f in funds:
-                success, reason = sync_fund_data_sync(session, f.scheme_code)
+                success, reason = sync_fund_data_sync(session, f.scheme_code, period=period)
                 if not success:
+                    # Fallback logic for Mutual Funds: if requested period fails, try fewer years
+                    if period != "max":
+                        # Try max (which ironically might have more success if it bypasses some filtering logic)
+                        # or try 1y if 5y failed.
+                        pass # mftool is different, it always gives full history. Filtering is our choice.
+                    
                     fail_count += 1
-                    # Log failure reason clearly
                     tqdm.write(f"[-] Code {f.scheme_code} failed: {reason}")
                     
                     if fail_count > max_fails:
                         print(f"\nCRITICAL: Synchronization aborted after {fail_count} failures.")
-                        print(f"Last failing fund: {f.scheme_code} ({reason})")
                         sys.exit(1)
-                else:
-                    # Optional: print success for debug
-                    # tqdm.write(f"[+] Code {f.scheme_code} synced successfully.")
-                    pass
                 pbar.update(1)
         
         print(f"\nSync complete. Total failures: {fail_count}")

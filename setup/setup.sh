@@ -498,21 +498,11 @@ case "$SEED_CHOICE" in
   *) info "Skipping seeding." ;;
 esac
 
-if [[ "$SEED_MF" == true ]]; then
-  time_run "Seeding benchmark indices" \
-    python3 scripts/seed_indices.py
-
-  time_run "Seeding fund master records" \
-    python3 scripts/seed_funds.py
-
-  warn "NAV sync fetches data for every active fund — expected 30–60 minutes."
-  time_run "NAV sync + metrics computation" \
-    python3 scripts/sync_data.py
-fi
-
-if [[ "$SEED_STOCKS" == true ]]; then
+# Add backfill prompt if any historical data is selected
+BACKFILL_PERIOD="5y"
+if [[ "$SEED_MF" == true || "$SEED_STOCKS" == true ]]; then
   echo ""
-  echo "  How many years of price history to backfill?"
+  echo "  How many years of history to backfill?"
   echo "  [1] 1 year   [2] 2 years   [5] 5 years   [10] 10 years   [M] Max [all available]"
   read -rp "  Enter choice [5]: " BACKFILL_CHOICE
   BACKFILL_CHOICE="${BACKFILL_CHOICE:-5}"
@@ -524,7 +514,21 @@ if [[ "$SEED_STOCKS" == true ]]; then
     *)      BACKFILL_PERIOD="5y"  ;;
   esac
   info "Using backfill period: ${BACKFILL_PERIOD}"
+fi
 
+if [[ "$SEED_MF" == true ]]; then
+  time_run "Seeding benchmark indices" \
+    python3 scripts/seed_indices.py
+
+  time_run "Seeding fund master records" \
+    python3 scripts/seed_funds.py
+
+  warn "NAV sync fetches data for every active fund — expected 30–60 minutes."
+  time_run "NAV sync + metrics computation [${BACKFILL_PERIOD}]" \
+    python3 scripts/sync_data.py "${BACKFILL_PERIOD}"
+fi
+
+if [[ "$SEED_STOCKS" == true ]]; then
   time_run "Seeding stock master [18 large-cap stocks + 3 indices]" \
     python3 scripts/seed/seed_stock_master.py
 
