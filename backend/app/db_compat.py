@@ -44,11 +44,13 @@ def translate_sql(sql: str) -> str:
       1. Positional params  $1, $2, ...  →  ?, ?, ...
       2. Upsert             INSERT INTO ... ON CONFLICT (...) DO UPDATE SET ...
                             →  INSERT OR REPLACE INTO ...  (ON CONFLICT stripped)
-    PostgreSQL: returned unchanged.
+      3. Type casts         ::jsonb, ::text, ::integer, etc.  →  stripped
 
     Note: INSERT OR REPLACE deletes and re-inserts the conflicting row. Any column
     not listed in the INSERT's column list will revert to its default value, unlike
     ON CONFLICT DO UPDATE which only modifies the listed columns.
+
+    PostgreSQL: returned unchanged.
     """
     if not is_sqlite():
         return sql
@@ -58,14 +60,12 @@ def translate_sql(sql: str) -> str:
 
     # 2. Translate ON CONFLICT upsert to INSERT OR REPLACE
     if re.search(r'\bON\s+CONFLICT\b', sql, flags=re.IGNORECASE):
-        # Strip everything from ON CONFLICT onwards
         sql = re.sub(
             r'\s*ON\s+CONFLICT\b.*',
             '',
             sql,
             flags=re.IGNORECASE | re.DOTALL,
         )
-        # Change INSERT INTO → INSERT OR REPLACE INTO
         sql = re.sub(
             r'\bINSERT\s+INTO\b',
             'INSERT OR REPLACE INTO',
@@ -73,6 +73,9 @@ def translate_sql(sql: str) -> str:
             count=1,
             flags=re.IGNORECASE,
         )
+
+    # 3. Strip PostgreSQL type casts (e.g. ::jsonb, ::text, ::integer)
+    sql = re.sub(r'::[a-zA-Z_]+', '', sql)
 
     return sql.strip()
 

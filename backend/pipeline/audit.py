@@ -2,7 +2,7 @@ import logging
 from contextlib import asynccontextmanager
 from datetime import datetime, timezone
 from app.config import settings
-from app.db_compat import raw_connection, db_execute, db_fetchrow
+from app.db_compat import raw_connection, db_execute, db_fetchrow, is_sqlite
 
 logger = logging.getLogger(__name__)
 
@@ -65,7 +65,6 @@ async def audit_job(job_name: str, stock_id: int = None, records_in: int = 0):
 async def _insert_audit(job_name: str, stock_id: int = None, records_in: int = 0) -> int:
     """Insert a new audit record and return its ID."""
     async with raw_connection() as conn:
-        from app.db_compat import is_sqlite
         if is_sqlite():
             # SQLite: INSERT without RETURNING, then get last inserted id
             sql = """

@@ -90,13 +90,17 @@ async def check_tables_exist() -> bool:
 async def drop_tables(tables: list, also_alembic: bool = False):
     """Drop the given list of tables using CASCADE. Optionally drop alembic_version."""
     engine = _get_engine()
+    url = os.getenv("DATABASE_URL", "")
     try:
         async with engine.begin() as conn:
             for table in tables:
-                await conn.execute(text(f'DROP TABLE IF EXISTS "{table}" CASCADE'))
+                if _is_sqlite(url):
+                    await conn.execute(text(f'DROP TABLE IF EXISTS "{table}"'))
+                else:
+                    await conn.execute(text(f'DROP TABLE IF EXISTS "{table}" CASCADE'))
                 print(f"  [OK]  dropped: {table}")
             if also_alembic:
-                await conn.execute(text('DROP TABLE IF EXISTS alembic_version CASCADE'))
+                await conn.execute(text('DROP TABLE IF EXISTS alembic_version'))
                 print("  [OK]  dropped: alembic_version")
         print("[OK]    Tables dropped successfully.")
     except Exception as e:

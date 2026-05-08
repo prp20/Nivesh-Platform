@@ -127,3 +127,15 @@ async def test_sqlite_fetchrow(monkeypatch, tmp_path):
     assert row is not None
     assert row["v"] == 42
     assert missing is None
+
+
+def test_translate_strips_pg_type_casts(monkeypatch):
+    """PostgreSQL type casts like ::jsonb are stripped on SQLite."""
+    monkeypatch.setenv("DATABASE_URL", "sqlite+aiosqlite:///./test.db")
+    import importlib
+    import app.db_compat as dc
+    importlib.reload(dc)
+    sql = "INSERT INTO t (data) VALUES ($1::jsonb)"
+    result = dc.translate_sql(sql)
+    assert "::" not in result
+    assert "?" in result
