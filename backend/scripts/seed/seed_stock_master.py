@@ -13,6 +13,10 @@ from typing import List, Dict
 import sys
 import os
 
+# Load .env file explicitly so environment variables are available
+from dotenv import load_dotenv
+load_dotenv(os.path.join(os.path.dirname(__file__), '..', '..', '.env'))
+
 # Add parent directories to path for imports
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', '..'))
 
