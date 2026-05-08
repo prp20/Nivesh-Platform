@@ -19,9 +19,27 @@
 - Commit `420eda2`: "docs: update changelog for setup.sh fixes (2026-05-08)"
 - Commit `d04a608`: "fix(db_init.py): load .env file before checking dialect"
 
+5. **sync_data.py** — URL driver stripping: changed hardcoded `.replace("+asyncpg", "")` to `re.sub(r'\+(asyncpg|aiosqlite)', '')` to strip both PostgreSQL and SQLite async driver prefixes for synchronous engine creation
+
+### Additional Fixes Applied
+- **seed_stock_master.py** — Added `.env` loading for dialect detection
+- **backfill_prices.py** — Added `.env` loading for dialect detection
+- **backend/.env** — Updated DATABASE_URL to `sqlite+aiosqlite:///./nivesh.db`
+
+### Git Commits
+- Commit `5d75357`: "fix(setup.sh): resolve Python invocation inconsistencies and messaging issues"
+- Commit `420eda2`: "docs: update changelog for setup.sh fixes (2026-05-08)"
+- Commit `d04a608`: "fix(db_init.py): load .env file before checking dialect"
+- Commit `4403582`: "docs: update changelog with db_init.py SQLite fix"
+- Commit `93c0398`: "fix(seed scripts): add .env loading for dialect detection"
+- Commit `317902e`: "fix(sync_data.py): strip +aiosqlite from SQLite URLs for sync engine"
+
 ### Result
 - ✅ SQLite database `nivesh.db` created with all 18 tables
 - ✅ Alembic migrations 001-003 completed successfully
+- ✅ db_init.py runs without errors
+- ✅ sync_data.py fixed to handle SQLite sync engine
+- ✅ All seed scripts load .env file automatically
 - ✅ Ready for optional seeding or API startup
 
 ## 2026-04-21 — Session: v2.0.0 release notes, branch merge verification, GitHub issue triage
