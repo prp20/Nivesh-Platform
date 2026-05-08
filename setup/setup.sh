@@ -253,16 +253,28 @@ rm -f "$TEMP_REQ"
 # =============================================================================
 step "Step 4: Environment Configuration"
 
-# ── PostgreSQL Setup ──────────────────────────────────────────────────────────
+# ── Database Setup ────────────────────────────────────────────────────────────
 echo ""
-echo "  How do you want to connect to PostgreSQL?"
-echo "  [1] Docker  — auto-managed, starts postgres:16-alpine (default)"
-echo "  [2] External — I will provide my own connection URL"
+echo "  Choose your database backend:"
+echo "  [1] PostgreSQL with Docker  — auto-managed postgres:16-alpine (default)"
+echo "  [2] PostgreSQL external URL — Supabase, RDS, or self-hosted"
+echo "  [3] SQLite local file       — no Docker needed, great for local dev"
 echo ""
-read -rp "  Enter choice [1]: " PG_CHOICE
-PG_CHOICE="${PG_CHOICE:-1}"
+read -rp "  Enter choice [1]: " DB_CHOICE
+DB_CHOICE="${DB_CHOICE:-1}"
 
-if [[ "$PG_CHOICE" == "2" ]]; then
+if [[ "$DB_CHOICE" == "3" ]]; then
+  # ── SQLite ──────────────────────────────────────────────────────────────────
+  read -rp "  SQLite file path [./nivesh.db]: " SQLITE_PATH
+  SQLITE_PATH="${SQLITE_PATH:-./nivesh.db}"
+  # SQLAlchemy sqlite+aiosqlite requires 3 slashes for relative paths
+  DATABASE_URL="sqlite+aiosqlite:///${SQLITE_PATH}"
+  USE_DOCKER=false
+  USE_SQLITE=true
+  success "Using SQLite at: ${SQLITE_PATH}"
+
+elif [[ "$DB_CHOICE" == "2" ]]; then
+  # ── External PostgreSQL ──────────────────────────────────────────────────────
   echo ""
   echo "  ── URL format examples ────────────────────────────────────────────────"
   echo "  Local / self-hosted PostgreSQL (port 5432):"
@@ -281,18 +293,22 @@ if [[ "$PG_CHOICE" == "2" ]]; then
   if [[ "$DATABASE_URL" != postgresql* ]]; then
     error "URL must start with 'postgresql'. Got: ${DATABASE_URL}"
   fi
-  success "Using external PostgreSQL URL."
   USE_DOCKER=false
+  USE_SQLITE=false
+  success "Using external PostgreSQL URL."
+
 else
+  # ── Docker PostgreSQL (default) ──────────────────────────────────────────────
   DATABASE_URL="postgresql+asyncpg://nivesh_admin:nivesh_password_123@localhost:5432/nivesh_db"
   USE_DOCKER=true
+  USE_SQLITE=false
   success "Will use Docker-managed PostgreSQL (URL: ${DATABASE_URL})"
 fi
 
-# Verify Docker if selected
+# Verify Docker only if needed
 if [[ "$USE_DOCKER" == true ]]; then
   if ! command -v docker &>/dev/null; then
-    error "Docker not found. Install Docker Desktop from https://docker.com and try again, or choose option [2] for an external PostgreSQL URL."
+    error "Docker not found. Install Docker Desktop from https://docker.com and try again, or choose option [2] or [3]."
   fi
   if ! docker info &>/dev/null 2>&1; then
     error "Docker daemon is not running. Start Docker Desktop and try again."
