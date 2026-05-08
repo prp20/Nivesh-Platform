@@ -44,7 +44,7 @@ from pipeline.normalizer import (
     REQUIRED_CF_KEYS,
 )
 from pipeline.audit import audit_job
-from app.database import raw_connection
+from app.db_compat import raw_connection, db_execute, db_fetch, db_fetchrow
 
 logger = logging.getLogger(__name__)
 
@@ -164,11 +164,11 @@ async def _store_pl(stock_id: int, raw_pl: dict, checksum: str, conn):
                 data         = EXCLUDED.data,
                 raw_data     = EXCLUDED.raw_data,
                 raw_checksum = EXCLUDED.raw_checksum,
-                scraped_at   = NOW()
+                scraped_at   = CURRENT_TIMESTAMP
         """
         # Note: import json moved to top
-        await conn.execute(sql, stock_id, period_end,
-                           json.dumps(period_data), json.dumps(raw_pl), checksum)
+        await db_execute(conn, sql, (stock_id, period_end,
+                           json.dumps(period_data), json.dumps(raw_pl), checksum))
 
 
 async def _store_bs(stock_id: int, raw_bs: dict, checksum: str, conn):
@@ -191,10 +191,10 @@ async def _store_bs(stock_id: int, raw_bs: dict, checksum: str, conn):
             VALUES ($1, 'BS', 'annual', $2, $3::jsonb, $4::jsonb, $5)
             ON CONFLICT (stock_id, statement_type, period_type, period_end)
             DO UPDATE SET data=EXCLUDED.data, raw_data=EXCLUDED.raw_data,
-                          raw_checksum=EXCLUDED.raw_checksum, scraped_at=NOW()
+                          raw_checksum=EXCLUDED.raw_checksum, scraped_at=CURRENT_TIMESTAMP
         """
-        await conn.execute(sql, stock_id, period_end,
-                           json.dumps(period_data), json.dumps(raw_bs), checksum)
+        await db_execute(conn, sql, (stock_id, period_end,
+                           json.dumps(period_data), json.dumps(raw_bs), checksum))
 
 
 async def _store_cf(stock_id: int, raw_cf: dict, checksum: str, conn):
@@ -217,10 +217,10 @@ async def _store_cf(stock_id: int, raw_cf: dict, checksum: str, conn):
             VALUES ($1, 'CF', 'annual', $2, $3::jsonb, $4::jsonb, $5)
             ON CONFLICT (stock_id, statement_type, period_type, period_end)
             DO UPDATE SET data=EXCLUDED.data, raw_data=EXCLUDED.raw_data,
-                          raw_checksum=EXCLUDED.raw_checksum, scraped_at=NOW()
+                          raw_checksum=EXCLUDED.raw_checksum, scraped_at=CURRENT_TIMESTAMP
         """
-        await conn.execute(sql, stock_id, period_end,
-                           json.dumps(period_data), json.dumps(raw_cf), checksum)
+        await db_execute(conn, sql, (stock_id, period_end,
+                           json.dumps(period_data), json.dumps(raw_cf), checksum))
 
 
 async def _store_shareholding(stock_id: int, raw_sh: dict, conn):
@@ -239,15 +239,15 @@ async def _store_shareholding(stock_id: int, raw_sh: dict, conn):
             dii_pct      = EXCLUDED.dii_pct,
             public_pct   = EXCLUDED.public_pct,
             pledged_pct  = EXCLUDED.pledged_pct,
-            scraped_at   = NOW()
+            scraped_at   = CURRENT_TIMESTAMP
     """
     for rec in records:
         period_end = _parse_period_label(rec["period"])
         if not period_end:
             continue
-        await conn.execute(sql, stock_id, period_end,
+        await db_execute(conn, sql, (stock_id, period_end,
                            rec["promoter_pct"], rec["fii_pct"], rec["dii_pct"],
-                           rec["public_pct"],   rec["pledged_pct"])
+                           rec["public_pct"],   rec["pledged_pct"]))
 
 
 # ─── DB helpers ───────────────────────────────────────────────────────────────
@@ -262,30 +262,30 @@ async def _fetch_stocks_needing_scrape(days_since_last: int = 90) -> list:
             NOT EXISTS (
                 SELECT 1 FROM financial_statements fs
                 WHERE fs.stock_id = s.id
-                  AND fs.scraped_at > NOW() - INTERVAL '1 day' * $1
+                  AND fs.scraped_at > CURRENT_TIMESTAMP - INTERVAL '1 day' * $1
             )
           )
         ORDER BY s.id
     """
     async with raw_connection() as conn:
-        rows = await conn.fetch(sql, days_since_last)
+        rows = await db_fetch(conn, sql, (days_since_last,))
         return [dict(r) for r in rows]
 
 
 async def _fetch_stock_by_symbol(symbol: str) -> dict:
     async with raw_connection() as conn:
-        row = await conn.fetchrow(
+        row = await db_fetchrow(conn,
             "SELECT id, symbol, screener_slug FROM stocks WHERE symbol = $1 AND is_active = TRUE",
-            symbol.upper()
+            (symbol.upper(),)
         )
         return dict(row) if row else None
 
 
 async def _get_latest_checksum(stock_id: int) -> str | None:
     async with raw_connection() as conn:
-        row = await conn.fetchrow(
+        row = await db_fetchrow(conn,
             "SELECT raw_checksum FROM financial_statements WHERE stock_id=$1 ORDER BY scraped_at DESC LIMIT 1",
-            stock_id
+            (stock_id,)
         )
         return row["raw_checksum"] if row else None
 
@@ -293,10 +293,10 @@ async def _get_latest_checksum(stock_id: int) -> str | None:
 async def _log_pipeline_error(job_name: str, error: str, stock_id: int):
     sql = """
         INSERT INTO pipeline_audit (job_name, stock_id, status, error_msg, ended_at)
-        VALUES ($1, $2, 'FAILED', $3, NOW())
+        VALUES ($1, $2, 'FAILED', $3, CURRENT_TIMESTAMP)
     """
     async with raw_connection() as conn:
-        await conn.execute(sql, job_name, stock_id, error)
+        await db_execute(conn, sql, (job_name, stock_id, error))
 
 
 # ─── Period label parser ──────────────────────────────────────────────────────

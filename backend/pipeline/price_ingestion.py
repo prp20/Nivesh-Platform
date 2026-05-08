@@ -13,7 +13,7 @@ import pandas as pd
 from datetime import date, timedelta
 from pipeline.audit import audit_job
 from app.config import settings
-from app.database import raw_connection
+from app.db_compat import raw_connection, db_execute, db_executemany, db_fetch, db_fetchrow
 from app.constants import (
     PRICE_INGESTION_CHUNK_SIZE,
     PRICE_INGESTION_LOOKBACK_DAYS,
@@ -138,7 +138,7 @@ async def run_index_backfill(period: str = "5y", progress_callback=None):
 async def run_price_sync_one(symbol: str, period: str = "1y") -> int:
     """Fetches full price history for a single stock to correct data errors."""
     async with raw_connection() as conn:
-        row = await conn.fetchrow("SELECT id, symbol, yf_symbol FROM stocks WHERE symbol = $1", symbol.upper())
+        row = await db_fetchrow(conn, "SELECT id, symbol, yf_symbol FROM stocks WHERE symbol = $1", (symbol.upper(),))
         if not row:
             logger.error(f"Stock {symbol} not found for sync")
             return 0
@@ -368,7 +368,7 @@ async def _upsert_benchmark_nav_rows(benchmark_code: str, df: pd.DataFrame) -> i
             index_value = EXCLUDED.index_value
     """
     async with raw_connection() as conn:
-        await conn.executemany(sql, rows)
+        await db_executemany(conn, sql, rows)
 
     return len(rows)
 
@@ -405,7 +405,7 @@ async def _upsert_price_rows(stock_id: int, df: pd.DataFrame) -> int:
             volume    = EXCLUDED.volume
     """
     async with raw_connection() as conn:
-        await conn.executemany(sql, rows)
+        await db_executemany(conn, sql, rows)
 
     return len(rows)
 
@@ -421,7 +421,7 @@ async def _fetch_active_stocks(indices_only: bool = False) -> list:
         ORDER BY id
     """
     async with raw_connection() as conn:
-        rows = await conn.fetch(sql, indices_only)
+        rows = await db_fetch(conn, sql, (indices_only,))
         return [dict(r) for r in rows]
 
 
@@ -434,7 +434,7 @@ async def _fetch_benchmark_indices() -> list:
           AND benchmark_type = 'Market Index'
     """
     async with raw_connection() as conn:
-        rows = await conn.fetch(sql)
+        rows = await db_fetch(conn, sql)
         return [dict(r) for r in rows]
 
 

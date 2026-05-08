@@ -17,7 +17,7 @@ from datetime import date
 from typing import Optional
 
 from pipeline.audit import audit_job
-from app.database import raw_connection
+from app.db_compat import raw_connection, db_execute, db_fetch, db_fetchrow
 
 logger = logging.getLogger(__name__)
 
@@ -244,15 +244,15 @@ async def _fetch_active_stocks() -> list:
         ORDER BY id
     """
     async with raw_connection() as conn:
-        rows = await conn.fetch(sql)
+        rows = await db_fetch(conn, sql)
         return [dict(r) for r in rows]
 
 
 async def _fetch_stock_by_symbol(symbol: str) -> Optional[dict]:
     async with raw_connection() as conn:
-        row = await conn.fetchrow(
+        row = await db_fetchrow(conn,
             "SELECT id, symbol FROM stocks WHERE symbol=$1 AND is_active=TRUE",
-            symbol.upper()
+            (symbol.upper(),)
         )
         return dict(row) if row else None
 
@@ -266,7 +266,7 @@ async def _fetch_price_history(stock_id: int) -> list:
         ORDER BY price_date ASC
     """
     async with raw_connection() as conn:
-        rows = await conn.fetch(sql, stock_id)
+        rows = await db_fetch(conn, sql, (stock_id,))
         return [tuple(r) for r in rows]
 
 
@@ -279,7 +279,7 @@ async def _fetch_benchmark_history() -> list:
         ORDER BY nav_date ASC
     """
     async with raw_connection() as conn:
-        rows = await conn.fetch(sql)
+        rows = await db_fetch(conn, sql)
         return [dict(r) for r in rows]
 
 
@@ -315,8 +315,7 @@ async def _upsert_indicators(row: dict):
     """
     r = row
     async with raw_connection() as conn:
-        await conn.execute(
-            sql,
+        await db_execute(conn, sql, (
             r["stock_id"], r["ind_date"], r["timeframe"],
             r["sma_20"],   r["sma_50"],   r["sma_200"],
             r["ema_9"],    r["ema_21"],   r["ema_50"],
@@ -329,7 +328,7 @@ async def _upsert_indicators(row: dict):
             r["obv"],       r["vwap_20"],     r["cci_20"],      r["williams_r"],  r["roc_14"],
             r["beta_1y"],   r["rs_6m_vs_nifty"],
             r["pct_from_52w_high"], r["pct_from_52w_low"],
-        )
+        ))
 
 
 async def get_ta_status() -> list:
@@ -351,5 +350,5 @@ async def get_ta_status() -> list:
         ORDER BY last_ta_date ASC NULLS FIRST
     """
     async with raw_connection() as conn:
-        rows = await conn.fetch(sql)
+        rows = await db_fetch(conn, sql)
         return [dict(r) for r in rows]
