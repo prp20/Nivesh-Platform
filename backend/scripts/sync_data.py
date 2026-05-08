@@ -17,8 +17,9 @@ sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 from app import analytics, models, config
 
 # Setup Synchronous Database Connection
-# Convert asyncpg URL to standard postgresql URL
-SYNC_DB_URL = config.settings.DATABASE_URL.replace("+asyncpg", "")
+# Convert async URLs to sync: strip both +asyncpg (PostgreSQL) and +aiosqlite (SQLite)
+import re
+SYNC_DB_URL = re.sub(r'\+(asyncpg|aiosqlite)', '', config.settings.DATABASE_URL)
 engine = create_engine(SYNC_DB_URL)
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
