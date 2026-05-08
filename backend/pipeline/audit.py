@@ -1,9 +1,8 @@
 import logging
 from contextlib import asynccontextmanager
 from datetime import datetime, timezone
-import asyncpg
 from app.config import settings
-from app.database import raw_connection
+from app.db_compat import raw_connection, db_execute, db_fetchrow
 
 logger = logging.getLogger(__name__)
 
@@ -26,7 +25,7 @@ class _AuditRecord:
         try:
             async with raw_connection() as conn:
                 sql = "UPDATE pipeline_audit SET records_out=$1 WHERE id=$2"
-                await conn.execute(sql, self.records_out, self.audit_id)
+                await db_execute(conn, sql, (self.records_out, self.audit_id))
         except Exception as e:
             logger.warning(f"Failed to update audit progress: {e}")
 
@@ -66,12 +65,22 @@ async def audit_job(job_name: str, stock_id: int = None, records_in: int = 0):
 async def _insert_audit(job_name: str, stock_id: int = None, records_in: int = 0) -> int:
     """Insert a new audit record and return its ID."""
     async with raw_connection() as conn:
-        sql = """
-            INSERT INTO pipeline_audit (job_name, stock_id, status, started_at, records_in)
-            VALUES ($1, $2, 'RUNNING', NOW(), $3)
-            RETURNING id
-        """
-        row = await conn.fetchrow(sql, job_name, stock_id, records_in)
+        from app.db_compat import is_sqlite
+        if is_sqlite():
+            # SQLite: INSERT without RETURNING, then get last inserted id
+            sql = """
+                INSERT INTO pipeline_audit (job_name, stock_id, status, started_at, records_in)
+                VALUES ($1, $2, 'RUNNING', CURRENT_TIMESTAMP, $3)
+            """
+            await db_execute(conn, sql, (job_name, stock_id, records_in))
+            row = await db_fetchrow(conn, "SELECT last_insert_rowid() as id", ())
+        else:
+            sql = """
+                INSERT INTO pipeline_audit (job_name, stock_id, status, started_at, records_in)
+                VALUES ($1, $2, 'RUNNING', CURRENT_TIMESTAMP, $3)
+                RETURNING id
+            """
+            row = await db_fetchrow(conn, sql, (job_name, stock_id, records_in))
         return row["id"]
 
 
@@ -81,8 +90,8 @@ async def _close_audit(audit_id: int, record: _AuditRecord) -> None:
     async with raw_connection() as conn:
         sql = """
             UPDATE pipeline_audit
-            SET status=$1, ended_at=NOW(), records_out=$2, error_msg=$3
+            SET status=$1, ended_at=CURRENT_TIMESTAMP, records_out=$2, error_msg=$3
             WHERE id=$4
         """
-        await conn.execute(sql, record.status, record.records_out, record.error_msg, audit_id)
+        await db_execute(conn, sql, (record.status, record.records_out, record.error_msg, audit_id))
 
