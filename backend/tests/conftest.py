@@ -30,28 +30,16 @@ def event_loop():
 
 @pytest.fixture
 async def test_db():
-    """Create a test database and session."""
+    """Create an in-memory test database with all 16 tables."""
     engine = create_async_engine(TEST_DATABASE_URL, echo=False)
 
-    # Create all tables, skipping stock tables that use JSONB (not supported by SQLite)
     async with engine.begin() as conn:
-        # Only create MF tables (fund_master, benchmark_master, etc.)
-        # Stock tables (financial_statements, etc.) use JSONB which SQLite doesn't support
-        mf_table_names = {
-            'fund_master', 'benchmark_master', 'fund_nav_history',
-            'benchmark_nav_history', 'fund_metrics', 'benchmark_metrics', 'sync_jobs'
-        }
+        await conn.run_sync(Base.metadata.create_all)
 
-        for table in Base.metadata.sorted_tables:
-            if table.name in mf_table_names:
-                await conn.run_sync(table.create, checkfirst=True)
-
-    # Create session factory
     async_session = async_sessionmaker(
         engine, class_=AsyncSession, expire_on_commit=False
     )
 
-    # Override dependency
     async def override_get_db():
         async with async_session() as session:
             yield session
@@ -60,12 +48,8 @@ async def test_db():
 
     yield async_session
 
-    # Cleanup
     async with engine.begin() as conn:
-        for table in reversed(Base.metadata.sorted_tables):
-            if table.name in {'fund_master', 'benchmark_master', 'fund_nav_history',
-                            'benchmark_nav_history', 'fund_metrics', 'benchmark_metrics', 'sync_jobs'}:
-                await conn.run_sync(table.drop, checkfirst=True)
+        await conn.run_sync(Base.metadata.drop_all)
     await engine.dispose()
 
 
@@ -131,22 +115,21 @@ async def seed_fund(test_db):
 
 @pytest.fixture
 async def seed_stock(test_db):
-    """
-    Create a test stock in the database.
-    NOTE: Stock table creation is skipped in tests (uses JSONB which SQLite doesn't support).
-    This fixture is included for completeness but won't actually create the stock.
-    Stock endpoint tests should handle 404 or empty results gracefully.
-    """
-    # Stock table not created in SQLite test DB
-    # Return a mock object for tests that need it
-    class MockStock:
-        symbol = "RELIANCE"
-        nse_symbol = "RELIANCE"
-        yf_symbol = "RELIANCE.NS"
-        company_name = "Reliance Industries Ltd"
-        sector = "Energy"
-        market_cap_cat = "large"
-        is_index = False
-        is_active = True
+    """Create a test stock in the database."""
+    async with test_db() as session:
+        from app.models import Stock
 
-    return MockStock()
+        stock = Stock(
+            symbol="RELIANCE",
+            nse_symbol="RELIANCE",
+            yf_symbol="RELIANCE.NS",
+            company_name="Reliance Industries Ltd",
+            sector="Energy",
+            market_cap_cat="large",
+            is_index=False,
+            is_active=True,
+        )
+        session.add(stock)
+        await session.commit()
+        await session.refresh(stock)
+        return stock
