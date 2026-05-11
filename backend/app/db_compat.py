@@ -5,7 +5,6 @@ Provides a unified async API for raw SQL operations that works with both
 PostgreSQL (asyncpg) and SQLite (aiosqlite). All dialect-specific translation
 (parameter style, upsert syntax) is handled here so callers stay clean.
 """
-import os
 import re
 import logging
 from contextlib import asynccontextmanager
@@ -13,15 +12,11 @@ from typing import Any
 
 logger = logging.getLogger(__name__)
 
-# Default DATABASE_URL if none is set in the environment
-_DEFAULT_DATABASE_URL = (
-    "postgresql+asyncpg://nivesh_admin:nivesh_password_123@localhost:5432/nivesh_db"
-)
-
 
 def _database_url() -> str:
-    """Return the current DATABASE_URL, reading directly from the environment each call."""
-    return os.environ.get("DATABASE_URL", _DEFAULT_DATABASE_URL)
+    """Return the current DATABASE_URL from settings."""
+    from .config import settings
+    return settings.DATABASE_URL
 
 
 def is_sqlite() -> bool:
