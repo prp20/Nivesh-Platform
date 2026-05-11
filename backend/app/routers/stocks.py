@@ -88,25 +88,11 @@ async def list_stocks(
     sql = f"""
         SELECT
             s.id, s.symbol, s.company_name, s.sector, s.industry, s.summary, s.market_cap_cat,
-            p.close      AS latest_close,
-            p.price_date AS latest_date,
-            r.rating_label,
-            r.total_score
+            (SELECT close      FROM price_data    WHERE stock_id = s.id ORDER BY price_date DESC LIMIT 1) AS latest_close,
+            (SELECT price_date FROM price_data    WHERE stock_id = s.id ORDER BY price_date DESC LIMIT 1) AS latest_date,
+            (SELECT rating_label FROM stock_ratings WHERE stock_id = s.id ORDER BY rated_on DESC LIMIT 1) AS rating_label,
+            (SELECT total_score  FROM stock_ratings WHERE stock_id = s.id ORDER BY rated_on DESC LIMIT 1) AS total_score
         FROM stocks s
-        LEFT JOIN LATERAL (
-            SELECT close, price_date
-            FROM price_data
-            WHERE stock_id = s.id
-            ORDER BY price_date DESC
-            LIMIT 1
-        ) p ON TRUE
-        LEFT JOIN LATERAL (
-            SELECT rating_label, total_score
-            FROM stock_ratings
-            WHERE stock_id = s.id
-            ORDER BY rated_on DESC
-            LIMIT 1
-        ) r ON TRUE
         WHERE {where_clause}
         ORDER BY {sort_col} {order_dir}
         LIMIT :limit OFFSET :offset
@@ -145,17 +131,16 @@ async def search_stocks(
         FROM stocks
         WHERE is_active = TRUE
           AND (
-            symbol ILIKE :q
-            OR to_tsvector('english', company_name) @@ plainto_tsquery('english', :q_plain)
+            UPPER(symbol) LIKE UPPER(:q)
+            OR UPPER(company_name) LIKE UPPER(:q)
           )
         ORDER BY
-            CASE WHEN symbol ILIKE :q_exact THEN 0 ELSE 1 END,
+            CASE WHEN UPPER(symbol) = UPPER(:q_exact) THEN 0 ELSE 1 END,
             company_name
         LIMIT :limit
     """
     result = await db.execute(text(sql), {
         "q":       f"%{q}%",
-        "q_plain": q,
         "q_exact": q.upper(),
         "limit":   limit,
     })
@@ -173,63 +158,91 @@ async def get_stock(
     sql = """
         SELECT
             s.*,
-            p.close      AS latest_close,
-            p.high       AS latest_high,
-            p.low        AS latest_low,
-            p.volume     AS latest_volume,
-            p.price_date AS latest_date,
-            -- 1-day change %
-            ROUND(
-                (p.close - p2.close) / NULLIF(p2.close, 0) * 100, 2
-            ) AS change_pct,
+            (SELECT close      FROM price_data WHERE stock_id = s.id ORDER BY price_date DESC LIMIT 1)          AS latest_close,
+            (SELECT high       FROM price_data WHERE stock_id = s.id ORDER BY price_date DESC LIMIT 1)          AS latest_high,
+            (SELECT low        FROM price_data WHERE stock_id = s.id ORDER BY price_date DESC LIMIT 1)          AS latest_low,
+            (SELECT volume     FROM price_data WHERE stock_id = s.id ORDER BY price_date DESC LIMIT 1)          AS latest_volume,
+            (SELECT price_date FROM price_data WHERE stock_id = s.id ORDER BY price_date DESC LIMIT 1)          AS latest_date,
+            (SELECT close      FROM price_data WHERE stock_id = s.id ORDER BY price_date DESC LIMIT 1 OFFSET 1) AS prev_close,
             -- Valuation
-            r.pe_ratio, r.pb_ratio, r.ps_ratio, r.ev_ebitda, r.ev_sales, r.market_cap, r.dividend_yield, r.dividend_per_share,
+            (SELECT pe_ratio        FROM financial_ratios WHERE stock_id = s.id AND period_type = 'annual' ORDER BY period_end DESC LIMIT 1) AS pe_ratio,
+            (SELECT pb_ratio        FROM financial_ratios WHERE stock_id = s.id AND period_type = 'annual' ORDER BY period_end DESC LIMIT 1) AS pb_ratio,
+            (SELECT ps_ratio        FROM financial_ratios WHERE stock_id = s.id AND period_type = 'annual' ORDER BY period_end DESC LIMIT 1) AS ps_ratio,
+            (SELECT ev_ebitda       FROM financial_ratios WHERE stock_id = s.id AND period_type = 'annual' ORDER BY period_end DESC LIMIT 1) AS ev_ebitda,
+            (SELECT ev_sales        FROM financial_ratios WHERE stock_id = s.id AND period_type = 'annual' ORDER BY period_end DESC LIMIT 1) AS ev_sales,
+            (SELECT market_cap      FROM financial_ratios WHERE stock_id = s.id AND period_type = 'annual' ORDER BY period_end DESC LIMIT 1) AS market_cap,
+            (SELECT dividend_yield  FROM financial_ratios WHERE stock_id = s.id AND period_type = 'annual' ORDER BY period_end DESC LIMIT 1) AS dividend_yield,
+            (SELECT dividend_per_share FROM financial_ratios WHERE stock_id = s.id AND period_type = 'annual' ORDER BY period_end DESC LIMIT 1) AS dividend_per_share,
             -- Profitability
-            r.roe, r.roce, r.roa, r.roic, r.pat_margin, r.ebitda_margin, r.operating_margin,
+            (SELECT roe             FROM financial_ratios WHERE stock_id = s.id AND period_type = 'annual' ORDER BY period_end DESC LIMIT 1) AS roe,
+            (SELECT roce            FROM financial_ratios WHERE stock_id = s.id AND period_type = 'annual' ORDER BY period_end DESC LIMIT 1) AS roce,
+            (SELECT roa             FROM financial_ratios WHERE stock_id = s.id AND period_type = 'annual' ORDER BY period_end DESC LIMIT 1) AS roa,
+            (SELECT roic            FROM financial_ratios WHERE stock_id = s.id AND period_type = 'annual' ORDER BY period_end DESC LIMIT 1) AS roic,
+            (SELECT pat_margin      FROM financial_ratios WHERE stock_id = s.id AND period_type = 'annual' ORDER BY period_end DESC LIMIT 1) AS pat_margin,
+            (SELECT ebitda_margin   FROM financial_ratios WHERE stock_id = s.id AND period_type = 'annual' ORDER BY period_end DESC LIMIT 1) AS ebitda_margin,
+            (SELECT operating_margin FROM financial_ratios WHERE stock_id = s.id AND period_type = 'annual' ORDER BY period_end DESC LIMIT 1) AS operating_margin,
             -- Solvency & Leverage
-            r.debt_equity, r.net_debt, r.net_debt_ebitda, r.interest_cov, r.current_ratio, r.quick_ratio,
+            (SELECT debt_equity     FROM financial_ratios WHERE stock_id = s.id AND period_type = 'annual' ORDER BY period_end DESC LIMIT 1) AS debt_equity,
+            (SELECT net_debt        FROM financial_ratios WHERE stock_id = s.id AND period_type = 'annual' ORDER BY period_end DESC LIMIT 1) AS net_debt,
+            (SELECT net_debt_ebitda FROM financial_ratios WHERE stock_id = s.id AND period_type = 'annual' ORDER BY period_end DESC LIMIT 1) AS net_debt_ebitda,
+            (SELECT interest_cov    FROM financial_ratios WHERE stock_id = s.id AND period_type = 'annual' ORDER BY period_end DESC LIMIT 1) AS interest_cov,
+            (SELECT current_ratio   FROM financial_ratios WHERE stock_id = s.id AND period_type = 'annual' ORDER BY period_end DESC LIMIT 1) AS current_ratio,
+            (SELECT quick_ratio     FROM financial_ratios WHERE stock_id = s.id AND period_type = 'annual' ORDER BY period_end DESC LIMIT 1) AS quick_ratio,
             -- Growth
-            r.revenue_growth, r.pat_growth, r.eps_growth,
+            (SELECT revenue_growth  FROM financial_ratios WHERE stock_id = s.id AND period_type = 'annual' ORDER BY period_end DESC LIMIT 1) AS revenue_growth,
+            (SELECT pat_growth      FROM financial_ratios WHERE stock_id = s.id AND period_type = 'annual' ORDER BY period_end DESC LIMIT 1) AS pat_growth,
+            (SELECT eps_growth      FROM financial_ratios WHERE stock_id = s.id AND period_type = 'annual' ORDER BY period_end DESC LIMIT 1) AS eps_growth,
             -- Efficiency
-            r.asset_turnover, r.inventory_turnover, r.receivables_days, r.payable_days, r.cash_conv_cycle,
+            (SELECT asset_turnover     FROM financial_ratios WHERE stock_id = s.id AND period_type = 'annual' ORDER BY period_end DESC LIMIT 1) AS asset_turnover,
+            (SELECT inventory_turnover FROM financial_ratios WHERE stock_id = s.id AND period_type = 'annual' ORDER BY period_end DESC LIMIT 1) AS inventory_turnover,
+            (SELECT receivables_days   FROM financial_ratios WHERE stock_id = s.id AND period_type = 'annual' ORDER BY period_end DESC LIMIT 1) AS receivables_days,
+            (SELECT payable_days       FROM financial_ratios WHERE stock_id = s.id AND period_type = 'annual' ORDER BY period_end DESC LIMIT 1) AS payable_days,
+            (SELECT cash_conv_cycle    FROM financial_ratios WHERE stock_id = s.id AND period_type = 'annual' ORDER BY period_end DESC LIMIT 1) AS cash_conv_cycle,
             -- Cash Flow
-            r.fcf, r.fcf_margin, r.fcf_yield, r.capex_to_revenue, r.cfo_to_pat,
+            (SELECT fcf            FROM financial_ratios WHERE stock_id = s.id AND period_type = 'annual' ORDER BY period_end DESC LIMIT 1) AS fcf,
+            (SELECT fcf_margin     FROM financial_ratios WHERE stock_id = s.id AND period_type = 'annual' ORDER BY period_end DESC LIMIT 1) AS fcf_margin,
+            (SELECT fcf_yield      FROM financial_ratios WHERE stock_id = s.id AND period_type = 'annual' ORDER BY period_end DESC LIMIT 1) AS fcf_yield,
+            (SELECT capex_to_revenue FROM financial_ratios WHERE stock_id = s.id AND period_type = 'annual' ORDER BY period_end DESC LIMIT 1) AS capex_to_revenue,
+            (SELECT cfo_to_pat     FROM financial_ratios WHERE stock_id = s.id AND period_type = 'annual' ORDER BY period_end DESC LIMIT 1) AS cfo_to_pat,
             -- Quality
-            r.piotroski_f_score, r.altman_z_score,
+            (SELECT piotroski_f_score FROM financial_ratios WHERE stock_id = s.id AND period_type = 'annual' ORDER BY period_end DESC LIMIT 1) AS piotroski_f_score,
+            (SELECT altman_z_score    FROM financial_ratios WHERE stock_id = s.id AND period_type = 'annual' ORDER BY period_end DESC LIMIT 1) AS altman_z_score,
             -- Per Share
-            r.eps, r.book_value_ps,
+            (SELECT eps           FROM financial_ratios WHERE stock_id = s.id AND period_type = 'annual' ORDER BY period_end DESC LIMIT 1) AS eps,
+            (SELECT book_value_ps FROM financial_ratios WHERE stock_id = s.id AND period_type = 'annual' ORDER BY period_end DESC LIMIT 1) AS book_value_ps,
             -- Technical Indicators
-            ti.rsi_14, ti.macd_hist, ti.macd_line, ti.macd_signal,
-            ti.sma_20, ti.sma_50, ti.sma_200, ti.ema_9, ti.ema_21,
-            ti.obv, ti.vwap_20, ti.cci_20, ti.beta_1y, ti.rs_6m_vs_nifty,
-            ti.pct_from_52w_high, ti.pct_from_52w_low
+            (SELECT rsi_14          FROM technical_indicators WHERE stock_id = s.id AND timeframe = '1d' ORDER BY ind_date DESC LIMIT 1) AS rsi_14,
+            (SELECT macd_hist       FROM technical_indicators WHERE stock_id = s.id AND timeframe = '1d' ORDER BY ind_date DESC LIMIT 1) AS macd_hist,
+            (SELECT macd_line       FROM technical_indicators WHERE stock_id = s.id AND timeframe = '1d' ORDER BY ind_date DESC LIMIT 1) AS macd_line,
+            (SELECT macd_signal     FROM technical_indicators WHERE stock_id = s.id AND timeframe = '1d' ORDER BY ind_date DESC LIMIT 1) AS macd_signal,
+            (SELECT sma_20          FROM technical_indicators WHERE stock_id = s.id AND timeframe = '1d' ORDER BY ind_date DESC LIMIT 1) AS sma_20,
+            (SELECT sma_50          FROM technical_indicators WHERE stock_id = s.id AND timeframe = '1d' ORDER BY ind_date DESC LIMIT 1) AS sma_50,
+            (SELECT sma_200         FROM technical_indicators WHERE stock_id = s.id AND timeframe = '1d' ORDER BY ind_date DESC LIMIT 1) AS sma_200,
+            (SELECT ema_9           FROM technical_indicators WHERE stock_id = s.id AND timeframe = '1d' ORDER BY ind_date DESC LIMIT 1) AS ema_9,
+            (SELECT ema_21          FROM technical_indicators WHERE stock_id = s.id AND timeframe = '1d' ORDER BY ind_date DESC LIMIT 1) AS ema_21,
+            (SELECT obv             FROM technical_indicators WHERE stock_id = s.id AND timeframe = '1d' ORDER BY ind_date DESC LIMIT 1) AS obv,
+            (SELECT vwap_20         FROM technical_indicators WHERE stock_id = s.id AND timeframe = '1d' ORDER BY ind_date DESC LIMIT 1) AS vwap_20,
+            (SELECT cci_20          FROM technical_indicators WHERE stock_id = s.id AND timeframe = '1d' ORDER BY ind_date DESC LIMIT 1) AS cci_20,
+            (SELECT beta_1y         FROM technical_indicators WHERE stock_id = s.id AND timeframe = '1d' ORDER BY ind_date DESC LIMIT 1) AS beta_1y,
+            (SELECT rs_6m_vs_nifty  FROM technical_indicators WHERE stock_id = s.id AND timeframe = '1d' ORDER BY ind_date DESC LIMIT 1) AS rs_6m_vs_nifty,
+            (SELECT pct_from_52w_high FROM technical_indicators WHERE stock_id = s.id AND timeframe = '1d' ORDER BY ind_date DESC LIMIT 1) AS pct_from_52w_high,
+            (SELECT pct_from_52w_low  FROM technical_indicators WHERE stock_id = s.id AND timeframe = '1d' ORDER BY ind_date DESC LIMIT 1) AS pct_from_52w_low
         FROM stocks s
-        LEFT JOIN LATERAL (
-            SELECT close, high, low, volume, price_date
-            FROM price_data WHERE stock_id = s.id ORDER BY price_date DESC LIMIT 1
-        ) p ON TRUE
-        LEFT JOIN LATERAL (
-            SELECT close FROM price_data WHERE stock_id = s.id ORDER BY price_date DESC LIMIT 1 OFFSET 1
-        ) p2 ON TRUE
-        LEFT JOIN LATERAL (
-            SELECT *
-            FROM financial_ratios WHERE stock_id = s.id AND period_type = 'annual' ORDER BY period_end DESC LIMIT 1
-        ) r ON TRUE
-        LEFT JOIN LATERAL (
-            SELECT rating_label, total_score, fundamental_score, technical_score
-            FROM stock_ratings WHERE stock_id = s.id ORDER BY rated_on DESC LIMIT 1
-        ) r_rt ON TRUE
-        LEFT JOIN LATERAL (
-            SELECT *
-            FROM technical_indicators WHERE stock_id = s.id AND timeframe = '1d' ORDER BY ind_date DESC LIMIT 1
-        ) ti ON TRUE
         WHERE s.symbol = :symbol AND s.is_active = TRUE
     """
     result = await db.execute(text(sql), {"symbol": symbol.upper()})
     row = result.fetchone()
     if not row:
         raise HTTPException(status_code=404, detail=f"Stock '{symbol}' not found")
-    return dict(row._mapping)
+    data = dict(row._mapping)
+    # Compute 1-day change % in Python (prev_close came from correlated subquery)
+    latest = data.get("latest_close")
+    prev = data.pop("prev_close", None)
+    if latest is not None and prev and float(prev) != 0:
+        data["change_pct"] = round((float(latest) - float(prev)) / float(prev) * 100, 2)
+    else:
+        data["change_pct"] = None
+    return data
 
 
 # ─── GET /stocks/{symbol}/price — OHLCV history ──────────────────────────────

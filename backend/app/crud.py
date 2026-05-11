@@ -7,13 +7,26 @@ All functions use proper type hints and docstrings following Google style.
 
 from sqlalchemy import select, insert, update, delete, func, text
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.orm import joinedload
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.sql import Select
 from typing import Optional, List, Tuple
 from datetime import datetime
 import uuid
+
+
+def _dialect_insert(model):
+    """Return the correct dialect-specific insert for the current DATABASE_URL.
+
+    Both SQLAlchemy sqlite and postgresql dialects support .on_conflict_do_update(),
+    so callers need no other changes.
+    """
+    from app.db_compat import is_sqlite
+    if is_sqlite():
+        from sqlalchemy.dialects.sqlite import insert as _insert
+    else:
+        from sqlalchemy.dialects.postgresql import insert as _insert
+    return _insert(model)
 
 from .models import FundMaster, BenchmarkMaster, FundNavHistory, BenchmarkNavHistory, FundMetrics, BenchmarkMetrics, SyncJob
 from .schemas import (
@@ -396,7 +409,7 @@ async def bulk_insert_fund_navs(session: AsyncSession, scheme_code: str, nav_dat
     if not rows:
         return 0
 
-    stmt = pg_insert(FundNavHistory).values(rows)
+    stmt = _dialect_insert(FundNavHistory).values(rows)
     stmt = stmt.on_conflict_do_update(
         index_elements=['scheme_code', 'nav_date'],
         set_=dict(nav_value=stmt.excluded.nav_value)
@@ -421,7 +434,7 @@ async def bulk_insert_benchmark_navs(session: AsyncSession, benchmark_code: str,
 
     if not rows: return 0
 
-    stmt = pg_insert(BenchmarkNavHistory).values(rows)
+    stmt = _dialect_insert(BenchmarkNavHistory).values(rows)
     stmt = stmt.on_conflict_do_update(
         index_elements=['benchmark_code', 'nav_date'],
         set_=dict(index_value=stmt.excluded.index_value)
@@ -441,42 +454,37 @@ async def get_benchmark_nav_history(session: AsyncSession, benchmark_code: str, 
     return res.scalars().all()
 
 async def get_benchmarks_latest_prices(session: AsyncSession, benchmark_codes: List[str]):
-    """Fetch latest 2 prices for each benchmark to calculate change."""
+    """Fetch latest 2 prices for each benchmark to calculate change.
+
+    Uses application-side grouping (no window functions) so this works with
+    both PostgreSQL and SQLite.
+    """
     if not benchmark_codes:
         return {}
-    
-    # Using window function to get latest 2 rows per benchmark
-    subq = (
-        select(
-            BenchmarkNavHistory,
-            func.row_number().over(
-                partition_by=BenchmarkNavHistory.benchmark_code,
-                order_by=BenchmarkNavHistory.nav_date.desc()
-            ).label("rn")
-        )
+
+    q = (
+        select(BenchmarkNavHistory)
         .where(BenchmarkNavHistory.benchmark_code.in_(benchmark_codes))
-    ).subquery()
-    
-    q = select(subq).where(subq.c.rn <= 2)
+        .order_by(BenchmarkNavHistory.benchmark_code, BenchmarkNavHistory.nav_date.desc())
+    )
     res = await session.execute(q)
-    rows = res.all()
-    
-    # Process into dict: {code: {latest: X, prev: Y}}
-    prices = {}
+    rows = res.scalars().all()
+
+    # Group in Python — keep at most 2 entries per code (latest, then prev)
+    from collections import defaultdict
+    grouped: dict = defaultdict(list)
     for r in rows:
-        code = r.benchmark_code
-        if code not in prices:
-            prices[code] = []
-        prices[code].append(float(r.index_value))
-    
+        if len(grouped[r.benchmark_code]) < 2:
+            grouped[r.benchmark_code].append(float(r.index_value))
+
     result = {}
-    for code, history in prices.items():
+    for code, history in grouped.items():
         latest = history[0]
         prev = history[1] if len(history) > 1 else latest
         change_pct = ((latest - prev) / prev * 100) if prev else 0.0
         result[code] = {
             "latest_close": latest,
-            "change_percent": round(change_pct, 2)
+            "change_percent": round(change_pct, 2),
         }
     return result
 
@@ -488,7 +496,7 @@ async def upsert_benchmark_metrics(session: AsyncSession, metrics_data: dict):
     # Exclude PK from update set to avoid DB error
     update_data = {k: v for k, v in metrics_data.items() if k != 'benchmark_code'}
     
-    stmt = pg_insert(BenchmarkMetrics).values(metrics_data)
+    stmt = _dialect_insert(BenchmarkMetrics).values(metrics_data)
     stmt = stmt.on_conflict_do_update(
         index_elements=['benchmark_code'],
         set_=update_data
@@ -500,7 +508,7 @@ async def upsert_fund_metrics(session: AsyncSession, metrics_data: dict):
     # Exclude PK from update set to avoid DB error
     update_data = {k: v for k, v in metrics_data.items() if k != 'scheme_code'}
     
-    stmt = pg_insert(FundMetrics).values(metrics_data)
+    stmt = _dialect_insert(FundMetrics).values(metrics_data)
     stmt = stmt.on_conflict_do_update(
         index_elements=['scheme_code'],
         set_=update_data

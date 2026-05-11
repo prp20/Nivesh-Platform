@@ -1,5 +1,30 @@
 # Changelog
 
+## 2026-05-11 — Session: SQLite full parity + ETL sync triggers
+
+### Changes Made
+
+1. **backend/app/models.py** — Fixed `TechnicalIndicator.id`: changed `BigInteger` to `BigInteger().with_variant(Integer, "sqlite")` with `autoincrement=True` so TA inserts work on SQLite without manual IDs.
+
+2. **backend/app/crud.py** — Added `_dialect_insert()` helper that returns the correct SQLAlchemy dialect-specific `insert` (sqlite vs postgresql). Replaced all 4 `pg_insert()` calls (`bulk_insert_fund_navs`, `bulk_insert_benchmark_navs`, `upsert_benchmark_metrics`, `upsert_fund_metrics`) — MF sync now works on SQLite. Also rewrote `get_benchmarks_latest_prices()` to use application-side grouping instead of a window function (`row_number().over()`).
+
+3. **backend/app/db_compat.py** — Added INTERVAL arithmetic translation (step 4 in `translate_sql()`): `NOW() - ($N || ' days')::INTERVAL` → `datetime('now', '-' || ? || ' days')` and `CURRENT_TIMESTAMP - INTERVAL 'N days' * $N` → `datetime('now', '-N days')`.
+
+4. **backend/app/routers/stocks.py** — Replaced all 3 LATERAL JOIN blocks (`list_stocks`, `get_stock`) with correlated subqueries that work in both SQLite and PostgreSQL. Replaced `to_tsvector/plainto_tsquery` full-text search with `UPPER(col) LIKE UPPER(:q)`. Moved 1-day `change_pct` computation to Python after fetching `prev_close` as a correlated subquery.
+
+5. **backend/app/routers/screener.py** — Replaced 5 LATERAL JOIN blocks (both main and count queries) with correlated-subquery LEFT JOINs using `MAX(period_end)` lookups. Replaced `NULLS LAST` with `CASE WHEN col IS NULL THEN 1 ELSE 0 END ASC, col DIR` which produces the same ordering in both dialects.
+
+6. **backend/app/routers/pipeline.py** — Fixed `get_screener_status()`: removed asyncpg-only `conn.fetch()` call, used `db_compat.db_fetch()` with dialect-aware INTERVAL expression. Fixed `get_pipeline_status()`: removed `DISTINCT ON` (PostgreSQL-only) replaced with a self-join on `MAX(started_at)` per `job_name`, also switched from `conn.fetch()` to `db_compat.db_fetch()`. Added two new endpoints: `POST /pipeline/sync/daily` (full chain: prices → ratios → TA → ratings) and `POST /pipeline/sync/metrics` (metrics-only refresh: ratios → ratings).
+
+7. **backend/tests/test_db_compat.py** — Rewrote all tests to use `monkeypatch.setattr(config.settings, "DATABASE_URL", url)` instead of `monkeypatch.setenv` + `importlib.reload`. The old approach stopped working after pydantic-settings caching was introduced.
+
+8. **backend/tests/test_stocks.py** — Fixed latent assertion bug in `test_search_stocks`: endpoint returns `{"results": [...]}` dict, not a bare list. Test now checks `isinstance(data, dict)` and `isinstance(data["results"], list)`.
+
+### Result
+- All 98 tests pass (2 skipped for PostgreSQL-only JSONB features, 1 pre-existing logging test skipped)
+- SQLite database sync is now fully functional: stocks listing, stock detail, search, screener, MF sync all work on SQLite
+- Two new pipeline trigger endpoints added for operational convenience
+
 ## 2026-05-11 — Session: SQLite startup extension error fix
 
 ### Issue Fixed

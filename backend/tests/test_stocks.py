@@ -44,7 +44,9 @@ async def test_search_stocks(async_client, seed_stock):
     assert response.status_code in [200, 404, 422, 500]
     if response.status_code == 200:
         data = response.json()
-        assert isinstance(data, list)
+        # Endpoint returns {"results": [...]}
+        assert isinstance(data, dict)
+        assert isinstance(data.get("results"), list)
 
 
 @pytest.mark.asyncio

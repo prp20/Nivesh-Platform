@@ -198,7 +198,7 @@ class PriceData(Base):
         Index('ix_price_data_stock_date_desc', 'stock_id', 'price_date'),
     )
 
-    id         = Column(BigInteger, primary_key=True, autoincrement=True)
+    id         = Column(BigInteger().with_variant(Integer, "sqlite"), primary_key=True, autoincrement=True)
     stock_id   = Column(Integer, ForeignKey("stocks.id", ondelete="CASCADE"), nullable=False)
     price_date = Column(Date, nullable=False)
     open       = Column(Numeric(12, 4))
@@ -317,7 +317,7 @@ class TechnicalIndicator(Base):
         Index('ix_technical_indicator_stock_date', 'stock_id', 'ind_date'),
     )
 
-    id            = Column(BigInteger, primary_key=True)
+    id            = Column(BigInteger().with_variant(Integer, "sqlite"), primary_key=True, autoincrement=True)
     stock_id      = Column(Integer, ForeignKey("stocks.id", ondelete="CASCADE"), nullable=False)
     ind_date      = Column(Date, nullable=False)
     timeframe     = Column(String(5), nullable=False)

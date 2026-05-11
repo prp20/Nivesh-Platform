@@ -72,6 +72,25 @@ def translate_sql(sql: str) -> str:
     # 3. Strip PostgreSQL type casts (e.g. ::jsonb, ::text, ::integer)
     sql = re.sub(r'::[a-zA-Z_]+', '', sql)
 
+    # 4. Translate PostgreSQL INTERVAL arithmetic to SQLite date functions.
+    #
+    #    NOW() - ($N || ' days')::INTERVAL
+    #      → datetime('now', '-' || ? || ' days')
+    sql = re.sub(
+        r"NOW\(\)\s*-\s*\(\s*\$\d+\s*\|\|\s*'\s*days?\s*'\s*\)\s*::[a-zA-Z_]+",
+        "datetime('now', '-' || ? || ' days')",
+        sql,
+        flags=re.IGNORECASE,
+    )
+    #    CURRENT_TIMESTAMP - INTERVAL 'N day[s]' * $n
+    #      → datetime('now', '-N days')
+    sql = re.sub(
+        r"CURRENT_TIMESTAMP\s*-\s*INTERVAL\s*'(\d+)\s*days?'\s*\*\s*\$\d+",
+        r"datetime('now', '-\1 days')",
+        sql,
+        flags=re.IGNORECASE,
+    )
+
     return sql.strip()
 
 
