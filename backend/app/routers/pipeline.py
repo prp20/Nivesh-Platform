@@ -515,15 +515,15 @@ async def trigger_fund_scoring_one(
     admin: str = Depends(require_admin),
     db: AsyncSession = Depends(get_db)
 ):
-    """Synchronously runs the Fund Fetch -> Reason pipeline."""
-    from fund_scorer.graph import run_fund_scorer
-    
-    result = await run_fund_scorer(scheme_code, db)
-    
+    """Synchronously runs the multi-agent fund analysis pipeline."""
+    from agents.fund_analyser.graph import run_fund_analyser
+
+    result = await run_fund_analyser(scheme_code, db)
+
     if result.get("status") == "FAILED":
         error_msg = result.get("error", "Unknown error")
-        raise HTTPException(status_code=422, detail=f"Fund scoring failed: {error_msg}")
-        
+        raise HTTPException(status_code=422, detail=f"Fund analysis failed: {error_msg}")
+
     return result
 
 

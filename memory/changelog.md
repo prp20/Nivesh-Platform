@@ -255,3 +255,50 @@
 - backend/tests/conftest.py: remove JSONB workaround; all 16 tables in SQLite tests
 - backend/tests/test_db_compat.py: NEW — 8 unit tests for db_compat
 - backend/scripts/seed/seed_stock_master.py: migrated from asyncpg direct to db_compat API (raw_connection + db_execute); NOW() → CURRENT_TIMESTAMP; supports SQLite and PostgreSQL
+
+## 2026-05-11 — Session: LangGraph Multi-Agent Financial Analysis Framework
+
+### Changes Made
+
+1. **backend/app/models.py** — Added 4 new ORM tables: `AgentFundAnalysis`, `AgentFundComparison`, `AgentStockAnalysis`, `AgentStockRecommendation`. Auto-created on startup via `Base.metadata.create_all`. Compatible with both SQLite and PostgreSQL (JSON columns, no JSONB).
+
+2. **backend/agents/** — NEW top-level package replacing `fund_scorer/`:
+   - **agents/shared/llm.py** — Cached `get_llm()` factory (Groq llama-3.3-70b-versatile).
+   - **agents/shared/db.py** — 10 async SQLAlchemy query helpers shared across all agent graphs.
+   - **agents/shared/formatters.py** — Metric formatters: `pct()`, `ratio()`, `crore()`, `price()`, `score()`, `na()`.
+
+3. **backend/agents/fund_analyser/** — 8-node LangGraph workflow replacing `fund_scorer/`:
+   - Nodes: validate_fund → fetch_fund_metrics → fetch_peers → rank_among_peers → generate_analysis → persist_result
+   - Peer percentile ranking, composite score (Sharpe×0.3, Alpha×0.25, CAGR×0.25, Sortino×0.1, Expense×0.1)
+   - LLM output: verdict_label, verdict_text, key_strengths, key_risks. Rule-based fallback on LLM failure.
+
+4. **backend/agents/fund_comparator/** — 6-node comparison graph for 2–4 funds:
+   - 12 comparison metrics, weighted ranking, LLM narrative + ranked_verdict. UUID-identified comparisons.
+
+5. **backend/agents/stock_analyser/** — 9-node stock analysis graph with 3 specialized sub-agents:
+   - **fundamental_node** — Piotroski F-Score + ROE + ROCE + FCF margin + leverage → STRONG/GOOD/WEAK/POOR (0-100).
+   - **technical_node** — RSI/MACD/SMA/ADX/Stochastic vote → BULLISH/NEUTRAL/BEARISH.
+   - **valuation_node** — PE/PB/PS/EV-EBITDA vs sector median → UNDERVALUED/FAIR/OVERVALUED.
+   - **aggregate_node** — Weighted combine: F×0.4 + T×0.3 + V×0.3 → overall_health_score.
+   - LLM generates full_narrative from all sub-agent outputs.
+
+6. **backend/agents/stock_recommender/** — 5-node BUY/HOLD/SELL recommendation graph:
+   - Loads prior stock analysis + StockRating composite score.
+   - **decision_node** — Rule-based pre-signal: combined = health×0.6 + momentum×0.4.
+   - LLM refines: signal, confidence, time_horizon, entry/target/stop_loss, catalysts, risks.
+
+7. **backend/app/routers/agents.py** — NEW router with 8 endpoints:
+   - `POST/GET /agents/fund/{scheme_code}/analyse` and `/analysis`
+   - `POST /agents/fund/compare` and `GET /agents/fund/compare/{comparison_id}`
+   - `POST/GET /agents/stock/{symbol}/analyse` and `/analysis`
+   - `POST/GET /agents/stock/{symbol}/recommend` and `/recommendation`
+   - All POST endpoints support `?force=true` to bypass 24h cache check.
+
+8. **backend/app/main.py** — Registered `agents.router`.
+
+9. **backend/app/routers/pipeline.py** — Updated `/pipeline/funds/run/{scheme_code}` to use `run_fund_analyser` instead of the deleted `run_fund_scorer`.
+
+10. **backend/fund_scorer/** — DELETED (replaced by agents/fund_analyser/).
+
+### Test Results
+98 passed, 2 skipped, 0 failures (201s)
