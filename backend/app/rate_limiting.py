@@ -14,14 +14,16 @@ from collections import defaultdict
 logger = logging.getLogger(__name__)
 
 # Rate limit config: (requests_per_window, window_in_seconds)
+# Keys are path prefixes — longest match wins.
 RATE_LIMITS = {
-    "/screener": (100, 60),  # 100 requests per minute
-    "/stocks": (1000, 60),  # 1000 requests per minute
-    "/stocks/search": (500, 60),  # 500 requests per minute
-    "/pipeline": (50, 60),  # 50 admin requests per minute (strict for sensitive ops)
+    "/api/v1/agents":       (30, 60),    # 30 AI analysis requests per minute (expensive ops)
+    "/api/v1/screener":     (100, 60),   # 100 screener requests per minute
+    "/api/v1/stocks/search":(500, 60),   # 500 search requests per minute
+    "/api/v1/stocks":       (1000, 60),  # 1000 stock data requests per minute
+    "/api/v1/pipeline":     (50, 60),    # 50 admin pipeline requests per minute
 }
 
-DEFAULT_LIMIT = (1000, 60)  # 1000 requests per minute for unlisted endpoints
+DEFAULT_LIMIT = (1000, 60)  # 1000 requests per minute for all other endpoints
 
 
 class RateLimiter:
@@ -49,8 +51,13 @@ class RateLimiter:
         Returns:
             True if request is allowed, False if rate-limited
         """
-        # Get rate limit for this endpoint
-        limit, window_secs = RATE_LIMITS.get(endpoint, DEFAULT_LIMIT)
+        # Get rate limit via longest-prefix match
+        matched_prefix = ""
+        limit, window_secs = DEFAULT_LIMIT
+        for prefix, rule in RATE_LIMITS.items():
+            if endpoint.startswith(prefix) and len(prefix) > len(matched_prefix):
+                matched_prefix = prefix
+                limit, window_secs = rule
 
         # Check if cleanup needed (every 1000 checks)
         self._call_count += 1

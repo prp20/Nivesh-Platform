@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import fundService from '../api/services/fundService';
 import stockService from '../api/services/stockService';
+import agentService from '../api/services/agentService';
 import { motion, AnimatePresence } from 'framer-motion';
 import { 
   AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
@@ -137,6 +138,26 @@ const Admin = () => {
         addLog(`${label} updated for ${symbol}.`, 'SUCCESS');
       } catch (err) {
         addLog(`Failed to sync ${symbol}: ${err.message}`, 'ERROR');
+      }
+    };
+
+    const handleRunAgentAnalysis = async (symbol) => {
+      addLog(`Running AI analysis for ${symbol}...`, 'SYSTEM');
+      try {
+        await agentService.triggerStockAnalysis(symbol);
+        addLog(`AI analysis complete for ${symbol}.`, 'SUCCESS');
+      } catch (err) {
+        addLog(`AI analysis failed for ${symbol}: ${err.message}`, 'ERROR');
+      }
+    };
+
+    const handleRunFundAgentAnalysis = async (schemeCode) => {
+      addLog(`Running AI analysis for fund ${schemeCode}...`, 'SYSTEM');
+      try {
+        await agentService.triggerFundAnalysis(schemeCode);
+        addLog(`AI analysis complete for fund ${schemeCode}.`, 'SUCCESS');
+      } catch (err) {
+        addLog(`AI analysis failed for fund ${schemeCode}: ${err.message}`, 'ERROR');
       }
     };
 
@@ -488,6 +509,8 @@ const Admin = () => {
                               { label: 'Weekly Price Backfill', endpoint: stockService.triggerBulkPriceSync },
                               { label: 'Global Screener Scrape', endpoint: stockService.triggerBulkScreenerScrape },
                               { label: 'Rating Engine Re-Compute', endpoint: stockService.triggerBulkRatingCompute },
+                              { label: 'Daily ETL Chain (Prices → Metrics → TA → Ratings)', endpoint: stockService.triggerDailySync },
+                              { label: 'Bulk Technical Analysis', endpoint: stockService.triggerBulkTechnicalAnalysis },
                               { label: 'Indices Weightage Update', endpoint: () => handleBulkAction(() => Promise.resolve(), 'Indices Update') },
                               { label: 'Purge Transient Cache', endpoint: () => handleBulkAction(() => Promise.resolve(), 'Cache Purge') },
                             ].map((ctrl, i) => (
@@ -587,21 +610,37 @@ const Admin = () => {
                                   <div className="flex justify-center gap-4">
                                     {isStock && (
                                      <>
-                                      <button 
+                                      <button
                                         onClick={() => handleSingleStockSync(id, stockService.triggerDeepPriceSync, 'Price history')}
                                         className="p-3 bg-white/5 rounded-xl hover:bg-primary hover:text-black transition-all group/btn flex items-center gap-2"
                                         title="Sync Prices"
                                       >
                                         <span className="material-symbols-outlined text-lg">trending_up</span>
                                       </button>
-                                      <button 
+                                      <button
                                         onClick={() => handleSingleStockSync(id, stockService.triggerScreenerScrape, 'Fundamentals')}
                                         className="p-3 bg-white/5 rounded-xl hover:bg-primary hover:text-black transition-all group/btn"
                                         title="Sync Fundamentals"
                                       >
                                         <span className="material-symbols-outlined text-lg">analytics</span>
                                       </button>
+                                      <button
+                                        onClick={() => handleRunAgentAnalysis(id)}
+                                        className="p-3 bg-white/5 rounded-xl hover:bg-primary hover:text-black transition-all"
+                                        title="Run AI Analysis"
+                                      >
+                                        <span className="material-symbols-outlined text-lg">smart_toy</span>
+                                      </button>
                                      </>
+                                    )}
+                                    {!isStock && (
+                                      <button
+                                        onClick={() => handleRunFundAgentAnalysis(id)}
+                                        className="p-3 bg-white/5 rounded-xl hover:bg-primary hover:text-black transition-all"
+                                        title="Run AI Analysis"
+                                      >
+                                        <span className="material-symbols-outlined text-lg">smart_toy</span>
+                                      </button>
                                     )}
                                     <button 
                                       onClick={() => setAssetModal({ isOpen: true, data: asset, mode: 'edit' })} 

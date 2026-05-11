@@ -8,6 +8,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import toast from 'react-hot-toast';
 import CompareDock from '../components/Compare/CompareDock';
 import fundService from '../api/services/fundService';
+import agentService from '../api/services/agentService';
 
 const MFDetail = () => {
     const { schemeCode } = useParams();
@@ -18,6 +19,7 @@ const MFDetail = () => {
     const [activeTab, setActiveTab] = useState("intelligence");
     const [agentInsights, setAgentInsights] = useState(null);
     const [loadingInsights, setLoadingInsights] = useState(false);
+    const [runningAnalysis, setRunningAnalysis] = useState(false);
 
     useEffect(() => {
         if (schemeCode) {
@@ -28,15 +30,37 @@ const MFDetail = () => {
 
     const fetchAgentInsights = async () => {
         if (agentInsights) return;
+        setLoadingInsights(true);
         try {
-            setLoadingInsights(true);
-            const data = await fundService.getFundAgentInsights(schemeCode);
+            const data = await fundService.getFundAgentInsights(schemeCode); // calls GET /agents/fund/{code}/analysis
             setAgentInsights(data);
-        } catch (error) {
-            console.error("Agentic analysis failed:", error);
-            toast.error("Agentic analysis failed. Ensure Groq API is reachable.");
+        } catch (err) {
+            if (err?.response?.status !== 404) {
+                toast.error("Agentic analysis failed. Ensure Groq API is reachable.");
+            }
+            // 404 = no analysis yet — UI shows "Run Analysis" button
         } finally {
             setLoadingInsights(false);
+        }
+    };
+
+    const handleRunFundAnalysis = async (force = false) => {
+        setRunningAnalysis(true);
+        try {
+            await agentService.triggerFundAnalysis(schemeCode, force);
+            setAgentInsights(null);
+            setLoadingInsights(true);
+            try {
+                const data = await fundService.getFundAgentInsights(schemeCode);
+                setAgentInsights(data);
+            } finally {
+                setLoadingInsights(false);
+            }
+            toast.success("Fund analysis complete.");
+        } catch (err) {
+            toast.error("Fund analysis failed.");
+        } finally {
+            setRunningAnalysis(false);
         }
     };
 
@@ -380,13 +404,15 @@ const MFDetail = () => {
 
                     {activeTab === "oracle" && (
                         <motion.div key="oracle" initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }}>
-                            <AgentInsightsTab 
-                                data={agentInsights} 
-                                loading={loadingInsights} 
+                            <AgentInsightsTab
+                                data={agentInsights}
+                                loading={loadingInsights}
+                                runningAnalysis={runningAnalysis}
+                                onRunAnalysis={handleRunFundAnalysis}
                                 onRefresh={() => {
                                     setAgentInsights(null);
                                     fetchAgentInsights();
-                                }} 
+                                }}
                             />
                         </motion.div>
                     )}
@@ -417,7 +443,7 @@ function DataCell({ label, value, highlight }) {
     );
 }
 
-const AgentInsightsTab = ({ data, loading, onRefresh }) => {
+const AgentInsightsTab = ({ data, loading, runningAnalysis, onRunAnalysis, onRefresh }) => {
     if (loading) {
         return (
             <div className="flex flex-col items-center justify-center min-h-[40vh] space-y-6">
@@ -430,18 +456,41 @@ const AgentInsightsTab = ({ data, loading, onRefresh }) => {
                 </div>
                 <div className="text-center">
                     <p className="text-white font-headline text-lg font-black tracking-widest uppercase mb-1">Synthesizing Intelligence</p>
-                    <p className="text-slate-500 text-[10px] font-bold uppercase tracking-[0.3em]">Our agents are analyzing risk-adjusted performance vectors...</p>
+                    <p className="text-slate-500 text-[10px] font-bold uppercase tracking-[0.3em]">Fetching agent analysis...</p>
                 </div>
             </div>
         );
     }
 
-    if (!data) return null;
+    if (!data) {
+        return (
+            <div className="glass-panel p-20 text-center rounded-[3rem] border border-white/5">
+                <span className="material-symbols-outlined text-6xl text-slate-700 mb-6 block">psychology</span>
+                <p className="text-[10px] uppercase font-black tracking-widest text-slate-500 mb-3">No Analysis Found</p>
+                <p className="text-xs text-slate-600 mb-10">Run the AI analysis to score this fund against its peers.</p>
+                <button
+                    onClick={() => onRunAnalysis(false)}
+                    disabled={runningAnalysis}
+                    className="px-10 py-4 bg-primary text-black rounded-xl font-black text-[10px] tracking-[0.2em] uppercase hover:brightness-110 active:scale-95 transition-all font-headline disabled:opacity-50 flex items-center gap-3 mx-auto"
+                >
+                    {runningAnalysis ? (
+                        <><span className="w-4 h-4 border-2 border-black border-t-transparent rounded-full animate-spin"></span>Analysing...</>
+                    ) : (
+                        <><span className="material-symbols-outlined text-lg">psychology</span>Run Agent Analysis</>
+                    )}
+                </button>
+            </div>
+        );
+    }
+
+    const compositeScore = data.composite_score || 0;
+    const scoreColor = compositeScore >= 70 ? 'text-secondary' : compositeScore >= 45 ? 'text-primary' : 'text-error';
 
     return (
         <div className="space-y-12 animate-fadeIn pb-20">
-            {/* Header Score & Reasoning */}
+            {/* Score + Verdict */}
             <div className="flex flex-col lg:flex-row gap-8">
+                {/* Circular Gauge */}
                 <div className="lg:w-1/3 glass-panel p-10 rounded-[3rem] border border-white/5 flex flex-col items-center justify-center relative overflow-hidden">
                     <div className="absolute inset-0 bg-gradient-to-br from-primary/10 to-transparent pointer-events-none"></div>
                     <p className="text-[10px] text-slate-500 font-black uppercase tracking-[0.4em] mb-6 relative z-10">Composite Alpha Score</p>
@@ -451,120 +500,89 @@ const AgentInsightsTab = ({ data, loading, onRefresh }) => {
                             <circle
                                 cx="96" cy="96" r="88" stroke="currentColor" strokeWidth="10" fill="transparent"
                                 strokeDasharray={552.92}
-                                strokeDashoffset={552.92 - (552.92 * (data.composite_score || 0)) / 100}
-                                className="text-primary drop-shadow-[0_0_10px_rgba(233,195,73,0.5)]"
+                                strokeDashoffset={552.92 - (552.92 * compositeScore) / 100}
+                                className={`${scoreColor} drop-shadow-[0_0_10px_rgba(233,195,73,0.5)]`}
                                 strokeLinecap="round"
                             />
                         </svg>
                         <div className="absolute inset-0 flex flex-col items-center justify-center">
-                            <span className="text-5xl font-headline font-black text-white">{data.composite_score?.toFixed(1) || '0.0'}</span>
-                            <span className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Quantum Rank</span>
+                            <span className="text-5xl font-headline font-black text-white">{compositeScore.toFixed(1)}</span>
+                            <span className="text-[10px] font-black text-slate-500 uppercase tracking-widest">/ 100</span>
                         </div>
                     </div>
-                    <div className="mt-8 px-6 py-2 bg-primary/10 border border-primary/20 rounded-full z-10">
-                        <span className="text-[10px] font-black text-primary uppercase tracking-widest">{data.reasoning_label}</span>
-                    </div>
+                    {data.verdict_label && (
+                        <div className="mt-8 px-6 py-2 bg-primary/10 border border-primary/20 rounded-full z-10">
+                            <span className="text-[10px] font-black text-primary uppercase tracking-widest">{data.verdict_label}</span>
+                        </div>
+                    )}
+                    {/* Peer Rank */}
+                    {data.category_rank && (
+                        <div className="mt-4 text-center z-10">
+                            <span className="text-[10px] text-slate-500 font-black uppercase tracking-widest">
+                                Rank #{data.category_rank} of {data.category_size} &nbsp;·&nbsp; {Number(data.peer_percentile || 0).toFixed(0)}th percentile
+                            </span>
+                        </div>
+                    )}
                 </div>
 
+                {/* Verdict Text */}
                 <div className="lg:flex-1 glass-panel p-10 rounded-[3rem] border border-white/5 relative overflow-hidden">
                     <div className="absolute top-0 right-0 p-8 opacity-10">
                         <span className="material-symbols-outlined text-8xl text-primary">format_quote</span>
                     </div>
-                    <h4 className="text-[10px] font-black uppercase tracking-[0.4em] text-slate-500 mb-6">Neural Synthesis</h4>
+                    <h4 className="text-[10px] font-black uppercase tracking-[0.4em] text-slate-500 mb-6">Analyst Verdict</h4>
                     <p className="text-xl md:text-2xl font-headline font-light italic leading-relaxed text-white/90 relative z-10">
-                        "{data.reasoning_text}"
+                        "{data.verdict_text || 'No verdict available.'}"
                     </p>
                     <div className="mt-12 flex justify-between items-center relative z-10">
                         <div className="flex items-center gap-3">
                             <div className="w-2 h-2 rounded-full bg-secondary animate-pulse"></div>
-                            <span className="text-[9px] font-black text-slate-500 uppercase tracking-widest">Agentic Pulse Status: COMPLETED</span>
+                            <span className="text-[9px] font-black text-slate-500 uppercase tracking-widest">
+                                Status: {data.status} &nbsp;·&nbsp; {data.analysed_at ? new Date(data.analysed_at).toLocaleDateString('en-IN') : ''}
+                            </span>
                         </div>
                         <button
-                            onClick={onRefresh}
-                            className="flex items-center gap-2 px-6 py-2 rounded-xl border border-white/5 hover:bg-white/5 transition-all group"
+                            onClick={() => onRunAnalysis(true)}
+                            disabled={runningAnalysis}
+                            className="flex items-center gap-2 px-6 py-2 rounded-xl border border-white/5 hover:bg-white/5 transition-all group disabled:opacity-50"
                         >
-                            <span className="material-symbols-outlined text-sm group-hover:rotate-180 transition-transform duration-500 text-primary">sync</span>
-                            <span className="text-[9px] font-black text-slate-400 group-hover:text-white uppercase tracking-widest">Re-run Analysis</span>
+                            <span className={`material-symbols-outlined text-sm text-primary ${runningAnalysis ? 'animate-spin' : 'group-hover:rotate-180 transition-transform duration-500'}`}>sync</span>
+                            <span className="text-[9px] font-black text-slate-400 group-hover:text-white uppercase tracking-widest">
+                                {runningAnalysis ? 'Running...' : 'Re-run Analysis'}
+                            </span>
                         </button>
                     </div>
                 </div>
             </div>
 
-            {/* Analysis Pillars for Funds */}
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
-                <ScoreCard
-                    title="Risk-Adjusted Performance"
-                    score={Math.min(10, (data.metrics?.sharpe_ratio || 0) * 5)}
-                    metrics={[
-                        { label: 'Sharpe Ratio', value: data.metrics?.sharpe_ratio?.toFixed(2) },
-                        { label: 'Sortino Ratio', value: data.metrics?.sortino_ratio?.toFixed(2) },
-                        { label: 'Information Ratio', value: data.metrics?.information_ratio?.toFixed(2) }
-                    ]}
-                    accent="primary"
-                />
-                <ScoreCard
-                    title="Relative Edge (Alpha)"
-                    score={Math.min(10, (data.metrics?.alpha || 0) * 100)}
-                    metrics={[
-                        { label: 'Alpha Generation', value: `${((data.metrics?.alpha || 0) * 100).toFixed(2)}%` },
-                        { label: 'Beta Sensitivity', value: data.metrics?.beta?.toFixed(2) },
-                        { label: 'Tracking Error', value: data.metrics?.tracking_error?.toFixed(2) }
-                    ]}
-                    accent="secondary"
-                />
-                <ScoreCard
-                    title="Consistency & Capture"
-                    score={data.metrics?.upside_capture > data.metrics?.downside_capture ? 8 : 4}
-                    metrics={[
-                        { label: 'Upside Capture', value: data.metrics?.upside_capture?.toFixed(2) },
-                        { label: 'Downside Capture', value: data.metrics?.downside_capture?.toFixed(2) },
-                        { label: 'Volatility', value: `${((data.metrics?.volatility || 0) * 100).toFixed(2)}%` }
-                    ]}
-                    accent="error"
-                />
-            </div>
-
-            {/* Execution Logs */}
-            <div className="glass-panel rounded-[2rem] border border-white/5 overflow-hidden">
-                <div className="px-8 py-4 bg-white/5 flex items-center justify-between">
-                    <h5 className="text-[9px] font-black uppercase tracking-[0.4em] text-slate-500">Agent Trace Log</h5>
-                    <span className="text-[10px] font-bold text-secondary font-headline uppercase tracking-widest">{data.status}</span>
-                </div>
-                <div className="p-8 space-y-2 bg-black/20">
-                    {data.logs?.map((log, i) => (
-                        <div key={i} className="flex gap-4 font-mono text-[10px]">
-                            <span className="text-slate-700">[{i + 1}]</span>
-                            <span className="text-slate-400">{log}</span>
-                        </div>
-                    ))}
-                </div>
-            </div>
-        </div>
-    );
-};
-
-const ScoreCard = ({ title, score, metrics, accent }) => {
-    const accents = {
-        primary: "text-primary border-primary/20 bg-primary/5",
-        secondary: "text-secondary border-secondary/20 bg-secondary/5",
-        error: "text-error border-error/20 bg-error/5"
-    };
-
-    return (
-        <div className="glass-panel p-8 rounded-[2.5rem] border border-white/5 relative overflow-hidden">
-            <div className="flex justify-between items-start mb-8">
-                <h5 className="text-[10px] font-black uppercase tracking-[0.3em] text-slate-500">{title}</h5>
-                <div className={`px-3 py-1 rounded-lg border font-headline font-black text-xs ${accents[accent] || accents.primary}`}>
-                    {score?.toFixed(1) || '0.0'}/10
-                </div>
-            </div>
-            <div className="space-y-4">
-                {metrics.map((m, i) => (
-                    <div key={i} className="flex justify-between items-center">
-                        <span className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">{m.label}</span>
-                        <span className="text-sm text-white font-headline font-black">{m.value || 'N/A'}</span>
+            {/* Key Strengths & Risks */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+                {data.key_strengths?.length > 0 && (
+                    <div className="glass-panel p-8 rounded-[2.5rem] border border-white/5">
+                        <h5 className="text-[10px] font-black text-secondary uppercase tracking-[0.3em] mb-6">Key Strengths</h5>
+                        <ul className="space-y-4">
+                            {data.key_strengths.map((s, i) => (
+                                <li key={i} className="flex items-start gap-3 text-sm text-slate-300 font-label">
+                                    <span className="material-symbols-outlined text-secondary text-base shrink-0 mt-0.5">check_circle</span>
+                                    {s}
+                                </li>
+                            ))}
+                        </ul>
                     </div>
-                ))}
+                )}
+                {data.key_risks?.length > 0 && (
+                    <div className="glass-panel p-8 rounded-[2.5rem] border border-white/5">
+                        <h5 className="text-[10px] font-black text-error uppercase tracking-[0.3em] mb-6">Key Risks</h5>
+                        <ul className="space-y-4">
+                            {data.key_risks.map((r, i) => (
+                                <li key={i} className="flex items-start gap-3 text-sm text-slate-300 font-label">
+                                    <span className="material-symbols-outlined text-error text-base shrink-0 mt-0.5">warning</span>
+                                    {r}
+                                </li>
+                            ))}
+                        </ul>
+                    </div>
+                )}
             </div>
         </div>
     );

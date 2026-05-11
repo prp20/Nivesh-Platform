@@ -140,10 +140,7 @@ const fundService = {
 
     // AGENTIC ANALYSIS
     getFundAgentInsights: async (schemeCode) => {
-        // This currently uses the pipeline endpoint which both triggers and returns the analysis
-        // In a real prod app, we might want a separate GET for persistence, 
-        // but the current architecture for 'agent insights' in StockDetail triggers it on demand.
-        const response = await apiClient.post(`/pipeline/funds/run/${schemeCode}`);
+        const response = await apiClient.get(`/agents/fund/${schemeCode}/analysis`);
         return response.data;
     }
 };

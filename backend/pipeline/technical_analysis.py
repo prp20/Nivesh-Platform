@@ -267,7 +267,7 @@ async def _fetch_price_history(stock_id: int) -> list:
     """
     async with raw_connection() as conn:
         rows = await db_fetch(conn, sql, (stock_id,))
-        return [tuple(r) for r in rows]
+        return [tuple(r.values()) for r in rows]
 
 
 async def _fetch_benchmark_history() -> list:
