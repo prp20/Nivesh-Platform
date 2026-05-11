@@ -1,5 +1,20 @@
 # Changelog
 
+## 2026-05-11 — Session: SQLite startup extension error fix
+
+### Issue Fixed
+1. **backend/app/db_compat.py** — Fixed `is_sqlite()` database dialect detection: changed to use `settings.DATABASE_URL` (loaded from .env via pydantic) instead of `os.environ.get()`. Previously, SQLite databases configured in .env were detected as PostgreSQL at startup, causing `CREATE EXTENSION pg_trgm;` to execute and fail with `sqlite3.OperationalError: near "EXTENSION": syntax error`.
+
+### Why It Matters
+- pydantic-settings loads .env into its own namespace, not into `os.environ` by default
+- `is_sqlite()` was reading raw `os.environ` before .env was loaded, defaulting to PostgreSQL
+- Now correctly uses pydantic's loaded settings, ensuring SQLite is detected and PostgreSQL-only DDL is skipped
+
+### Git Commit
+- Commit `95bc268`: "fix: use pydantic settings for DATABASE_URL detection instead of os.environ"
+
+---
+
 ## 2026-05-08 — Session: SQLite support setup.sh & db_init.py fixes
 
 ### Issues Fixed
