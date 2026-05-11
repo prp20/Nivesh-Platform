@@ -172,7 +172,11 @@ async def screener(
     sort_col = SORT_COLUMNS.get_column(sort_by, "sr.total_score")
     order_dir = "DESC" if order == "desc" else "ASC"
 
-    # Single WHERE clause definition, used in both main and count queries
+    # NULLS LAST emulation — works in both SQLite and PostgreSQL.
+    # "CASE WHEN col IS NULL THEN 1 ELSE 0 END ASC, col DIR" pushes NULLs to the bottom.
+    null_safe_order = f"CASE WHEN {sort_col} IS NULL THEN 1 ELSE 0 END ASC, {sort_col} {order_dir}"
+
+    # Correlated subquery joins replace LATERAL — compatible with both SQLite and PostgreSQL.
     sql_main = f"""
         SELECT
             s.symbol, s.company_name, s.sector, s.industry, s.summary, s.market_cap_cat,
@@ -186,61 +190,92 @@ async def screener(
             r.piotroski_f_score, r.altman_z_score,
             m.market_cap, m.dividend_yield, m.low_52w, m.high_52w, m.revenue_per_share,
             sr.rating_label, sr.total_score,
-            ti.beta_1y, ti.rs_6m_vs_nifty, 
+            ti.beta_1y, ti.rs_6m_vs_nifty,
             ti.pct_from_52w_high, ti.pct_from_52w_low,
             ti.volume_ratio
         FROM stocks s
-        LEFT JOIN LATERAL (
-            SELECT roe, roce, pat_margin, pe_ratio, pb_ratio, debt_equity,
-                   revenue_growth, pat_growth, eps, interest_cov, cfo_to_pat, ebitda_margin,
-                   ev_ebitda, roic, fcf_yield, piotroski_f_score, altman_z_score
-            FROM financial_ratios
-            WHERE stock_id = s.id AND period_type = 'annual'
-            ORDER BY period_end DESC LIMIT 1
-        ) r ON TRUE
-        LEFT JOIN LATERAL (
-            SELECT market_cap, dividend_yield, low_52w, high_52w, revenue_per_share
-            FROM financial_ratios
-            WHERE stock_id = s.id AND period_type = 'latest'
-            ORDER BY period_end DESC LIMIT 1
-        ) m ON TRUE
-        LEFT JOIN LATERAL (
-            SELECT close, price_date
-            FROM price_data WHERE stock_id = s.id ORDER BY price_date DESC LIMIT 1
-        ) p ON TRUE
-        LEFT JOIN LATERAL (
-            SELECT rating_label, total_score
-            FROM stock_ratings WHERE stock_id = s.id ORDER BY rated_on DESC LIMIT 1
-        ) sr ON TRUE
-        LEFT JOIN LATERAL (
-            SELECT beta_1y, rs_6m_vs_nifty, pct_from_52w_high, pct_from_52w_low, volume_ratio
-            FROM technical_indicators 
-            WHERE stock_id = s.id AND timeframe = '1d'
-            ORDER BY ind_date DESC LIMIT 1
-        ) ti ON TRUE
+        LEFT JOIN (
+            SELECT fr.stock_id, fr.roe, fr.roce, fr.pat_margin, fr.pe_ratio, fr.pb_ratio,
+                   fr.debt_equity, fr.revenue_growth, fr.pat_growth, fr.eps, fr.interest_cov,
+                   fr.cfo_to_pat, fr.ebitda_margin, fr.ev_ebitda, fr.roic, fr.fcf_yield,
+                   fr.piotroski_f_score, fr.altman_z_score
+            FROM financial_ratios fr
+            WHERE fr.period_type = 'annual'
+              AND fr.period_end = (
+                  SELECT MAX(fr2.period_end) FROM financial_ratios fr2
+                  WHERE fr2.stock_id = fr.stock_id AND fr2.period_type = 'annual'
+              )
+        ) r ON r.stock_id = s.id
+        LEFT JOIN (
+            SELECT fr.stock_id, fr.market_cap, fr.dividend_yield, fr.low_52w, fr.high_52w,
+                   fr.revenue_per_share
+            FROM financial_ratios fr
+            WHERE fr.period_type = 'latest'
+              AND fr.period_end = (
+                  SELECT MAX(fr2.period_end) FROM financial_ratios fr2
+                  WHERE fr2.stock_id = fr.stock_id AND fr2.period_type = 'latest'
+              )
+        ) m ON m.stock_id = s.id
+        LEFT JOIN (
+            SELECT pd.stock_id, pd.close, pd.price_date
+            FROM price_data pd
+            WHERE pd.price_date = (
+                SELECT MAX(pd2.price_date) FROM price_data pd2 WHERE pd2.stock_id = pd.stock_id
+            )
+        ) p ON p.stock_id = s.id
+        LEFT JOIN (
+            SELECT sr2.stock_id, sr2.rating_label, sr2.total_score
+            FROM stock_ratings sr2
+            WHERE sr2.rated_on = (
+                SELECT MAX(sr3.rated_on) FROM stock_ratings sr3 WHERE sr3.stock_id = sr2.stock_id
+            )
+        ) sr ON sr.stock_id = s.id
+        LEFT JOIN (
+            SELECT ti2.stock_id, ti2.beta_1y, ti2.rs_6m_vs_nifty,
+                   ti2.pct_from_52w_high, ti2.pct_from_52w_low, ti2.volume_ratio
+            FROM technical_indicators ti2
+            WHERE ti2.timeframe = '1d'
+              AND ti2.ind_date = (
+                  SELECT MAX(ti3.ind_date) FROM technical_indicators ti3
+                  WHERE ti3.stock_id = ti2.stock_id AND ti3.timeframe = '1d'
+              )
+        ) ti ON ti.stock_id = s.id
         WHERE {where_clause}
-        ORDER BY {sort_col} {order_dir} NULLS LAST
+        ORDER BY {null_safe_order}
         LIMIT :limit OFFSET :offset
     """
 
     sql_count = f"""
         SELECT COUNT(*)
         FROM stocks s
-        LEFT JOIN LATERAL (
-            SELECT roe, roce, pat_margin, pe_ratio, pb_ratio, debt_equity,
-                   revenue_growth, pat_growth, interest_cov, cfo_to_pat, ebitda_margin,
-                   ev_ebitda, roic, fcf_yield, piotroski_f_score
-            FROM financial_ratios WHERE stock_id = s.id AND period_type = 'annual'
-            ORDER BY period_end DESC LIMIT 1
-        ) r ON TRUE
-        LEFT JOIN LATERAL (
-            SELECT beta_1y, rs_6m_vs_nifty, volume_ratio
-            FROM technical_indicators WHERE stock_id = s.id AND timeframe = '1d'
-            ORDER BY ind_date DESC LIMIT 1
-        ) ti ON TRUE
-        LEFT JOIN LATERAL (
-            SELECT rating_label FROM stock_ratings WHERE stock_id = s.id ORDER BY rated_on DESC LIMIT 1
-        ) sr ON TRUE
+        LEFT JOIN (
+            SELECT fr.stock_id, fr.roe, fr.roce, fr.pat_margin, fr.pe_ratio, fr.pb_ratio,
+                   fr.debt_equity, fr.revenue_growth, fr.pat_growth, fr.interest_cov,
+                   fr.cfo_to_pat, fr.ebitda_margin, fr.ev_ebitda, fr.roic, fr.fcf_yield,
+                   fr.piotroski_f_score
+            FROM financial_ratios fr
+            WHERE fr.period_type = 'annual'
+              AND fr.period_end = (
+                  SELECT MAX(fr2.period_end) FROM financial_ratios fr2
+                  WHERE fr2.stock_id = fr.stock_id AND fr2.period_type = 'annual'
+              )
+        ) r ON r.stock_id = s.id
+        LEFT JOIN (
+            SELECT ti2.stock_id, ti2.beta_1y, ti2.rs_6m_vs_nifty, ti2.volume_ratio
+            FROM technical_indicators ti2
+            WHERE ti2.timeframe = '1d'
+              AND ti2.ind_date = (
+                  SELECT MAX(ti3.ind_date) FROM technical_indicators ti3
+                  WHERE ti3.stock_id = ti2.stock_id AND ti3.timeframe = '1d'
+              )
+        ) ti ON ti.stock_id = s.id
+        LEFT JOIN (
+            SELECT sr2.stock_id, sr2.rating_label
+            FROM stock_ratings sr2
+            WHERE sr2.rated_on = (
+                SELECT MAX(sr3.rated_on) FROM stock_ratings sr3 WHERE sr3.stock_id = sr2.stock_id
+            )
+        ) sr ON sr.stock_id = s.id
         WHERE {where_clause}
     """
 

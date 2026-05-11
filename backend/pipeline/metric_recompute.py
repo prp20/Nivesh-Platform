@@ -20,7 +20,7 @@ import logging
 from typing import Optional
 
 from pipeline.audit import audit_job
-from app.database import raw_connection
+from app.db_compat import raw_connection, db_execute, db_fetch, db_fetchrow
 
 logger = logging.getLogger(__name__)
 
@@ -105,15 +105,15 @@ async def _fetch_stocks_with_ratios() -> list:
         ORDER BY s.id
     """
     async with raw_connection() as conn:
-        rows = await conn.fetch(sql)
+        rows = await db_fetch(conn, sql)
         return [dict(r) for r in rows]
 
 
 async def _get_latest_close(stock_id: int) -> Optional[float]:
     async with raw_connection() as conn:
-        row = await conn.fetchrow(
+        row = await db_fetchrow(conn,
             "SELECT close FROM price_data WHERE stock_id=$1 ORDER BY price_date DESC LIMIT 1",
-            stock_id
+            (stock_id,)
         )
         return float(row["close"]) if row else None
 
@@ -128,7 +128,7 @@ async def _get_stored_fundamentals(stock_id: int) -> Optional[dict]:
         LIMIT 1
     """
     async with raw_connection() as conn:
-        row = await conn.fetchrow(sql, stock_id)
+        row = await db_fetchrow(conn, sql, (stock_id,))
         return dict(row) if row else None
 
 
@@ -142,7 +142,7 @@ async def _get_latest_revenue(stock_id: int) -> Optional[float]:
         LIMIT 1
     """
     async with raw_connection() as conn:
-        row = await conn.fetchrow(sql, stock_id)
+        row = await db_fetchrow(conn, sql, (stock_id,))
         if not row:
             return None
         # data stores a single period snapshot (dict, not list)
@@ -163,7 +163,7 @@ async def _get_shares_outstanding(stock_id: int) -> Optional[float]:
         LIMIT 1
     """
     async with raw_connection() as conn:
-        row = await conn.fetchrow(sql, stock_id)
+        row = await db_fetchrow(conn, sql, (stock_id,))
         if not row or not row["shares"]:
             return None
         try:
@@ -187,7 +187,7 @@ async def _get_latest_dividend(stock_id: int) -> Optional[float]:
         LIMIT 1
     """
     async with raw_connection() as conn:
-        row = await conn.fetchrow(sql, stock_id)
+        row = await db_fetchrow(conn, sql, (stock_id,))
         if not row or not row["div"] or row["div"] == "n/a":
             return None
         try:
@@ -205,18 +205,17 @@ async def _update_price_ratios(stock_id: int, period_end, period_type: str, upda
             pb_ratio       = $4,
             ps_ratio       = $5,
             dividend_yield = $6,
-            computed_at    = NOW()
+            computed_at    = CURRENT_TIMESTAMP
         WHERE stock_id = $1
           AND period_end = $2
           AND period_type = $7
     """
     async with raw_connection() as conn:
-        await conn.execute(
-            sql,
+        await db_execute(conn, sql, (
             stock_id, period_end,
             updates.get("pe_ratio"),
             updates.get("pb_ratio"),
             updates.get("ps_ratio"),
             updates.get("dividend_yield"),
             period_type,
-        )
+        ))

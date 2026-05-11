@@ -20,8 +20,11 @@ depends_on: Union[str, Sequence[str], None] = None
 
 def upgrade() -> None:
     """Upgrade schema."""
-    # Idempotency guard
+    # SQLite: tables are created by migration 003 — skip all PostgreSQL-specific DDL
     connection = op.get_bind()
+    if connection.dialect.name == 'sqlite':
+        return
+    # Idempotency guard
     inspector = sa.inspect(connection)
     existing_tables = set(inspector.get_table_names())
     if 'fundamental_scores' in existing_tables:
@@ -61,5 +64,8 @@ def upgrade() -> None:
 
 def downgrade() -> None:
     """Downgrade schema."""
+    connection = op.get_bind()
+    if connection.dialect.name == 'sqlite':
+        return
     op.drop_index(op.f('ix_fundamental_scores_stock_id'), table_name='fundamental_scores')
     op.drop_table('fundamental_scores')

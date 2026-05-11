@@ -273,26 +273,32 @@ async def get_screener_status(
     admin: str = Depends(require_admin),
 ):
     """Returns last scrape date per stock and flags stocks overdue for scraping."""
-    from app.database import raw_connection
-    sql = """
+    from app.db_compat import raw_connection, db_fetch, is_sqlite
+
+    # Dialect-specific date arithmetic for the OVERDUE threshold.
+    if is_sqlite():
+        overdue_expr = "datetime('now', '-' || ? || ' days')"
+    else:
+        overdue_expr = "NOW() - ($1 || ' days')::INTERVAL"
+
+    sql = f"""
         SELECT
             s.symbol,
             s.company_name,
-            MAX(fs.scraped_at)::date AS last_scraped,
+            MAX(fs.scraped_at) AS last_scraped,
             CASE
                 WHEN MAX(fs.scraped_at) IS NULL THEN 'NEVER'
-                WHEN MAX(fs.scraped_at) < NOW() - ($1 || ' days')::INTERVAL THEN 'OVERDUE'
+                WHEN MAX(fs.scraped_at) < {overdue_expr} THEN 'OVERDUE'
                 ELSE 'OK'
             END AS scrape_status
         FROM stocks s
         LEFT JOIN financial_statements fs ON fs.stock_id = s.id
         WHERE s.is_active = TRUE AND s.is_index = FALSE
         GROUP BY s.id, s.symbol, s.company_name
-        ORDER BY last_scraped ASC NULLS FIRST
+        ORDER BY last_scraped ASC
     """
     async with raw_connection() as conn:
-        rows = await conn.fetch(sql, str(overdue_days))
-    data = [dict(r) for r in rows]
+        data = await db_fetch(conn, sql, (str(overdue_days),))
     overdue = [r for r in data if r["scrape_status"] in ("OVERDUE", "NEVER")]
     return {
         "total_stocks": len(data),
@@ -570,34 +576,36 @@ async def trigger_fundamental_scoring_bulk(
 @router.get("/status", summary="Overall pipeline health and live progress polling")
 async def get_pipeline_status(admin: str = Depends(require_admin)):
     """Shows last run time, status, and live record counts (progress) for all pipeline jobs."""
-    from app.database import raw_connection
+    from app.db_compat import raw_connection, db_fetch, is_sqlite
+
+    # DISTINCT ON is PostgreSQL-specific.  SQLite gets the latest row per job_name via a
+    # self-join on MAX(started_at), which also works in PostgreSQL.
     sql = """
-        SELECT DISTINCT ON (job_name)
-            job_name,
-            status,
-            started_at,
-            ended_at,
-            records_in,
-            records_out,
-            EXTRACT(EPOCH FROM (COALESCE(ended_at, NOW()) - started_at))::int AS duration_sec,
-            error_msg
-        FROM pipeline_audit
-        ORDER BY job_name, started_at DESC
+        SELECT
+            pa.job_name,
+            pa.status,
+            pa.started_at,
+            pa.ended_at,
+            pa.records_in,
+            pa.records_out,
+            pa.error_msg
+        FROM pipeline_audit pa
+        WHERE pa.started_at = (
+            SELECT MAX(pa2.started_at) FROM pipeline_audit pa2
+            WHERE pa2.job_name = pa.job_name
+        )
+        ORDER BY pa.job_name
     """
     rows = []
     try:
         async with raw_connection() as conn:
-            rows = await conn.fetch(sql)
+            rows = await db_fetch(conn, sql)
     except Exception as e:
-        # Graceful fallback for any connection/pool issues
         logger.error(f"Failed to fetch pipeline status: {str(e)}", exc_info=True)
-    
+
     jobs = []
-
-
     for r in rows:
         job = dict(r)
-        # Calculate progress percentage if records_in is known
         if job["records_in"] and job["records_in"] > 0:
             job["progress_pct"] = round((job["records_out"] / job["records_in"]) * 100, 1)
         else:
@@ -605,4 +613,81 @@ async def get_pipeline_status(admin: str = Depends(require_admin)):
         jobs.append(job)
 
     return {"jobs": jobs}
+
+
+# ─── Orchestrated Sync Triggers ───────────────────────────────────────────────
+
+@router.post("/sync/daily", summary="Run full daily pipeline chain")
+async def trigger_daily_sync(
+    background_tasks: BackgroundTasks,
+    admin: str = Depends(require_admin),
+):
+    """
+    Run the full daily data pipeline in sequence (background):
+      1. Price ingestion (OHLCV from yfinance)
+      2. Price-dependent ratio refresh (PE / PB / PS)
+      3. Technical analysis (SMA, EMA, RSI, MACD, Bollinger, ATR, ADX, Stochastic)
+      4. Composite stock rating computation
+
+    Each step awaits the previous; individual failures are logged but do not
+    abort the remaining chain.
+    """
+    from pipeline.price_ingestion import run_daily_price_ingestion
+    from pipeline.metric_recompute import recompute_price_dependent_ratios_all
+    from pipeline.technical_analysis import run_technical_analysis_all
+    from pipeline.rating_engine import run_rating_compute_all
+
+    async def _daily_chain():
+        for name, fn in [
+            ("price_ingestion", run_daily_price_ingestion),
+            ("metric_recompute", recompute_price_dependent_ratios_all),
+            ("technical_analysis", run_technical_analysis_all),
+            ("rating_engine", run_rating_compute_all),
+        ]:
+            try:
+                logger.info(f"[daily_sync] starting {name}")
+                await fn()
+                logger.info(f"[daily_sync] completed {name}")
+            except Exception as exc:
+                logger.error(f"[daily_sync] {name} failed: {exc}", exc_info=True)
+
+    background_tasks.add_task(_daily_chain)
+    return {
+        "message": "Daily sync chain started",
+        "steps": ["price_ingestion", "metric_recompute", "technical_analysis", "rating_engine"],
+    }
+
+
+@router.post("/sync/metrics", summary="Refresh price-dependent metrics only")
+async def trigger_metrics_sync(
+    background_tasks: BackgroundTasks,
+    admin: str = Depends(require_admin),
+):
+    """
+    Recompute price-dependent metrics without re-fetching price data (background):
+      1. Price-dependent ratio refresh (PE / PB / PS / Dividend Yield)
+      2. Composite stock rating computation
+
+    Use this when prices are already up-to-date and only derived metrics need refreshing.
+    """
+    from pipeline.metric_recompute import recompute_price_dependent_ratios_all
+    from pipeline.rating_engine import run_rating_compute_all
+
+    async def _metrics_chain():
+        for name, fn in [
+            ("metric_recompute", recompute_price_dependent_ratios_all),
+            ("rating_engine", run_rating_compute_all),
+        ]:
+            try:
+                logger.info(f"[metrics_sync] starting {name}")
+                await fn()
+                logger.info(f"[metrics_sync] completed {name}")
+            except Exception as exc:
+                logger.error(f"[metrics_sync] {name} failed: {exc}", exc_info=True)
+
+    background_tasks.add_task(_metrics_chain)
+    return {
+        "message": "Metrics sync started",
+        "steps": ["metric_recompute", "rating_engine"],
+    }
 

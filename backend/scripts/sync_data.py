@@ -8,17 +8,27 @@ from datetime import datetime, timezone
 from tqdm import tqdm
 from sqlalchemy import create_engine, select, text
 from sqlalchemy.orm import sessionmaker
-from sqlalchemy.dialects.postgresql import insert as pg_insert
 from mftool import Mftool
 
 # Add project root to sys.path
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
 from app import analytics, models, config
+from app.db_compat import is_sqlite
+
+
+def _dialect_insert(model):
+    """Return the correct dialect-specific insert for the current DATABASE_URL."""
+    if is_sqlite():
+        from sqlalchemy.dialects.sqlite import insert as _insert
+    else:
+        from sqlalchemy.dialects.postgresql import insert as _insert
+    return _insert(model)
 
 # Setup Synchronous Database Connection
-# Convert asyncpg URL to standard postgresql URL
-SYNC_DB_URL = config.settings.DATABASE_URL.replace("+asyncpg", "")
+# Convert async URLs to sync: strip both +asyncpg (PostgreSQL) and +aiosqlite (SQLite)
+import re
+SYNC_DB_URL = re.sub(r'\+(asyncpg|aiosqlite)', '', config.settings.DATABASE_URL)
 engine = create_engine(SYNC_DB_URL)
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
@@ -112,7 +122,7 @@ def sync_fund_data_sync(session, scheme_code, period="max"):
 
         # 3. Bulk Upsert NAVs
         # ... rest of the function ...
-        stmt = pg_insert(models.FundNavHistory).values(processed_navs)
+        stmt = _dialect_insert(models.FundNavHistory).values(processed_navs)
         stmt = stmt.on_conflict_do_update(
             index_elements=['scheme_code', 'nav_date'],
             set_=dict(nav_value=stmt.excluded.nav_value)
@@ -202,7 +212,7 @@ def sync_fund_data_sync(session, scheme_code, period="max"):
             src_key = next((k for k, v in mapping.items() if v == field), field)
             metrics_payload[field] = calc_results.get(src_key)
 
-        stmt_m = pg_insert(models.FundMetrics).values(metrics_payload)
+        stmt_m = _dialect_insert(models.FundMetrics).values(metrics_payload)
         stmt_m = stmt_m.on_conflict_do_update(
             index_elements=['scheme_code'],
             set_={k: v for k, v in metrics_payload.items() if k != 'scheme_code'}
@@ -230,29 +240,26 @@ def main():
             print("No active funds found to sync.")
             return
 
-        print(f"Syncing {len(funds)} funds for period '{period}'...")
+        total = len(funds)
+        print(f"Syncing {total} funds for period '{period}'...")
         fail_count = 0
-        max_fails = 5
-        
-        with tqdm(total=len(funds), desc="Sync Progress") as pbar:
+        # Abort only if more than 30% of funds fail — transient AMFI API errors
+        # for individual funds should not abort a full 280+ fund run.
+        max_fails = max(10, total // 3)
+
+        with tqdm(total=total, desc="Sync Progress") as pbar:
             for f in funds:
                 success, reason = sync_fund_data_sync(session, f.scheme_code, period=period)
                 if not success:
-                    # Fallback logic for Mutual Funds: if requested period fails, try fewer years
-                    if period != "max":
-                        # Try max (which ironically might have more success if it bypasses some filtering logic)
-                        # or try 1y if 5y failed.
-                        pass # mftool is different, it always gives full history. Filtering is our choice.
-                    
                     fail_count += 1
                     tqdm.write(f"[-] Code {f.scheme_code} failed: {reason}")
-                    
+
                     if fail_count > max_fails:
-                        print(f"\nCRITICAL: Synchronization aborted after {fail_count} failures.")
+                        print(f"\nCRITICAL: Aborted — {fail_count}/{total} funds failed (>{max_fails} threshold).")
                         sys.exit(1)
                 pbar.update(1)
-        
-        print(f"\nSync complete. Total failures: {fail_count}")
+
+        print(f"\nSync complete. Succeeded: {total - fail_count}/{total}. Failures: {fail_count}")
 
 if __name__ == "__main__":
     main()

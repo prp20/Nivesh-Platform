@@ -17,6 +17,11 @@ depends_on = None
 
 
 def upgrade() -> None:
+    # SQLite: tables are created by migration 003 — skip all PostgreSQL-specific DDL
+    connection = op.get_bind()
+    if connection.dialect.name == 'sqlite':
+        return
+
     # Create pg_trgm extension for trigram search support
     op.execute("CREATE EXTENSION IF NOT EXISTS pg_trgm;")
 
@@ -249,6 +254,9 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
+    connection = op.get_bind()
+    if connection.dialect.name == 'sqlite':
+        return
     op.drop_index('idx_audit_failed', table_name='pipeline_audit')
     op.drop_index('idx_audit_job_status', table_name='pipeline_audit')
     op.drop_table('pipeline_audit')

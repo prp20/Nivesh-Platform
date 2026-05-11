@@ -10,7 +10,7 @@ import logging
 from datetime import date
 from typing import Optional
 from pipeline.audit import audit_job
-from app.database import raw_connection
+from app.db_compat import raw_connection, db_execute, db_fetch, db_fetchrow
 import json
 
 logger = logging.getLogger(__name__)
@@ -330,7 +330,7 @@ async def _get_statement(stock_id: int, stmt_type: str) -> Optional[dict]:
         LIMIT 5
     """
     async with raw_connection() as conn:
-        rows = await conn.fetch(sql, stock_id, stmt_type)
+        rows = await db_fetch(conn, sql, (stock_id, stmt_type))
         if not rows:
             return None
 
@@ -354,18 +354,18 @@ async def _get_statement(stock_id: int, stmt_type: str) -> Optional[dict]:
 
 async def _get_latest_period_end(stock_id: int, stmt_type: str) -> Optional[date]:
     async with raw_connection() as conn:
-        row = await conn.fetchrow(
+        row = await db_fetchrow(conn,
             "SELECT period_end FROM financial_statements WHERE stock_id=$1 AND statement_type=$2 ORDER BY period_end DESC LIMIT 1",
-            stock_id, stmt_type
+            (stock_id, stmt_type)
         )
         return row["period_end"] if row else None
 
 
 async def _get_latest_close(stock_id: int) -> Optional[float]:
     async with raw_connection() as conn:
-        row = await conn.fetchrow(
+        row = await db_fetchrow(conn,
             "SELECT close FROM price_data WHERE stock_id=$1 ORDER BY price_date DESC LIMIT 1",
-            stock_id
+            (stock_id,)
         )
         return float(row["close"]) if row else None
 
@@ -379,7 +379,7 @@ async def _fetch_stocks_with_statements() -> list:
         ORDER BY s.id
     """
     async with raw_connection() as conn:
-        rows = await conn.fetch(sql)
+        rows = await db_fetch(conn, sql)
         return [dict(r) for r in rows]
 
 
@@ -407,7 +407,7 @@ async def _upsert_ratios(stock_id: int, period_end: date, period_type: str, rati
              $30, $31, $32, $33, $34,
              $35, $36,
              $37, $38, $39, $40, $41, $42,
-             NOW())
+             CURRENT_TIMESTAMP)
         ON CONFLICT (stock_id, period_end, period_type)
         DO UPDATE SET
             pe_ratio=$4, pb_ratio=$5, ps_ratio=$6, ev_ebitda=$7, ev_sales=$8,
@@ -419,11 +419,11 @@ async def _upsert_ratios(stock_id: int, period_end: date, period_type: str, rati
             piotroski_f_score=$35, altman_z_score=$36,
             eps=$37, book_value_ps=$38, market_cap=$39, cfo_to_pat=$40,
             dividend_yield=$41, dividend_per_share=$42,
-            computed_at=NOW()
+            computed_at=CURRENT_TIMESTAMP
     """
     r = ratios
     async with raw_connection() as conn:
-        await conn.execute(sql,
+        await db_execute(conn, sql, (
             stock_id, period_end, period_type,
             r.get("pe_ratio"),  r.get("pb_ratio"),  r.get("ps_ratio"), r.get("ev_ebitda"), r.get("ev_sales"),
             r.get("roe"),       r.get("roce"),       r.get("roa"),       r.get("roic"),      r.get("pat_margin"), r.get("ebitda_margin"), r.get("operating_margin"),
@@ -434,7 +434,7 @@ async def _upsert_ratios(stock_id: int, period_end: date, period_type: str, rati
             r.get("piotroski_f_score"), r.get("altman_z_score"),
             r.get("eps"),       r.get("book_value_ps"), r.get("market_cap"), r.get("cfo_to_pat"),
             r.get("dividend_yield"), r.get("dividend_per_share")
-        )
+        ))
 
 # ─── Quality Scoring Logics ──────────────────────────────────────────────────
 

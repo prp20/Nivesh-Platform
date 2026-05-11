@@ -10,7 +10,7 @@ import yfinance as yf
 from datetime import date, datetime
 from typing import Dict, Any, Optional, List
 from pipeline.audit import audit_job
-from app.database import raw_connection
+from app.db_compat import raw_connection, db_execute, db_fetch
 
 logger = logging.getLogger(__name__)
 
@@ -194,7 +194,7 @@ async def _upsert_stats(stock_id: int, data: Dict[str, Any]):
     args = [stock_id, today, period_type] + list(data.values())
 
     async with raw_connection() as conn:
-        await conn.execute(sql, *args)
+        await db_execute(conn, sql, tuple(args))
 
 # ─── DB Helpers ──────────────────────────────────────────────────────────────
 
@@ -202,12 +202,12 @@ async def _fetch_stocks(symbol: Optional[str] = None) -> List[Dict[str, Any]]:
     """Fetch active stocks, optionally filtered by symbol."""
     async with raw_connection() as conn:
         if symbol:
-            rows = await conn.fetch(
-                "SELECT id, symbol, yf_symbol FROM stocks WHERE symbol = $1 AND is_active = TRUE", 
-                symbol.upper()
+            rows = await db_fetch(conn,
+                "SELECT id, symbol, yf_symbol FROM stocks WHERE symbol = $1 AND is_active = TRUE",
+                (symbol.upper(),)
             )
         else:
-            rows = await conn.fetch(
+            rows = await db_fetch(conn,
                 "SELECT id, symbol, yf_symbol FROM stocks WHERE is_active = TRUE AND is_index = FALSE"
             )
         return [dict(r) for r in rows]

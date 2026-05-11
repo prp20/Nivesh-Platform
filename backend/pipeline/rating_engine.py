@@ -23,7 +23,7 @@ from datetime import date, timedelta
 from typing import Optional
 
 from pipeline.audit import audit_job
-from app.database import raw_connection
+from app.db_compat import raw_connection, db_execute, db_fetch, db_fetchrow
 
 logger = logging.getLogger(__name__)
 
@@ -262,7 +262,7 @@ async def _fetch_ratable_stocks() -> list:
         ORDER BY s.id
     """
     async with raw_connection() as conn:
-        rows = await conn.fetch(sql)
+        rows = await db_fetch(conn, sql)
         return [dict(r) for r in rows]
 
 
@@ -276,7 +276,7 @@ async def _get_latest_ratios(stock_id: int) -> Optional[dict]:
         ORDER BY period_end DESC LIMIT 1
     """
     async with raw_connection() as conn:
-        row = await conn.fetchrow(sql, stock_id)
+        row = await db_fetchrow(conn, sql, (stock_id,))
         return dict(row) if row else None
 
 
@@ -288,7 +288,7 @@ async def _get_latest_ta(stock_id: int) -> Optional[dict]:
         ORDER BY ind_date DESC LIMIT 1
     """
     async with raw_connection() as conn:
-        row = await conn.fetchrow(sql, stock_id)
+        row = await db_fetchrow(conn, sql, (stock_id,))
         return dict(row) if row else None
 
 
@@ -300,7 +300,7 @@ async def _get_latest_shareholding(stock_id: int) -> Optional[dict]:
         ORDER BY period_end DESC LIMIT 1
     """
     async with raw_connection() as conn:
-        row = await conn.fetchrow(sql, stock_id)
+        row = await db_fetchrow(conn, sql, (stock_id,))
         return dict(row) if row else None
 
 
@@ -314,7 +314,7 @@ async def _get_price_momentum(stock_id: int) -> dict:
         LIMIT 25
     """
     async with raw_connection() as conn:
-        rows = await conn.fetch(sql, stock_id)
+        rows = await db_fetch(conn, sql, (stock_id,))
 
     if not rows:
         return {}
@@ -357,13 +357,12 @@ async def _upsert_rating(
             score_breakdown    = EXCLUDED.score_breakdown
     """
     async with raw_connection() as conn:
-        await conn.execute(
-            sql,
+        await db_execute(conn, sql, (
             stock_id, rated_on, total_score, rating_label,
             fundamental_score, valuation_score, technical_score,
             momentum_score, shareholding_score,
             json.dumps(to_json_safe(score_breakdown)),
-        )
+        ))
 
 def to_json_safe(obj):
     """Recursively convert Decimals and other non-JSON types to floats/safe types."""

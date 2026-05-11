@@ -7,17 +7,20 @@ This script reads from stocks.csv and upserts each row into the database.
 Run once: python scripts/seed/seed_stock_master.py
 """
 import asyncio
-import asyncpg
 import csv
 from pathlib import Path
 from typing import List, Dict
 import sys
 import os
 
+# Load .env file explicitly so environment variables are available
+from dotenv import load_dotenv
+load_dotenv(os.path.join(os.path.dirname(__file__), '..', '..', '.env'))
+
 # Add parent directories to path for imports
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', '..'))
 
-from app.config import settings
+from app.db_compat import raw_connection, db_execute
 
 # Path to the CSV file (relative to this script)
 CSV_PATH = Path(__file__).parent.parent.parent / "data" / "stocks.csv"
@@ -55,7 +58,7 @@ INSERT_STOCK_SQL = """
         summary        = EXCLUDED.summary,
         market_cap_cat = EXCLUDED.market_cap_cat,
         is_index       = FALSE,
-        updated_at     = NOW()
+        updated_at     = CURRENT_TIMESTAMP
 """
 
 INSERT_BENCHMARK_SQL = """
@@ -64,7 +67,7 @@ INSERT_BENCHMARK_SQL = """
     ON CONFLICT (benchmark_code) DO UPDATE SET
         benchmark_name = EXCLUDED.benchmark_name,
         ticker = EXCLUDED.ticker,
-        updated_at = NOW()
+        updated_at = CURRENT_TIMESTAMP
 """
 
 DELETE_INDEX_FROM_STOCKS_SQL = """
@@ -76,51 +79,52 @@ async def seed():
     # Load records from CSV
     records = load_stocks_from_csv()
 
-    # Convert async URL to sync URL for asyncpg
-    db_url = settings.DATABASE_URL.replace("postgresql+asyncpg://", "postgresql://")
-    conn = await asyncpg.connect(db_url, statement_cache_size=0)
-    try:
+    async with raw_connection() as conn:
         stocks_count = 0
         indices_count = 0
-        
+
         for r in records:
             if r["is_index"]:
                 # 1. Upsert into benchmark_master
-                await conn.execute(
+                await db_execute(
+                    conn,
                     INSERT_BENCHMARK_SQL,
-                    r["symbol"],
-                    r["company_name"],
-                    r["yf_symbol"]
+                    (
+                        r["symbol"],
+                        r["company_name"],
+                        r["yf_symbol"],
+                    )
                 )
-                
+
                 # 2. Cleanup: Remove from stocks table if it was previously seeded there
-                await conn.execute(DELETE_INDEX_FROM_STOCKS_SQL, r["symbol"])
-                
+                await db_execute(conn, DELETE_INDEX_FROM_STOCKS_SQL, (r["symbol"],))
+
                 indices_count += 1
                 print(f"  Index ✓ {r['symbol']}")
             else:
                 # Upsert into stocks
-                await conn.execute(
+                await db_execute(
+                    conn,
                     INSERT_STOCK_SQL,
-                    r["symbol"],
-                    r.get("nse_symbol", r["symbol"]),
-                    r["yf_symbol"],
-                    r.get("screener_slug", r["symbol"]),
-                    r["company_name"],
-                    r.get("sector"),
-                    r.get("industry"),
-                    r.get("summary"),
-                    r.get("market_cap_cat")
+                    (
+                        r["symbol"],
+                        r.get("nse_symbol", r["symbol"]),
+                        r["yf_symbol"],
+                        r.get("screener_slug", r["symbol"]),
+                        r["company_name"],
+                        r.get("sector"),
+                        r.get("industry"),
+                        r.get("summary"),
+                        r.get("market_cap_cat"),
+                    )
                 )
                 stocks_count += 1
                 if stocks_count % 50 == 0:
                     print(f"  Stock ✓ {r['symbol']} ({stocks_count} processed)")
-        
+
         print(f"\nSeeding complete from {CSV_PATH}")
         print(f"  - Stocks seeded/updated: {stocks_count}")
         print(f"  - Indices seeded/updated in benchmarks: {indices_count}")
-    finally:
-        await conn.close()
 
 
 if __name__ == "__main__":

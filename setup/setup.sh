@@ -253,16 +253,28 @@ rm -f "$TEMP_REQ"
 # =============================================================================
 step "Step 4: Environment Configuration"
 
-# ── PostgreSQL Setup ──────────────────────────────────────────────────────────
+# ── Database Setup ────────────────────────────────────────────────────────────
 echo ""
-echo "  How do you want to connect to PostgreSQL?"
-echo "  [1] Docker  — auto-managed, starts postgres:16-alpine (default)"
-echo "  [2] External — I will provide my own connection URL"
+echo "  Choose your database backend:"
+echo "  [1] PostgreSQL with Docker  — auto-managed postgres:16-alpine (default)"
+echo "  [2] PostgreSQL external URL — Supabase, RDS, or self-hosted"
+echo "  [3] SQLite local file       — no Docker needed, great for local dev"
 echo ""
-read -rp "  Enter choice [1]: " PG_CHOICE
-PG_CHOICE="${PG_CHOICE:-1}"
+read -rp "  Enter choice [1]: " DB_CHOICE
+DB_CHOICE="${DB_CHOICE:-1}"
 
-if [[ "$PG_CHOICE" == "2" ]]; then
+if [[ "$DB_CHOICE" == "3" ]]; then
+  # ── SQLite ──────────────────────────────────────────────────────────────────
+  read -rp "  SQLite file path [./nivesh.db]: " SQLITE_PATH
+  SQLITE_PATH="${SQLITE_PATH:-./nivesh.db}"
+  # SQLAlchemy sqlite+aiosqlite requires 3 slashes for relative paths
+  DATABASE_URL="sqlite+aiosqlite:///${SQLITE_PATH}"
+  USE_DOCKER=false
+  USE_SQLITE=true
+  success "Using SQLite at: ${SQLITE_PATH}"
+
+elif [[ "$DB_CHOICE" == "2" ]]; then
+  # ── External PostgreSQL ──────────────────────────────────────────────────────
   echo ""
   echo "  ── URL format examples ────────────────────────────────────────────────"
   echo "  Local / self-hosted PostgreSQL (port 5432):"
@@ -281,18 +293,22 @@ if [[ "$PG_CHOICE" == "2" ]]; then
   if [[ "$DATABASE_URL" != postgresql* ]]; then
     error "URL must start with 'postgresql'. Got: ${DATABASE_URL}"
   fi
-  success "Using external PostgreSQL URL."
   USE_DOCKER=false
+  USE_SQLITE=false
+  success "Using external PostgreSQL URL."
+
 else
+  # ── Docker PostgreSQL (default) ──────────────────────────────────────────────
   DATABASE_URL="postgresql+asyncpg://nivesh_admin:nivesh_password_123@localhost:5432/nivesh_db"
   USE_DOCKER=true
+  USE_SQLITE=false
   success "Will use Docker-managed PostgreSQL (URL: ${DATABASE_URL})"
 fi
 
-# Verify Docker if selected
+# Verify Docker only if needed
 if [[ "$USE_DOCKER" == true ]]; then
   if ! command -v docker &>/dev/null; then
-    error "Docker not found. Install Docker Desktop from https://docker.com and try again, or choose option [2] for an external PostgreSQL URL."
+    error "Docker not found. Install Docker Desktop from https://docker.com and try again, or choose option [2] or [3]."
   fi
   if ! docker info &>/dev/null 2>&1; then
     error "Docker daemon is not running. Start Docker Desktop and try again."
@@ -305,6 +321,7 @@ echo ""
 info "Enter your API keys (leave blank to skip)."
 echo ""
 read -rsp "  Enter GROQ_API_KEY: " GROQ_API_KEY
+GROQ_API_KEY="${GROQ_API_KEY:-}"  # allow empty input
 echo ""
 
 read -rp "  Enable LangSmith tracing? (y/N): " ENABLE_LS
@@ -420,8 +437,13 @@ if [[ "$USE_DOCKER" == true ]]; then
     sleep 1
   done
 else
-  step "Step 5: PostgreSQL (External — skipping Docker)"
-  info "Using your external PostgreSQL. Ensure it is reachable at the provided URL."
+  if [[ "$USE_SQLITE" == true ]]; then
+    step "Step 5: SQLite (skipping Docker)"
+    info "Using local SQLite file at ${SQLITE_PATH}"
+  else
+    step "Step 5: PostgreSQL (External — skipping Docker)"
+    info "Using your external PostgreSQL. Ensure it is reachable at the provided URL."
+  fi
 fi
 
 # =============================================================================
@@ -432,7 +454,7 @@ step "Step 6: Database Setup"
 cd "${BACKEND_DIR}"
 
 info "Checking existing database state..."
-if python3 scripts/db_setup.py --check 2>/dev/null; then
+if "${VENV_DIR}/bin/python3" scripts/db_setup.py --check 2>/dev/null; then
   # Tables already exist — ask user what to do
   echo ""
   warn "Existing database tables detected."
@@ -449,7 +471,7 @@ if python3 scripts/db_setup.py --check 2>/dev/null; then
     read -rp "  Type YES to confirm: " DROP_CONFIRM
     if [[ "$DROP_CONFIRM" == "YES" ]]; then
       info "Dropping all tables..."
-      python3 scripts/db_setup.py --drop-all
+      "${VENV_DIR}/bin/python3" scripts/db_setup.py --drop-all
       success "All tables dropped."
     else
       info "Cancelled. Keeping existing data."
@@ -460,7 +482,7 @@ else
 fi
 
 info "Creating MF tables and enabling pg_trgm (SQLAlchemy create_all)..."
-python3 scripts/db_init.py
+"${VENV_DIR}/bin/python3" scripts/db_init.py
 success "MF tables ready."
 
 info "Running Alembic migration for stock tables (idempotent)..."
@@ -518,29 +540,29 @@ fi
 
 if [[ "$SEED_MF" == true ]]; then
   time_run "Seeding benchmark indices" \
-    python3 scripts/seed_indices.py
+    "${VENV_DIR}/bin/python3" scripts/seed_indices.py
 
   time_run "Seeding fund master records" \
-    python3 scripts/seed_funds.py
+    "${VENV_DIR}/bin/python3" scripts/seed_funds.py
 
   warn "NAV sync fetches data for every active fund — expected 30–60 minutes."
   time_run "NAV sync + metrics computation [${BACKFILL_PERIOD}]" \
-    python3 scripts/sync_data.py "${BACKFILL_PERIOD}"
+    "${VENV_DIR}/bin/python3" scripts/sync_data.py "${BACKFILL_PERIOD}"
 fi
 
 if [[ "$SEED_STOCKS" == true ]]; then
   time_run "Seeding stock master [18 large-cap stocks + 3 indices]" \
-    python3 scripts/seed/seed_stock_master.py
+    "${VENV_DIR}/bin/python3" scripts/seed/seed_stock_master.py
 
   warn "Price backfill [${BACKFILL_PERIOD}] fetches OHLCV from yfinance — expected 20–40 minutes."
   time_run "Price history backfill [${BACKFILL_PERIOD}]" \
-    python3 scripts/seed/backfill_prices.py "${BACKFILL_PERIOD}"
+    "${VENV_DIR}/bin/python3" scripts/seed/backfill_prices.py "${BACKFILL_PERIOD}"
 fi
 
 if [[ "$SEED_FUNDAMENTALS" == true ]]; then
   warn "Fundamental scraping from screener.in — expected 5–15 minutes."
   time_run "Seeding fundamental data" \
-    python3 scripts/seed/seed_fundamentals.py
+    "${VENV_DIR}/bin/python3" scripts/seed/seed_fundamentals.py
 fi
 
 # =============================================================================

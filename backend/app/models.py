@@ -1,5 +1,5 @@
 from sqlalchemy import Column, String, Numeric, TIMESTAMP, Date, Boolean, ForeignKey, text, Index, Integer, BigInteger, Text, UniqueConstraint
-from sqlalchemy.dialects.postgresql import JSONB
+from sqlalchemy import JSON
 from sqlalchemy.sql import func
 from sqlalchemy.orm import relationship
 import uuid
@@ -173,7 +173,7 @@ class FundMetrics(Base):
 class Stock(Base):
     __tablename__ = "stocks"
 
-    id             = Column(Integer, primary_key=True)
+    id             = Column(Integer, primary_key=True, autoincrement=True)
     symbol         = Column(String(20), nullable=False, unique=True)
     nse_symbol     = Column(String(20))
     bse_code       = Column(String(10))
@@ -198,7 +198,7 @@ class PriceData(Base):
         Index('ix_price_data_stock_date_desc', 'stock_id', 'price_date'),
     )
 
-    id         = Column(BigInteger, primary_key=True)
+    id         = Column(BigInteger().with_variant(Integer, "sqlite"), primary_key=True, autoincrement=True)
     stock_id   = Column(Integer, ForeignKey("stocks.id", ondelete="CASCADE"), nullable=False)
     price_date = Column(Date, nullable=False)
     open       = Column(Numeric(12, 4))
@@ -217,14 +217,14 @@ class FinancialStatement(Base):
         Index('ix_financial_stmt_stock_period', 'stock_id', 'period_end'),
     )
 
-    id             = Column(Integer, primary_key=True)
+    id             = Column(Integer, primary_key=True, autoincrement=True)
     stock_id       = Column(Integer, ForeignKey("stocks.id", ondelete="CASCADE"), nullable=False)
     statement_type = Column(String(5), nullable=False)   # 'PL' | 'BS' | 'CF'
     period_type    = Column(String(10), nullable=False)  # 'annual' | 'quarterly'
     period_end     = Column(Date, nullable=False)
     currency       = Column(String(5), default="INR")
-    data           = Column(JSONB, nullable=False)
-    raw_data       = Column(JSONB)
+    data           = Column(JSON, nullable=False)
+    raw_data       = Column(JSON)
     scraped_at     = Column(TIMESTAMP(timezone=True), server_default=func.now())
     raw_checksum   = Column(String(64))
 
@@ -237,7 +237,7 @@ class ShareholdingPattern(Base):
         Index('ix_shareholding_pattern_stock_period', 'stock_id', 'period_end'),
     )
 
-    id              = Column(Integer, primary_key=True)
+    id              = Column(Integer, primary_key=True, autoincrement=True)
     stock_id        = Column(Integer, ForeignKey("stocks.id", ondelete="CASCADE"), nullable=False)
     period_end      = Column(Date, nullable=False)
     promoter_pct    = Column(Numeric(6, 3))
@@ -257,7 +257,7 @@ class FinancialRatio(Base):
                          name='uq_financial_ratios_stock_period_type'),
     )
 
-    id             = Column(Integer, primary_key=True)
+    id             = Column(Integer, primary_key=True, autoincrement=True)
     stock_id       = Column(Integer, ForeignKey("stocks.id", ondelete="CASCADE"), nullable=False)
     period_end     = Column(Date, nullable=False)
     period_type    = Column(String(10), nullable=False)
@@ -317,7 +317,7 @@ class TechnicalIndicator(Base):
         Index('ix_technical_indicator_stock_date', 'stock_id', 'ind_date'),
     )
 
-    id            = Column(BigInteger, primary_key=True)
+    id            = Column(BigInteger().with_variant(Integer, "sqlite"), primary_key=True, autoincrement=True)
     stock_id      = Column(Integer, ForeignKey("stocks.id", ondelete="CASCADE"), nullable=False)
     ind_date      = Column(Date, nullable=False)
     timeframe     = Column(String(5), nullable=False)
@@ -355,7 +355,7 @@ class TechnicalIndicator(Base):
 class DetectedPattern(Base):
     __tablename__ = "detected_patterns"
 
-    id             = Column(Integer, primary_key=True)
+    id             = Column(Integer, primary_key=True, autoincrement=True)
     stock_id       = Column(Integer, ForeignKey("stocks.id", ondelete="CASCADE"), nullable=False)
     pattern_type   = Column(String(30), nullable=False)
     timeframe      = Column(String(5), nullable=False)
@@ -366,7 +366,7 @@ class DetectedPattern(Base):
     direction      = Column(String(10))
     confidence     = Column(Numeric(4, 3))
     is_active      = Column(Boolean, default=True)
-    metadata_      = Column("metadata", JSONB)
+    metadata_      = Column("metadata", JSON)
     created_at     = Column(TIMESTAMP(timezone=True), server_default=func.now())
 
 
@@ -376,7 +376,7 @@ class StockRating(Base):
         UniqueConstraint("stock_id", "rated_on", name="uq_stock_rating_stock_date"),
     )
 
-    id                 = Column(Integer, primary_key=True)
+    id                 = Column(Integer, primary_key=True, autoincrement=True)
     stock_id           = Column(Integer, ForeignKey("stocks.id", ondelete="CASCADE"), nullable=False)
     rated_on           = Column(Date, nullable=False)
     total_score        = Column(Numeric(6, 3))
@@ -387,13 +387,13 @@ class StockRating(Base):
     momentum_score     = Column(Numeric(6, 3))
     quality_score      = Column(Numeric(6, 3))   # reserved for future quality metrics
     shareholding_score = Column(Numeric(6, 3))
-    score_breakdown_   = Column("score_breakdown", JSONB)
+    score_breakdown_   = Column("score_breakdown", JSON)
 
 
 class PipelineAudit(Base):
     __tablename__ = "pipeline_audit"
 
-    id          = Column(Integer, primary_key=True)
+    id          = Column(Integer, primary_key=True, autoincrement=True)
     job_name    = Column(String(60), nullable=False)
     stock_id    = Column(Integer, ForeignKey("stocks.id"))
     status      = Column(String(10), nullable=False)
@@ -402,7 +402,7 @@ class PipelineAudit(Base):
     records_in  = Column(Integer, default=0)
     records_out = Column(Integer, default=0)
     error_msg   = Column(Text)
-    metadata_   = Column("metadata", JSONB)
+    metadata_   = Column("metadata", JSON)
 
 
 class FundamentalScore(Base):
@@ -412,7 +412,7 @@ class FundamentalScore(Base):
         Index('ix_fundamental_scores_stock_id', 'stock_id'),
     )
 
-    id                          = Column(Integer, primary_key=True)
+    id                          = Column(Integer, primary_key=True, autoincrement=True)
     stock_id                    = Column(Integer, ForeignKey("stocks.id", ondelete="CASCADE"), nullable=False)
     period_end                  = Column(Date, nullable=False)
     period_type                 = Column(String(10), nullable=False)

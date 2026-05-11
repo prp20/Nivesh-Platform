@@ -249,48 +249,58 @@ try {
 # =============================================================================
 Write-Step "Step 4: Environment Configuration"
 
-# ── PostgreSQL Setup ──────────────────────────────────────────────────────────
+# ── Database Setup ────────────────────────────────────────────────────────────
 Write-Host ""
-Write-Host "  How do you want to connect to PostgreSQL?" -ForegroundColor White
-Write-Host "  [1] Docker  — auto-managed, starts postgres:16-alpine (default)"
-Write-Host "  [2] External — I will provide my own connection URL"
+Write-Host "  Choose your database backend:"
+Write-Host "  [1] PostgreSQL with Docker  (default)"
+Write-Host "  [2] PostgreSQL external URL"
+Write-Host "  [3] SQLite local file (no Docker needed)"
 Write-Host ""
-$PgChoice = Read-Host "  Enter choice [1]"
-if ([string]::IsNullOrWhiteSpace($PgChoice)) { $PgChoice = "1" }
+$DbChoice = Read-Host "  Enter choice [1]"
+if ([string]::IsNullOrWhiteSpace($DbChoice)) { $DbChoice = "1" }
 
 $UseDocker = $false
+$UseSqlite = $false
 $DatabaseUrl = ""
 
-if ($PgChoice -eq "2") {
-  Write-Host ""
-  Write-Host "  ── URL format examples ────────────────────────────────────────────────" -ForegroundColor White
-  Write-Host "  Local / self-hosted PostgreSQL (port 5432):"
-  Write-Host "    postgresql+asyncpg://user:password@localhost:5432/dbname"
-  Write-Host ""
-  Write-Host "  Supabase — use Session Pooler (port 6543, NOT 5432):" -ForegroundColor White
-  Write-Host "    postgresql+asyncpg://postgres.<ref>:<password>@aws-0-<region>.pooler.supabase.com:6543/postgres"
-  Write-Warn "asyncpg is NOT compatible with Supabase port 5432 (PgBouncer transaction mode)."
-  Write-Warn "Always use port 6543 (Session Pooler) for Supabase."
-  Write-Host "  ───────────────────────────────────────────────────────────────────────"
-  Write-Host ""
-  $DatabaseUrl = Read-Host "  PostgreSQL URL"
-  if ([string]::IsNullOrWhiteSpace($DatabaseUrl)) {
-    Write-Fatal "No URL entered. Aborting."
-  }
-  if (-not $DatabaseUrl.StartsWith("postgresql")) {
-    Write-Fatal "URL must start with 'postgresql'. Got: $DatabaseUrl"
-  }
-  Write-Success "Using external PostgreSQL URL."
+if ($DbChoice -eq "3") {
+    $SqlitePath = Read-Host "  SQLite file path [./nivesh.db]"
+    if ([string]::IsNullOrWhiteSpace($SqlitePath)) { $SqlitePath = "./nivesh.db" }
+    $DatabaseUrl = "sqlite+aiosqlite:///$SqlitePath"
+    $UseSqlite = $true
+    Write-Host "  [OK] Using SQLite at: $SqlitePath" -ForegroundColor Green
+
+} elseif ($DbChoice -eq "2") {
+    Write-Host ""
+    Write-Host "  ── URL format examples ────────────────────────────────────────────────" -ForegroundColor White
+    Write-Host "  Local / self-hosted PostgreSQL (port 5432):"
+    Write-Host "    postgresql+asyncpg://user:password@localhost:5432/dbname"
+    Write-Host ""
+    Write-Host "  Supabase — use Session Pooler (port 6543, NOT 5432):" -ForegroundColor White
+    Write-Host "    postgresql+asyncpg://postgres.<ref>:<password>@aws-0-<region>.pooler.supabase.com:6543/postgres"
+    Write-Warn "asyncpg is NOT compatible with Supabase port 5432 (PgBouncer transaction mode)."
+    Write-Warn "Always use port 6543 (Session Pooler) for Supabase."
+    Write-Host "  ───────────────────────────────────────────────────────────────────────"
+    Write-Host ""
+    $DatabaseUrl = Read-Host "  PostgreSQL URL"
+    if ([string]::IsNullOrWhiteSpace($DatabaseUrl)) {
+        Write-Host "[ERROR] No URL provided." -ForegroundColor Red; exit 1
+    }
+    if (-not $DatabaseUrl.StartsWith("postgresql")) {
+        Write-Fatal "URL must start with 'postgresql'. Got: $DatabaseUrl"
+    }
+    Write-Host "  [OK] Using external PostgreSQL." -ForegroundColor Green
+
 } else {
-  $DatabaseUrl = "postgresql+asyncpg://nivesh_admin:nivesh_password_123@localhost:5432/nivesh_db"
-  $UseDocker = $true
-  Write-Success "Will use Docker-managed PostgreSQL."
+    $DatabaseUrl = "postgresql+asyncpg://nivesh_admin:nivesh_password_123@localhost:5432/nivesh_db"
+    $UseDocker = $true
+    Write-Host "  [OK] Will use Docker PostgreSQL." -ForegroundColor Green
 }
 
-# Verify Docker if selected
+# Verify Docker only if needed
 if ($UseDocker) {
   if (-not (Get-Command docker -ErrorAction SilentlyContinue)) {
-    Write-Fatal "Docker not found. Install Docker Desktop from https://docker.com, or choose option [2] for an external PostgreSQL URL."
+    Write-Fatal "Docker not found. Install Docker Desktop from https://docker.com, or choose option [2] or [3]."
   }
   try {
     & docker info 2>&1 | Out-Null

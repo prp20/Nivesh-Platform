@@ -8,6 +8,10 @@ import asyncio
 import sys
 import os
 
+# Load .env file explicitly so environment variables are available
+from dotenv import load_dotenv
+load_dotenv(os.path.join(os.path.dirname(__file__), '..', '..', '.env'))
+
 # Add backend to path
 backend_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..'))
 if backend_dir not in sys.path:

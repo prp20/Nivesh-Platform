@@ -27,7 +27,8 @@ from app.config import settings
 target_metadata = Base.metadata
 
 # Set the sqlalchemy.url from app settings (convert async to sync for migrations)
-db_url = settings.DATABASE_URL.replace("postgresql+asyncpg://", "postgresql://")
+import re as _re
+db_url = _re.sub(r'\+(asyncpg|aiosqlite)', '', settings.DATABASE_URL)
 config.set_main_option("sqlalchemy.url", db_url)
 
 # other values from the config, defined by the needs of env.py,

@@ -12,6 +12,7 @@ from jose import jwt, JWTError
 
 from .config import settings
 from .database import engine, init_db_pool, close_db_pool
+from .db_compat import is_sqlite
 from .routers import funds, benchmarks, navs, benchmark_navs, metrics, sync, auth, stocks, screener, pipeline
 
 from .database import engine, Base
@@ -41,23 +42,39 @@ async def lifespan(app: FastAPI):
     # Startup logic
     async with engine.begin() as conn:
         # Mutate DB state: create extensions, tables, and audit logs.
-        await conn.execute(text("CREATE EXTENSION IF NOT EXISTS pg_trgm;"))
+        if not is_sqlite():
+            await conn.execute(text("CREATE EXTENSION IF NOT EXISTS pg_trgm;"))
         await conn.run_sync(Base.metadata.create_all)
-        
+
         # Create legacy audit_log table if it doesn't exist
-        await conn.execute(text("""
-            CREATE TABLE IF NOT EXISTS audit_log (
-                id BIGSERIAL PRIMARY KEY,
-                timestamp TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
-                action VARCHAR(100) NOT NULL,
-                user_account VARCHAR(100) NOT NULL,
-                resource VARCHAR(500) NOT NULL,
-                details JSONB,
-                status VARCHAR(20) NOT NULL,
-                error_message TEXT,
-                created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
-            );
-        """))
+        if not is_sqlite():
+            await conn.execute(text("""
+                CREATE TABLE IF NOT EXISTS audit_log (
+                    id BIGSERIAL PRIMARY KEY,
+                    timestamp TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+                    action VARCHAR(100) NOT NULL,
+                    user_account VARCHAR(100) NOT NULL,
+                    resource VARCHAR(500) NOT NULL,
+                    details JSONB,
+                    status VARCHAR(20) NOT NULL,
+                    error_message TEXT,
+                    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+                );
+            """))
+        else:
+            await conn.execute(text("""
+                CREATE TABLE IF NOT EXISTS audit_log (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    action VARCHAR(100) NOT NULL,
+                    user_account VARCHAR(100) NOT NULL,
+                    resource VARCHAR(500) NOT NULL,
+                    details TEXT,
+                    status VARCHAR(20) NOT NULL,
+                    error_message TEXT,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                );
+            """))
         await conn.execute(text("""
             CREATE INDEX IF NOT EXISTS ix_audit_log_user_timestamp
                 ON audit_log(user_account, created_at DESC);

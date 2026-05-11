@@ -1,5 +1,103 @@
 # Changelog
 
+## 2026-05-11 — Session: SQLite full parity + ETL sync triggers
+
+### Changes Made
+
+1. **backend/app/models.py** — Fixed `TechnicalIndicator.id`: changed `BigInteger` to `BigInteger().with_variant(Integer, "sqlite")` with `autoincrement=True` so TA inserts work on SQLite without manual IDs.
+
+2. **backend/app/crud.py** — Added `_dialect_insert()` helper that returns the correct SQLAlchemy dialect-specific `insert` (sqlite vs postgresql). Replaced all 4 `pg_insert()` calls (`bulk_insert_fund_navs`, `bulk_insert_benchmark_navs`, `upsert_benchmark_metrics`, `upsert_fund_metrics`) — MF sync now works on SQLite. Also rewrote `get_benchmarks_latest_prices()` to use application-side grouping instead of a window function (`row_number().over()`).
+
+3. **backend/app/db_compat.py** — Added INTERVAL arithmetic translation (step 4 in `translate_sql()`): `NOW() - ($N || ' days')::INTERVAL` → `datetime('now', '-' || ? || ' days')` and `CURRENT_TIMESTAMP - INTERVAL 'N days' * $N` → `datetime('now', '-N days')`.
+
+4. **backend/app/routers/stocks.py** — Replaced all 3 LATERAL JOIN blocks (`list_stocks`, `get_stock`) with correlated subqueries that work in both SQLite and PostgreSQL. Replaced `to_tsvector/plainto_tsquery` full-text search with `UPPER(col) LIKE UPPER(:q)`. Moved 1-day `change_pct` computation to Python after fetching `prev_close` as a correlated subquery.
+
+5. **backend/app/routers/screener.py** — Replaced 5 LATERAL JOIN blocks (both main and count queries) with correlated-subquery LEFT JOINs using `MAX(period_end)` lookups. Replaced `NULLS LAST` with `CASE WHEN col IS NULL THEN 1 ELSE 0 END ASC, col DIR` which produces the same ordering in both dialects.
+
+6. **backend/app/routers/pipeline.py** — Fixed `get_screener_status()`: removed asyncpg-only `conn.fetch()` call, used `db_compat.db_fetch()` with dialect-aware INTERVAL expression. Fixed `get_pipeline_status()`: removed `DISTINCT ON` (PostgreSQL-only) replaced with a self-join on `MAX(started_at)` per `job_name`, also switched from `conn.fetch()` to `db_compat.db_fetch()`. Added two new endpoints: `POST /pipeline/sync/daily` (full chain: prices → ratios → TA → ratings) and `POST /pipeline/sync/metrics` (metrics-only refresh: ratios → ratings).
+
+7. **backend/tests/test_db_compat.py** — Rewrote all tests to use `monkeypatch.setattr(config.settings, "DATABASE_URL", url)` instead of `monkeypatch.setenv` + `importlib.reload`. The old approach stopped working after pydantic-settings caching was introduced.
+
+8. **backend/tests/test_stocks.py** — Fixed latent assertion bug in `test_search_stocks`: endpoint returns `{"results": [...]}` dict, not a bare list. Test now checks `isinstance(data, dict)` and `isinstance(data["results"], list)`.
+
+### Result
+- All 98 tests pass (2 skipped for PostgreSQL-only JSONB features, 1 pre-existing logging test skipped)
+- SQLite database sync is now fully functional: stocks listing, stock detail, search, screener, MF sync all work on SQLite
+- Two new pipeline trigger endpoints added for operational convenience
+
+## 2026-05-11 — Session: SQLite startup extension error fix
+
+### Issue Fixed
+1. **backend/app/db_compat.py** — Fixed `is_sqlite()` database dialect detection: changed to use `settings.DATABASE_URL` (loaded from .env via pydantic) instead of `os.environ.get()`. Previously, SQLite databases configured in .env were detected as PostgreSQL at startup, causing `CREATE EXTENSION pg_trgm;` to execute and fail with `sqlite3.OperationalError: near "EXTENSION": syntax error`.
+
+### Why It Matters
+- pydantic-settings loads .env into its own namespace, not into `os.environ` by default
+- `is_sqlite()` was reading raw `os.environ` before .env was loaded, defaulting to PostgreSQL
+- Now correctly uses pydantic's loaded settings, ensuring SQLite is detected and PostgreSQL-only DDL is skipped
+
+### Git Commit
+- Commit `95bc268`: "fix: use pydantic settings for DATABASE_URL detection instead of os.environ"
+
+---
+
+## 2026-05-08 — Session: SQLite support setup.sh & db_init.py fixes
+
+### Issues Fixed
+1. **setup/setup.sh** — Python invocation inconsistencies: replaced 9 `python3 scripts/` calls with `${VENV_DIR}/bin/python3` for consistent venv usage (lines 457, 468, 485, 543, 546, 550, 555, 559, 565)
+2. **setup/setup.sh** — GROQ_API_KEY initialization: added default assignment to handle empty user input gracefully (line 324)
+3. **setup/setup.sh** — Step 5 messaging: added SQLite detection to show "SQLite (skipping Docker)" instead of misleading "PostgreSQL (External)" message (lines 440-446)
+4. **db_init.py** — .env loading: added `load_dotenv()` to explicitly load `.env` file before checking dialect. Without this, `is_sqlite()` couldn't read DATABASE_URL, causing `CREATE EXTENSION pg_trgm;` to execute on SQLite (syntax error)
+
+### Why These Fixes Matter
+1. **Python invocation**: Without explicit venv path, Python scripts could accidentally use system Python if venv activation fails, causing silent import errors in production
+2. **API key handling**: Uninitialized GROQ_API_KEY variable could cause parameter expansion issues in .env file
+3. **User experience**: SQLite selection should give clear, accurate feedback about what database is being used
+4. **SQLite initialization**: Without explicit .env loading, dialect detection fails and PostgreSQL-only DDL executes, breaking SQLite setup
+
+### Git Commits
+- Commit `5d75357`: "fix(setup.sh): resolve Python invocation inconsistencies and messaging issues"
+- Commit `420eda2`: "docs: update changelog for setup.sh fixes (2026-05-08)"
+- Commit `d04a608`: "fix(db_init.py): load .env file before checking dialect"
+
+5. **sync_data.py** — URL driver stripping: changed hardcoded `.replace("+asyncpg", "")` to `re.sub(r'\+(asyncpg|aiosqlite)', '')` to strip both PostgreSQL and SQLite async driver prefixes for synchronous engine creation
+
+### Additional Fixes Applied
+- **seed_stock_master.py** — Added `.env` loading for dialect detection
+- **backfill_prices.py** — Added `.env` loading for dialect detection
+- **backend/.env** — Updated DATABASE_URL to `sqlite+aiosqlite:///./nivesh.db`
+
+### Git Commits
+- Commit `5d75357`: "fix(setup.sh): resolve Python invocation inconsistencies and messaging issues"
+- Commit `420eda2`: "docs: update changelog for setup.sh fixes (2026-05-08)"
+- Commit `d04a608`: "fix(db_init.py): load .env file before checking dialect"
+- Commit `4403582`: "docs: update changelog with db_init.py SQLite fix"
+- Commit `93c0398`: "fix(seed scripts): add .env loading for dialect detection"
+- Commit `317902e`: "fix(sync_data.py): strip +aiosqlite from SQLite URLs for sync engine"
+
+6. **models.py** — Autoincrement declaration: added `autoincrement=True` to all Integer and BigInteger primary keys. SQLite requires explicit ROWID management, failing otherwise with "NOT NULL constraint failed: id" on insert
+
+### Additional Fixes Applied
+- Reinitialize SQLite database with corrected schema
+- All 18 tables recreated with proper auto-increment handling
+
+### Git Commits (complete list)
+- Commit `5d75357`: "fix(setup.sh): resolve Python invocation inconsistencies and messaging issues"
+- Commit `420eda2`: "docs: update changelog for setup.sh fixes (2026-05-08)"
+- Commit `d04a608`: "fix(db_init.py): load .env file before checking dialect"
+- Commit `4403582`: "docs: update changelog with db_init.py SQLite fix"
+- Commit `93c0398`: "fix(seed scripts): add .env loading for dialect detection"
+- Commit `317902e`: "fix(sync_data.py): strip +aiosqlite from SQLite URLs for sync engine"
+- Commit `95c981f`: "docs: update changelog with seed script and sync_data.py fixes"
+- Commit `e3776cb`: "fix(models): add autoincrement=True to all integer primary keys for SQLite"
+
+### Result
+- ✅ SQLite database `nivesh.db` created with all 18 tables
+- ✅ Alembic migrations 001-003 completed successfully
+- ✅ db_init.py, sync_data.py, seed scripts all working
+- ✅ Auto-increment IDs properly configured for all tables
+- ✅ Database seeding now ready to complete
+- ✅ Ready for API startup with full data or optional seeding
+
 ## 2026-04-21 — Session: v2.0.0 release notes, branch merge verification, GitHub issue triage
 
 ### Branch Merge Checks
@@ -137,3 +235,23 @@
 - backend/app/routers/pipeline.py: Added POST /api/v1/pipeline/mf-analysis/all admin bulk trigger
 - backend/pipeline/scheduler.py: Added weekly mf_analysis_weekly job (Sunday 03:00 IST)
 - backend/scripts/run_mf_analyser.py: CLI entry point for single-fund analysis
+
+## 2026-05-08 — db_compat abstraction layer (feature/sqllite-support)
+- backend/app/db_compat.py: Created — database dialect abstraction layer; translate_sql (positional params + upsert), is_sqlite, _sqlite_path, raw_connection context manager, db_execute, db_executemany, db_fetch, db_fetchrow; works with both asyncpg (PostgreSQL) and aiosqlite (SQLite)
+- backend/tests/test_db_compat.py: Created — 8 TDD unit tests covering translate_sql no-op (postgres), param translation (sqlite), upsert translation, is_sqlite detection, and round-trip execute/fetch/fetchrow over real aiosqlite DB; all 8 pass
+
+## 2026-05-08 — SQLite support (feature/sqllite-support)
+- backend/app/db_compat.py: NEW — dialect abstraction (is_sqlite, translate_sql, raw_connection, db_execute, db_fetch, db_fetchrow, db_executemany)
+- backend/app/models.py: JSONB → sa.JSON (5 columns)
+- backend/app/main.py: gate pg_trgm and audit_log JSONB on SQLite
+- backend/alembic/env.py: strip +aiosqlite from migration URL
+- backend/alembic/versions/001-005: SQLite early-exit guards added
+- backend/alembic/versions/003_sqlite_init.py: NEW — creates all tables for SQLite
+- backend/pipeline/*.py (8 files): import swap to db_compat API; NOW() → CURRENT_TIMESTAMP
+- backend/scripts/db_setup.py: gate information_schema on dialect
+- backend/scripts/db_init.py: gate pg_trgm on is_sqlite()
+- setup/setup.sh, setup.ps1: 3-way DB prompt (Docker / External / SQLite)
+- backend/.env.example: add SQLite URL example
+- backend/tests/conftest.py: remove JSONB workaround; all 16 tables in SQLite tests
+- backend/tests/test_db_compat.py: NEW — 8 unit tests for db_compat
+- backend/scripts/seed/seed_stock_master.py: migrated from asyncpg direct to db_compat API (raw_connection + db_execute); NOW() → CURRENT_TIMESTAMP; supports SQLite and PostgreSQL
