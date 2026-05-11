@@ -40,6 +40,7 @@ def translate_sql(sql: str) -> str:
       2. Upsert             INSERT INTO ... ON CONFLICT (...) DO UPDATE SET ...
                             →  INSERT OR REPLACE INTO ...  (ON CONFLICT stripped)
       3. Type casts         ::jsonb, ::text, ::integer, etc.  →  stripped
+      4. JSON extraction    col->>'key'  →  json_extract(col, '$.key')
 
     Note: INSERT OR REPLACE deletes and re-inserts the conflicting row. Any column
     not listed in the INSERT's column list will revert to its default value, unlike
@@ -71,6 +72,14 @@ def translate_sql(sql: str) -> str:
 
     # 3. Strip PostgreSQL type casts (e.g. ::jsonb, ::text, ::integer)
     sql = re.sub(r'::[a-zA-Z_]+', '', sql)
+
+    # 4b. Translate PostgreSQL JSON text extraction operator ->>'key'
+    #     col->>'key'  →  json_extract(col, '$.key')
+    sql = re.sub(
+        r"(\w+)\s*->>\s*'([^']+)'",
+        r"json_extract(\1, '$.\2')",
+        sql,
+    )
 
     # 4. Translate PostgreSQL INTERVAL arithmetic to SQLite date functions.
     #

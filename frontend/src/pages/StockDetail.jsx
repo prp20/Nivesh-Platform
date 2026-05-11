@@ -3,6 +3,7 @@ import { useParams, Link, useNavigate } from "react-router-dom";
 import { useDispatch, useSelector } from "react-redux";
 import { fetchStockDetail, triggerFullStockSync } from "../store/slices/stocksSlice";
 import stockService from "../api/services/stockService";
+import agentService from "../api/services/agentService";
 import { motion, AnimatePresence } from 'framer-motion';
 import { AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer } from 'recharts';
 import toast from 'react-hot-toast';
@@ -18,12 +19,20 @@ export default function StockDetail() {
   const [stmtType, setStmtType] = useState("PL");
   const [loadingFundamentals, setLoadingFundamentals] = useState(false);
   const [loadingShareholding, setLoadingShareholding] = useState(false);
+  const [technicals, setTechnicals] = useState(null);
+  const [loadingTechnicals, setLoadingTechnicals] = useState(false);
+  const [runningTA, setRunningTA] = useState(false);
 
   const [ratios, setRatios] = useState(null);
   const [priceHistory, setPriceHistory] = useState([]);
   const [syncingPrices, setSyncingPrices] = useState(false);
   const [agentInsights, setAgentInsights] = useState(null);
+  const [stockRecommendation, setStockRecommendation] = useState(null);
   const [loadingInsights, setLoadingInsights] = useState(false);
+  const [runningAnalysis, setRunningAnalysis] = useState(false);
+  const [runningRecommendation, setRunningRecommendation] = useState(false);
+  // 'idle' | 'loading' | 'loaded' | 'not_found' — prevents infinite fetch loops
+  const [insightStatus, setInsightStatus] = useState('idle');
   const [isSummaryExpanded, setIsSummaryExpanded] = useState(false);
   const [isRatiosExpanded, setIsRatiosExpanded] = useState(false);
   const fundamentalsPollRef = useRef(null);
@@ -153,15 +162,57 @@ export default function StockDetail() {
 
   const fetchInsights = async () => {
     if (!symbol) return;
+    setInsightStatus('loading');
     setLoadingInsights(true);
     try {
-      const data = await stockService.getAgentInsights(symbol);
-      setAgentInsights(data);
+      const analysis = await agentService.getStockAnalysis(symbol);
+      setAgentInsights(analysis);
+      setInsightStatus('loaded');
+      try {
+        const rec = await agentService.getStockRecommendation(symbol);
+        setStockRecommendation(rec);
+      } catch (_) { /* 404 = no recommendation yet, that's fine */ }
     } catch (err) {
-      console.error("Failed to fetch agent insights:", err);
-      toast.error("Cloud resonance failure: Could not synthesize AI insights.");
+      setInsightStatus('not_found');
+      if (err?.response?.status !== 404) {
+        toast.error("Failed to load agent analysis.");
+      }
+      // 404 means no analysis exists yet — UI shows "Run Analysis" button
     } finally {
       setLoadingInsights(false);
+    }
+  };
+
+  const handleRunAnalysis = async (force = false) => {
+    setRunningAnalysis(true);
+    try {
+      const result = await agentService.triggerStockAnalysis(symbol, force);
+      if (result.status === 'COMPLETED' || result.status === 'SKIPPED') {
+        const analysis = await agentService.getStockAnalysis(symbol);
+        setAgentInsights(analysis);
+        setInsightStatus('loaded');
+      }
+      toast.success("Analysis complete.");
+    } catch (err) {
+      toast.error("Analysis failed. Check Groq API connectivity.");
+    } finally {
+      setRunningAnalysis(false);
+    }
+  };
+
+  const handleRunRecommendation = async (force = false) => {
+    setRunningRecommendation(true);
+    try {
+      const result = await agentService.triggerStockRecommendation(symbol, force);
+      if (result.status === 'COMPLETED' || result.status === 'SKIPPED') {
+        const rec = await agentService.getStockRecommendation(symbol);
+        setStockRecommendation(rec);
+      }
+      toast.success("Recommendation ready.");
+    } catch (err) {
+      toast.error("Recommendation failed. Run stock analysis first.");
+    } finally {
+      setRunningRecommendation(false);
     }
   };
 
@@ -185,6 +236,32 @@ export default function StockDetail() {
   }, [symbol, activeTab, stmtType]);
 
   useEffect(() => {
+    if (symbol && activeTab === "technical") {
+      setLoadingTechnicals(true);
+      stockService.getTechnicals(symbol)
+        .then(res => setTechnicals(res.data ?? null))
+        .catch(err => { console.error("Failed to fetch technicals:", err); setTechnicals(null); })
+        .finally(() => setLoadingTechnicals(false));
+    }
+  }, [symbol, activeTab]);
+
+  const handleRunTA = async () => {
+    setRunningTA(true);
+    try {
+      await stockService.triggerTechnicalAnalysis(symbol);
+      toast.success("Technical analysis complete");
+      setLoadingTechnicals(true);
+      const res = await stockService.getTechnicals(symbol);
+      setTechnicals(res.data ?? null);
+    } catch (e) {
+      toast.error("TA computation failed");
+    } finally {
+      setRunningTA(false);
+      setLoadingTechnicals(false);
+    }
+  };
+
+  useEffect(() => {
     if (symbol && activeTab === "fundamentals" && stmtType === "Ownership" && !shareholding) {
       setLoadingShareholding(true);
       stockService
@@ -195,11 +272,21 @@ export default function StockDetail() {
     }
   }, [symbol, activeTab, stmtType, shareholding]);
 
+  // Reset insight status when navigating to a different stock
   useEffect(() => {
-    if (activeTab === "agent_insights" && !agentInsights && !loadingInsights) {
+    setInsightStatus('idle');
+    setAgentInsights(null);
+    setStockRecommendation(null);
+  }, [symbol]);
+
+  // Fetch insights when the agent tab becomes active and status is idle
+  // insightStatus in deps ensures this re-evaluates after status changes,
+  // but the 'idle' guard means it only fires once per stock.
+  useEffect(() => {
+    if (activeTab === "agent_insights" && insightStatus === 'idle') {
       fetchInsights();
     }
-  }, [activeTab, symbol, agentInsights, loadingInsights]);
+  }, [activeTab, symbol, insightStatus]);
 
   if (status === "loading" || !detail) {
     return (
@@ -328,6 +415,7 @@ export default function StockDetail() {
           {[
             { id: "oracle", label: "Intelligence" },
             { id: "fundamentals", label: "Fundamental Lattice" },
+            { id: "technical", label: "Technical Lattice" },
             { id: "agent_insights", label: "Agent Insights" }
           ].map(tab => (
             <button
@@ -579,11 +667,28 @@ export default function StockDetail() {
             </motion.div>
           )}
 
+          {activeTab === "technical" && (
+            <motion.div key="technical" initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }}>
+              <TechnicalLatticeTab
+                data={technicals}
+                loading={loadingTechnicals}
+                running={runningTA}
+                onRunTA={handleRunTA}
+                latestClose={detail?.latest_close}
+              />
+            </motion.div>
+          )}
+
           {activeTab === "agent_insights" && (
             <motion.div key="agent_insights" initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }}>
               <AgentInsightsTab
-                data={agentInsights}
+                analysis={agentInsights}
+                recommendation={stockRecommendation}
                 loading={loadingInsights}
+                runningAnalysis={runningAnalysis}
+                runningRecommendation={runningRecommendation}
+                onRunAnalysis={handleRunAnalysis}
+                onRunRecommendation={handleRunRecommendation}
                 onRefresh={fetchInsights}
                 symbol={symbol}
               />
@@ -592,6 +697,192 @@ export default function StockDetail() {
         </AnimatePresence>
 
       </div>
+    </div>
+  );
+}
+
+// ─── Technical Lattice Tab ────────────────────────────────────────────────────
+
+function TaCell({ label, value, unit = "", accent = false, sub = null }) {
+  return (
+    <div className="flex flex-col gap-1.5 p-6 bg-white/[0.02] rounded-2xl border border-white/[0.04] hover:bg-white/[0.04] transition-all group">
+      <span className="text-[11px] font-bold uppercase tracking-[0.2em] text-slate-400 group-hover:text-slate-200 transition-colors">{label}</span>
+      <span className={`font-headline text-xl font-bold tracking-tighter ${accent ? 'text-primary' : 'text-white'} ${value == null ? 'text-slate-700' : ''}`}>
+        {value != null ? `${typeof value === 'number' ? value.toFixed(2) : value}${unit}` : '—'}
+      </span>
+      {sub && <span className="text-[10px] text-slate-500 uppercase font-medium tracking-wider">{sub}</span>}
+    </div>
+  );
+}
+
+function TaSection({ title, icon, children }) {
+  return (
+    <div className="glass-panel rounded-[2rem] border border-white/5 overflow-hidden">
+      <div className="flex items-center gap-3 px-8 py-5 border-b border-white/5 bg-white/[0.02]">
+        <span className="material-symbols-outlined text-primary text-lg">{icon}</span>
+        <h4 className="text-[10px] font-black uppercase tracking-[0.4em] text-slate-400">{title}</h4>
+      </div>
+      <div className="p-6 grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
+        {children}
+      </div>
+    </div>
+  );
+}
+
+function RsiBand({ value }) {
+  if (value == null) return <div className="h-3 bg-white/5 rounded-full" />;
+  const pct = Math.min(100, Math.max(0, value));
+  const color = value > 70 ? 'bg-red-400' : value < 30 ? 'bg-green-400' : 'bg-primary';
+  const label = value > 70 ? 'Overbought' : value < 30 ? 'Oversold' : 'Neutral';
+  return (
+    <div className="col-span-2 md:col-span-3 lg:col-span-4 space-y-2">
+      <div className="flex justify-between text-[9px] uppercase font-black tracking-widest text-slate-600">
+        <span>Oversold (30)</span>
+        <span className="text-white/60">{label} · RSI {value.toFixed(1)}</span>
+        <span>Overbought (70)</span>
+      </div>
+      <div className="h-2 bg-white/5 rounded-full overflow-hidden">
+        <div className={`h-full rounded-full transition-all ${color}`} style={{ width: `${pct}%` }} />
+      </div>
+    </div>
+  );
+}
+
+function MaCross({ close, sma, label }) {
+  if (close == null || sma == null) return null;
+  const pct = ((close / sma - 1) * 100).toFixed(2);
+  const above = close >= sma;
+  return (
+    <div className="flex flex-col gap-1 p-6 bg-white/[0.02] rounded-2xl border border-white/[0.04] hover:bg-white/[0.04] transition-all">
+      <span className="text-[9px] font-black uppercase tracking-[0.35em] text-slate-600">Close vs {label}</span>
+      <span className={`font-headline text-xl font-bold tracking-tighter ${above ? 'text-green-400' : 'text-red-400'}`}>
+        {above ? '+' : ''}{pct}%
+      </span>
+      <span className={`text-[9px] font-black uppercase tracking-wider ${above ? 'text-green-600' : 'text-red-600'}`}>
+        {above ? 'Above' : 'Below'} · {label} {sma.toFixed(1)}
+      </span>
+    </div>
+  );
+}
+
+function TechnicalLatticeTab({ data, loading, running, onRunTA, latestClose }) {
+  if (loading) {
+    return (
+      <div className="space-y-6">
+        {[1, 2, 3].map(i => (
+          <div key={i} className="h-44 bg-white/[0.02] border border-white/5 rounded-[2rem] animate-pulse" />
+        ))}
+      </div>
+    );
+  }
+
+  if (!data) {
+    return (
+      <div className="glass-panel p-20 text-center rounded-[3rem] border border-white/5 space-y-6">
+        <span className="material-symbols-outlined text-5xl text-slate-700 block">ssid_chart</span>
+        <p className="text-[10px] uppercase font-black tracking-widest text-slate-500">No Technical Data</p>
+        <p className="text-xs text-slate-600 max-w-sm mx-auto">
+          Technical indicators haven't been computed yet. Requires at least 20 rows of price data.
+        </p>
+        <button
+          onClick={onRunTA}
+          disabled={running}
+          className="mx-auto flex items-center gap-2 px-8 py-3 bg-primary text-black font-black text-[10px] uppercase tracking-widest rounded-xl hover:bg-primary/90 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+        >
+          <span className="material-symbols-outlined text-base">{running ? 'hourglass_top' : 'calculate'}</span>
+          {running ? 'Computing…' : 'Run Technical Analysis'}
+        </button>
+      </div>
+    );
+  }
+
+  const d = data;
+  const freshness = d.ind_date ? new Date(d.ind_date).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' }) : null;
+
+  return (
+    <div className="space-y-6 animate-fadeIn">
+      {/* Header row */}
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-3">
+          <span className="material-symbols-outlined text-primary">ssid_chart</span>
+          <h3 className="font-headline text-2xl font-bold italic tracking-tighter">Technical Lattice</h3>
+        </div>
+        <div className="flex items-center gap-4">
+          {freshness && (
+            <span className="text-[9px] font-black uppercase tracking-widest text-slate-500 border border-white/10 px-4 py-2 rounded-xl">
+              As of {freshness}
+            </span>
+          )}
+          <button
+            onClick={onRunTA}
+            disabled={running}
+            className="flex items-center gap-2 px-6 py-2 border border-white/10 text-slate-400 font-black text-[9px] uppercase tracking-widest rounded-xl hover:border-primary hover:text-primary transition-all disabled:opacity-40"
+          >
+            <span className="material-symbols-outlined text-sm">{running ? 'hourglass_top' : 'refresh'}</span>
+            {running ? 'Computing…' : 'Recompute'}
+          </button>
+        </div>
+      </div>
+
+      {/* Moving Averages */}
+      <TaSection title="Moving Averages" icon="show_chart">
+        <TaCell label="SMA 20" value={d.sma_20} />
+        <TaCell label="SMA 50" value={d.sma_50} />
+        <TaCell label="SMA 200" value={d.sma_200} />
+        <TaCell label="EMA 9" value={d.ema_9} />
+        <TaCell label="EMA 21" value={d.ema_21} />
+        <TaCell label="EMA 50" value={d.ema_50} />
+        <MaCross close={latestClose} sma={d.sma_50} label="SMA 50" />
+        <MaCross close={latestClose} sma={d.sma_200} label="SMA 200" />
+      </TaSection>
+
+      {/* Momentum */}
+      <TaSection title="Momentum Indicators" icon="speed">
+        <RsiBand value={d.rsi_14} />
+        <TaCell label="RSI (14)" value={d.rsi_14} accent={d.rsi_14 != null && (d.rsi_14 > 70 || d.rsi_14 < 30)} />
+        <TaCell label="MACD Line" value={d.macd_line} />
+        <TaCell label="MACD Signal" value={d.macd_signal} />
+        <TaCell label="MACD Histogram" value={d.macd_hist} accent />
+        <TaCell label="Stoch %K" value={d.stoch_k} />
+        <TaCell label="Stoch %D" value={d.stoch_d} />
+        <TaCell label="ROC (14)" value={d.roc_14} unit="%" />
+        <TaCell label="CCI (20)" value={d.cci_20} />
+        <TaCell label="Williams %R" value={d.williams_r} />
+      </TaSection>
+
+      {/* Volatility */}
+      <TaSection title="Volatility & Trend" icon="bolt">
+        <TaCell label="ADX (14)" value={d.adx_14} sub={d.adx_14 != null ? (d.adx_14 > 25 ? 'Trending' : 'Ranging') : null} />
+        <TaCell label="ATR (14)" value={d.atr_14} />
+        <TaCell label="BB Upper" value={d.bb_upper} />
+        <TaCell label="BB Middle" value={d.bb_middle} />
+        <TaCell label="BB Lower" value={d.bb_lower} />
+        {d.bb_upper != null && d.bb_lower != null && latestClose != null && (
+          <TaCell
+            label="BB %B"
+            value={((latestClose - d.bb_lower) / (d.bb_upper - d.bb_lower) * 100)}
+            unit="%"
+            sub="Position in band"
+          />
+        )}
+      </TaSection>
+
+      {/* Volume */}
+      <TaSection title="Volume Intelligence" icon="bar_chart">
+        <TaCell label="Vol SMA 20" value={d.volume_sma_20 != null ? (d.volume_sma_20 / 1e5).toFixed(1) : null} unit="L" />
+        <TaCell label="Vol SMA 50" value={d.volume_sma_50 != null ? (d.volume_sma_50 / 1e5).toFixed(1) : null} unit="L" />
+        <TaCell label="Volume Ratio" value={d.volume_ratio} sub="vs 50-day avg" accent={d.volume_ratio != null && d.volume_ratio > 1.5} />
+        <TaCell label="OBV" value={d.obv != null ? (d.obv / 1e5).toFixed(0) : null} unit="L" />
+        <TaCell label="VWAP (20d)" value={d.vwap_20} />
+      </TaSection>
+
+      {/* Relative / Market */}
+      <TaSection title="Relative Metrics" icon="compare_arrows">
+        <TaCell label="Beta (1Y)" value={d.beta_1y} sub="vs Nifty 50" />
+        <TaCell label="RS vs Nifty (6M)" value={d.rs_6m_vs_nifty} unit="%" sub="Alpha vs index" accent={d.rs_6m_vs_nifty != null && d.rs_6m_vs_nifty > 0} />
+        <TaCell label="% from 52W High" value={d.pct_from_52w_high} unit="%" />
+        <TaCell label="% from 52W Low" value={d.pct_from_52w_low} unit="%" />
+      </TaSection>
     </div>
   );
 }
@@ -641,14 +932,19 @@ function FundamentalsTab({ data, stmtType, onStmtChange, loading, shareholdingDa
           <span className="material-symbols-outlined text-4xl text-slate-800 mb-4 block">database_off</span>
           <p className="text-[10px] uppercase font-black tracking-widest text-slate-600">No Intelligence Recovered</p>
         </div>
-      ) : (
+      ) : (() => {
+        const normalizedRecords = data.records.map(r => ({
+          ...r,
+          data: typeof r.data === 'string' ? JSON.parse(r.data) : r.data,
+        }));
+        return (
         <div className="glass-panel overflow-hidden rounded-[2.5rem] border border-white/5 shadow-2xl bg-surface-container-lowest/20">
           <div className="overflow-x-auto">
             <table className="w-full text-left border-collapse">
               <thead>
                 <tr className="border-b border-white/5 bg-white/[0.02]">
                   <th className="p-8 text-[10px] text-slate-500 font-black uppercase tracking-[0.4em]">Metric Architecture</th>
-                  {data.records.map(r => (
+                  {normalizedRecords.map(r => (
                     <th key={r.period_end} className="p-8 text-[10px] text-slate-500 font-black uppercase tracking-[0.4em] text-right whitespace-nowrap">
                       {r.period_end}
                     </th>
@@ -656,7 +952,7 @@ function FundamentalsTab({ data, stmtType, onStmtChange, loading, shareholdingDa
                 </tr>
               </thead>
               <tbody>
-                {data.records[0]?.data && Object.entries(data.records[0].data).map(([key]) => (
+                {normalizedRecords[0]?.data && Object.entries(normalizedRecords[0].data).map(([key]) => (
                   <tr key={key} className="border-b border-white/[0.03] hover:bg-white/[0.02] transition-all group">
                     <td className="p-8">
                       <div className="flex flex-col gap-1">
@@ -668,10 +964,12 @@ function FundamentalsTab({ data, stmtType, onStmtChange, loading, shareholdingDa
                         </span>
                       </div>
                     </td>
-                    {data.records.map(r => (
+                    {normalizedRecords.map(r => (
                       <td key={r.period_end} className="p-8 text-right align-middle">
                         <span className="font-headline text-lg font-semibold text-white tracking-tighter">
-                          {r.data[key] != null ? r.data[key].toLocaleString("en-IN") : "—"}
+                          {r.data[key] != null && r.data[key] !== 'n/a'
+                            ? (typeof r.data[key] === 'number' ? r.data[key].toLocaleString("en-IN") : r.data[key])
+                            : "—"}
                         </span>
                       </td>
                     ))}
@@ -681,7 +979,8 @@ function FundamentalsTab({ data, stmtType, onStmtChange, loading, shareholdingDa
             </table>
           </div>
         </div>
-      )}
+        );
+      })()}
     </div>
   );
 }
@@ -725,154 +1024,297 @@ function ShareholdingTab({ data, loading }) {
   );
 }
 
-function AgentInsightsTab({ data, loading, onRefresh, symbol }) {
+function signalColor(signal) {
+  if (!signal) return 'text-slate-500';
+  const s = signal.toUpperCase();
+  if (['STRONG', 'BULLISH', 'UNDERVALUED', 'BUY'].includes(s)) return 'text-secondary';
+  if (['GOOD', 'NEUTRAL', 'FAIR', 'HOLD'].includes(s)) return 'text-primary';
+  return 'text-error';
+}
+
+function signalBg(signal) {
+  if (!signal) return 'bg-slate-800/50 border-slate-700/30';
+  const s = signal.toUpperCase();
+  if (['STRONG', 'BULLISH', 'UNDERVALUED', 'BUY'].includes(s)) return 'bg-secondary/10 border-secondary/30';
+  if (['GOOD', 'NEUTRAL', 'FAIR', 'HOLD'].includes(s)) return 'bg-primary/10 border-primary/30';
+  return 'bg-error/10 border-error/30';
+}
+
+function AgentInsightsTab({ analysis, recommendation, loading, runningAnalysis, runningRecommendation, onRunAnalysis, onRunRecommendation, onRefresh }) {
   if (loading) {
     return (
-      <div className="flex flex-col items-center justify-center p-20 space-y-8 animate-pulse">
+      <div className="flex flex-col items-center justify-center p-20 space-y-8">
         <div className="w-20 h-20 border-4 border-primary border-t-transparent rounded-full animate-spin"></div>
-        <p className="font-label text-xs uppercase tracking-[0.4em] text-primary">Synthesizing Neural Lattice...</p>
+        <p className="font-label text-xs uppercase tracking-[0.4em] text-primary animate-pulse">Loading Agent Intelligence...</p>
       </div>
     );
   }
 
-  if (!data) {
+  if (!analysis) {
     return (
       <div className="glass-panel p-20 text-center rounded-[3rem] border border-white/5">
-        <span className="material-symbols-outlined text-4xl text-slate-800 mb-4 block">smart_toy</span>
-        <p className="text-[10px] uppercase font-black tracking-widest text-slate-600 mb-8">No Intelligence Recovered</p>
+        <span className="material-symbols-outlined text-6xl text-slate-700 mb-6 block">smart_toy</span>
+        <p className="text-[10px] uppercase font-black tracking-widest text-slate-500 mb-3">No Analysis Found</p>
+        <p className="text-xs text-slate-600 mb-10">Run the AI analysis pipeline to generate fundamental, technical & valuation signals.</p>
         <button
-          onClick={onRefresh}
-          className="px-8 py-3 bg-primary text-black rounded-xl font-black text-[10px] tracking-[0.2em] uppercase hover:shadow-lg hover:shadow-primary/20 transition-all font-headline"
+          onClick={() => onRunAnalysis(false)}
+          disabled={runningAnalysis}
+          className="px-10 py-4 bg-primary text-black rounded-xl font-black text-[10px] tracking-[0.2em] uppercase hover:brightness-110 active:scale-95 transition-all font-headline disabled:opacity-50 flex items-center gap-3 mx-auto"
         >
-          Initialize Agent Analysis
+          {runningAnalysis ? (
+            <><span className="w-4 h-4 border-2 border-black border-t-transparent rounded-full animate-spin"></span>Analysing...</>
+          ) : (
+            <><span className="material-symbols-outlined text-lg">psychology</span>Initialize Agent Analysis</>
+          )}
         </button>
       </div>
     );
   }
 
+  const healthScore = analysis.overall_health_score || 0;
+
   return (
     <div className="space-y-12 animate-fadeIn pb-20">
-      {/* Header Score & Reasoning */}
+
+      {/* Health Score + Narrative */}
       <div className="flex flex-col lg:flex-row gap-8">
+        {/* Circular Gauge */}
         <div className="lg:w-1/3 glass-panel p-10 rounded-[3rem] border border-white/5 flex flex-col items-center justify-center relative overflow-hidden">
           <div className="absolute inset-0 bg-gradient-to-br from-primary/10 to-transparent pointer-events-none"></div>
-          <p className="text-[10px] text-slate-500 font-black uppercase tracking-[0.4em] mb-6 relative z-10">Composite Alpha Score</p>
+          <p className="text-[10px] text-slate-500 font-black uppercase tracking-[0.4em] mb-6 relative z-10">Overall Health Score</p>
           <div className="relative w-48 h-48 flex items-center justify-center z-10">
             <svg className="w-full h-full transform -rotate-90">
               <circle cx="96" cy="96" r="88" stroke="currentColor" strokeWidth="2" fill="transparent" className="text-white/5" />
               <circle
                 cx="96" cy="96" r="88" stroke="currentColor" strokeWidth="10" fill="transparent"
                 strokeDasharray={552.92}
-                strokeDashoffset={552.92 - (552.92 * (data.composite_score || 0)) / 100}
-                className="text-primary drop-shadow-[0_0_10px_rgba(233,195,73,0.5)]"
+                strokeDashoffset={552.92 - (552.92 * healthScore) / 100}
+                className={`${healthScore >= 70 ? 'text-secondary' : healthScore >= 45 ? 'text-primary' : 'text-error'} drop-shadow-[0_0_10px_rgba(233,195,73,0.5)]`}
                 strokeLinecap="round"
               />
             </svg>
             <div className="absolute inset-0 flex flex-col items-center justify-center">
-              <span className="text-5xl font-headline font-black text-white">{data.composite_score?.toFixed(1) || '0.0'}</span>
-              <span className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Quantum Rank</span>
+              <span className="text-5xl font-headline font-black text-white">{healthScore.toFixed(1)}</span>
+              <span className="text-[10px] font-black text-slate-500 uppercase tracking-widest">/ 100</span>
             </div>
           </div>
-          <div className="mt-8 px-6 py-2 bg-primary/10 border border-primary/20 rounded-full z-10">
-            <span className="text-[10px] font-black text-primary uppercase tracking-widest">{data.reasoning_label}</span>
+          <div className="mt-6 text-[10px] text-slate-500 font-black uppercase tracking-widest z-10">
+            {analysis.analysed_at ? new Date(analysis.analysed_at).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' }) : '—'}
           </div>
         </div>
 
+        {/* Full Narrative */}
         <div className="lg:flex-1 glass-panel p-10 rounded-[3rem] border border-white/5 relative overflow-hidden">
           <div className="absolute top-0 right-0 p-8 opacity-10">
             <span className="material-symbols-outlined text-8xl text-primary">format_quote</span>
           </div>
           <h4 className="text-[10px] font-black uppercase tracking-[0.4em] text-slate-500 mb-6">Neural Synthesis</h4>
-          <p className="text-xl md:text-2xl font-headline font-light italic leading-relaxed text-white/90 relative z-10">
-            "{data.reasoning_text}"
+          <p className="text-lg md:text-xl font-headline font-light italic leading-relaxed text-white/90 relative z-10">
+            "{analysis.full_narrative || 'No narrative available.'}"
           </p>
-          <div className="mt-12 flex justify-between items-center relative z-10">
+          <div className="mt-10 flex flex-wrap justify-between items-center gap-4 relative z-10">
             <div className="flex items-center gap-3">
               <div className="w-2 h-2 rounded-full bg-secondary animate-pulse"></div>
-              <span className="text-[9px] font-black text-slate-500 uppercase tracking-widest">Model Version {data.score_version}</span>
+              <span className="text-[9px] font-black text-slate-500 uppercase tracking-widest">Status: {analysis.status}</span>
+            </div>
+            <div className="flex gap-3">
+              <button
+                onClick={() => onRunAnalysis(true)}
+                disabled={runningAnalysis}
+                className="flex items-center gap-2 px-6 py-2 rounded-xl border border-white/5 hover:bg-white/5 transition-all group disabled:opacity-50"
+              >
+                <span className={`material-symbols-outlined text-sm text-primary ${runningAnalysis ? 'animate-spin' : 'group-hover:rotate-180 transition-transform duration-500'}`}>sync</span>
+                <span className="text-[9px] font-black text-slate-400 group-hover:text-white uppercase tracking-widest">
+                  {runningAnalysis ? 'Running...' : 'Re-run Analysis'}
+                </span>
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Sub-Agent Signal Cards */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
+        {/* Fundamental */}
+        <div className="glass-panel p-8 rounded-[2.5rem] border border-white/5 space-y-6">
+          <div className="flex items-center justify-between">
+            <h5 className="text-[10px] font-black text-slate-500 uppercase tracking-[0.3em]">Fundamental</h5>
+            <span className={`px-3 py-1 rounded-lg border text-[10px] font-black uppercase tracking-wider ${signalBg(analysis.fundamental_signal)} ${signalColor(analysis.fundamental_signal)}`}>
+              {analysis.fundamental_signal || '—'}
+            </span>
+          </div>
+          <div className="flex items-baseline gap-2">
+            <span className={`text-4xl font-headline font-black ${signalColor(analysis.fundamental_signal)}`}>
+              {analysis.fundamental_score?.toFixed(1) || '0.0'}
+            </span>
+            <span className="text-xs text-slate-600 font-bold">/100</span>
+          </div>
+          <p className="text-xs text-slate-400 font-label leading-relaxed italic border-t border-white/5 pt-4">
+            {analysis.fundamental_reasoning || 'No reasoning available.'}
+          </p>
+        </div>
+
+        {/* Technical */}
+        <div className="glass-panel p-8 rounded-[2.5rem] border border-white/5 space-y-6">
+          <div className="flex items-center justify-between">
+            <h5 className="text-[10px] font-black text-slate-500 uppercase tracking-[0.3em]">Technical</h5>
+            <span className={`px-3 py-1 rounded-lg border text-[10px] font-black uppercase tracking-wider ${signalBg(analysis.technical_signal)} ${signalColor(analysis.technical_signal)}`}>
+              {analysis.technical_signal || '—'}
+            </span>
+          </div>
+          <div className="flex items-center gap-3">
+            <span className={`material-symbols-outlined text-4xl ${signalColor(analysis.technical_signal)}`}>
+              {analysis.technical_signal === 'BULLISH' ? 'trending_up' : analysis.technical_signal === 'BEARISH' ? 'trending_down' : 'trending_flat'}
+            </span>
+            <span className={`text-lg font-headline font-black uppercase tracking-tight ${signalColor(analysis.technical_signal)}`}>
+              {analysis.technical_signal || '—'}
+            </span>
+          </div>
+          <p className="text-xs text-slate-400 font-label leading-relaxed italic border-t border-white/5 pt-4">
+            {analysis.technical_reasoning || 'No reasoning available.'}
+          </p>
+        </div>
+
+        {/* Valuation */}
+        <div className="glass-panel p-8 rounded-[2.5rem] border border-white/5 space-y-6">
+          <div className="flex items-center justify-between">
+            <h5 className="text-[10px] font-black text-slate-500 uppercase tracking-[0.3em]">Valuation</h5>
+            <span className={`px-3 py-1 rounded-lg border text-[10px] font-black uppercase tracking-wider ${signalBg(analysis.valuation_signal)} ${signalColor(analysis.valuation_signal)}`}>
+              {analysis.valuation_signal || '—'}
+            </span>
+          </div>
+          <div className="flex items-center gap-3">
+            <span className={`material-symbols-outlined text-4xl ${signalColor(analysis.valuation_signal)}`}>
+              {analysis.valuation_signal === 'UNDERVALUED' ? 'price_check' : analysis.valuation_signal === 'OVERVALUED' ? 'money_off' : 'balance'}
+            </span>
+            <span className={`text-lg font-headline font-black uppercase tracking-tight ${signalColor(analysis.valuation_signal)}`}>
+              {analysis.valuation_signal || '—'}
+            </span>
+          </div>
+          <p className="text-xs text-slate-400 font-label leading-relaxed italic border-t border-white/5 pt-4">
+            {analysis.valuation_reasoning || 'No reasoning available.'}
+          </p>
+        </div>
+      </div>
+
+      {/* Recommendation Section */}
+      {!recommendation && (
+        <div className="glass-panel p-10 rounded-[3rem] border border-white/5 flex flex-col sm:flex-row items-center justify-between gap-6">
+          <div>
+            <h4 className="font-headline text-xl font-black uppercase tracking-tight mb-2">BUY / HOLD / SELL Recommendation</h4>
+            <p className="text-xs text-slate-500 uppercase tracking-widest">Generate a signal with entry, target & stop prices.</p>
+          </div>
+          <button
+            onClick={() => onRunRecommendation(false)}
+            disabled={runningRecommendation}
+            className="px-8 py-4 bg-white/5 border border-white/10 rounded-xl font-black text-[10px] tracking-[0.2em] uppercase hover:bg-primary hover:text-black hover:border-primary transition-all flex items-center gap-3 shrink-0 disabled:opacity-50"
+          >
+            {runningRecommendation ? (
+              <><span className="w-4 h-4 border-2 border-current border-t-transparent rounded-full animate-spin"></span>Computing...</>
+            ) : (
+              <><span className="material-symbols-outlined text-lg">recommend</span>Get Recommendation</>
+            )}
+          </button>
+        </div>
+      )}
+
+      {recommendation && (
+        <div className="glass-panel rounded-[3rem] border border-white/5 overflow-hidden">
+          {/* Recommendation Header */}
+          <div className={`p-10 border-b border-white/5 flex flex-col sm:flex-row items-start sm:items-center gap-6 justify-between ${
+            recommendation.signal === 'BUY' ? 'bg-secondary/5' : recommendation.signal === 'SELL' ? 'bg-error/5' : 'bg-primary/5'
+          }`}>
+            <div className="flex items-center gap-6">
+              <div className={`text-6xl font-headline font-black tracking-tighter ${signalColor(recommendation.signal)}`}>
+                {recommendation.signal}
+              </div>
+              <div className="flex flex-col gap-2">
+                <span className={`px-4 py-1 rounded-full border text-[10px] font-black uppercase tracking-wider ${signalBg(recommendation.signal)} ${signalColor(recommendation.signal)}`}>
+                  {recommendation.confidence} Confidence
+                </span>
+                <span className="px-4 py-1 rounded-full bg-white/5 border border-white/10 text-[10px] font-black text-slate-400 uppercase tracking-wider">
+                  {recommendation.time_horizon} Term
+                </span>
+              </div>
             </div>
             <button
-              onClick={onRefresh}
-              className="flex items-center gap-2 px-6 py-2 rounded-xl border border-white/5 hover:bg-white/5 transition-all group"
+              onClick={() => onRunRecommendation(true)}
+              disabled={runningRecommendation}
+              className="flex items-center gap-2 px-6 py-2 rounded-xl border border-white/10 hover:bg-white/5 transition-all group text-slate-400 disabled:opacity-50"
             >
-              <span className="material-symbols-outlined text-sm group-hover:rotate-180 transition-transform duration-500 text-primary">sync</span>
-              <span className="text-[9px] font-black text-slate-400 group-hover:text-white uppercase tracking-widest">Re-run Analysis</span>
+              <span className={`material-symbols-outlined text-sm ${runningRecommendation ? 'animate-spin' : 'group-hover:rotate-180 transition-transform duration-500'}`}>sync</span>
+              <span className="text-[9px] font-black uppercase tracking-widest">Re-run</span>
             </button>
           </div>
-        </div>
-      </div>
 
-      {/* Granular Pillar Scores */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
-        <ScoreCard
-          title="Profit & Loss"
-          score={data.pl_results?.score}
-          metrics={[
-            { label: 'Revenue CAGR', value: `${data.pl_results?.metrics?.rev_cagr?.toFixed(2)}%` },
-            { label: 'PAT CAGR', value: `${data.pl_results?.metrics?.pat_cagr?.toFixed(2)}%` },
-            { label: 'Latest OPM', value: `${data.pl_results?.metrics?.latest_opm?.toFixed(2)}%` }
-          ]}
-          accent="primary"
-        />
-        <ScoreCard
-          title="Balance Sheet"
-          score={data.bs_results?.score}
-          metrics={[
-            { label: 'Debt/Equity', value: data.bs_results?.metrics?.debt_to_equity?.toFixed(2) },
-            { label: 'Current Ratio', value: data.bs_results?.metrics?.current_ratio?.toFixed(2) },
-            { label: 'Reserves CAGR', value: `${data.bs_results?.metrics?.reserves_cagr?.toFixed(2)}%` }
-          ]}
-          accent="secondary"
-        />
-        <ScoreCard
-          title="Cash Flow"
-          score={data.cf_results?.score}
-          metrics={[
-            { label: 'CFO/PAT', value: data.cf_results?.metrics?.cfo_to_pat?.toFixed(2) },
-            { label: 'FCF +ve Years', value: data.cf_results?.metrics?.fcf_positive_years }
-          ]}
-          accent="error"
-        />
-      </div>
+          <div className="p-10 space-y-10">
+            {/* Price Grid */}
+            {(recommendation.entry_price_low || recommendation.target_price || recommendation.stop_loss) && (
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                {recommendation.entry_price_low != null && (
+                  <div className="bg-white/[0.03] border border-white/5 rounded-2xl p-6 text-center">
+                    <p className="text-[10px] text-slate-500 font-black uppercase tracking-widest mb-2">Entry Low</p>
+                    <p className="text-2xl font-headline font-black text-white">₹{Number(recommendation.entry_price_low).toFixed(2)}</p>
+                  </div>
+                )}
+                {recommendation.entry_price_high != null && (
+                  <div className="bg-white/[0.03] border border-white/5 rounded-2xl p-6 text-center">
+                    <p className="text-[10px] text-slate-500 font-black uppercase tracking-widest mb-2">Entry High</p>
+                    <p className="text-2xl font-headline font-black text-white">₹{Number(recommendation.entry_price_high).toFixed(2)}</p>
+                  </div>
+                )}
+                {recommendation.target_price != null && (
+                  <div className="bg-secondary/5 border border-secondary/20 rounded-2xl p-6 text-center">
+                    <p className="text-[10px] text-secondary font-black uppercase tracking-widest mb-2">Target</p>
+                    <p className="text-2xl font-headline font-black text-secondary">₹{Number(recommendation.target_price).toFixed(2)}</p>
+                  </div>
+                )}
+                {recommendation.stop_loss != null && (
+                  <div className="bg-error/5 border border-error/20 rounded-2xl p-6 text-center">
+                    <p className="text-[10px] text-error font-black uppercase tracking-widest mb-2">Stop Loss</p>
+                    <p className="text-2xl font-headline font-black text-error">₹{Number(recommendation.stop_loss).toFixed(2)}</p>
+                  </div>
+                )}
+              </div>
+            )}
 
-      {/* Pipeline Logs */}
-      <div className="glass-panel rounded-[2rem] border border-white/5 overflow-hidden">
-        <div className="px-8 py-4 bg-white/5 flex items-center justify-between">
-          <h5 className="text-[9px] font-black uppercase tracking-[0.4em] text-slate-500">Pipeline Execution Trace</h5>
-          <span className="text-[10px] font-bold text-secondary font-headline uppercase tracking-widest">{data.status}</span>
-        </div>
-        <div className="p-8 space-y-2 bg-black/20">
-          {data.logs?.map((log, i) => (
-            <div key={i} className="flex gap-4 font-mono text-[10px]">
-              <span className="text-slate-700">[{i + 1}]</span>
-              <span className="text-slate-400">{log}</span>
+            {/* Recommendation text */}
+            <p className="text-sm text-slate-300 font-label leading-relaxed italic">
+              "{recommendation.recommendation_text}"
+            </p>
+
+            {/* Catalysts & Risks */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+              {recommendation.key_catalysts?.length > 0 && (
+                <div>
+                  <h5 className="text-[10px] font-black text-secondary uppercase tracking-[0.3em] mb-4">Key Catalysts</h5>
+                  <ul className="space-y-3">
+                    {recommendation.key_catalysts.map((c, i) => (
+                      <li key={i} className="flex items-start gap-3 text-xs text-slate-300 font-label">
+                        <span className="material-symbols-outlined text-secondary text-sm shrink-0 mt-0.5">check_circle</span>
+                        {c}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+              {recommendation.key_risks?.length > 0 && (
+                <div>
+                  <h5 className="text-[10px] font-black text-error uppercase tracking-[0.3em] mb-4">Key Risks</h5>
+                  <ul className="space-y-3">
+                    {recommendation.key_risks.map((r, i) => (
+                      <li key={i} className="flex items-start gap-3 text-xs text-slate-300 font-label">
+                        <span className="material-symbols-outlined text-error text-sm shrink-0 mt-0.5">warning</span>
+                        {r}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
             </div>
-          ))}
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function ScoreCard({ title, score, metrics, accent }) {
-  const accentColor = accent === 'primary' ? 'text-primary' : accent === 'secondary' ? 'text-secondary' : 'text-error';
-  const borderColor = accent === 'primary' ? 'group-hover:border-primary/20' : accent === 'secondary' ? 'group-hover:border-secondary/20' : 'group-hover:border-error/20';
-
-  return (
-    <div className={`glass-panel p-8 rounded-[2.5rem] border border-white/5 relative overflow-hidden group ${borderColor} transition-colors`}>
-      <h5 className="text-[10px] font-black text-slate-500 uppercase tracking-[0.3em] mb-6">{title}</h5>
-      <div className="flex items-baseline gap-2 mb-8">
-        <span className={`text-4xl font-headline font-black ${accentColor}`}>{score?.toFixed(1) || '0.0'}</span>
-        <span className="text-xs text-slate-600 font-bold uppercase tracking-tighter">/100</span>
-      </div>
-      <div className="space-y-4">
-        {metrics.map((m, i) => (
-          <div key={i} className="flex justify-between items-center py-2 border-b border-white/[0.02]">
-            <span className="text-[10px] text-slate-600 font-bold uppercase tracking-widest">{m.label}</span>
-            <span className="text-sm font-headline font-bold text-white tracking-tighter">{m.value}</span>
           </div>
-        ))}
-      </div>
+        </div>
+      )}
     </div>
   );
 }

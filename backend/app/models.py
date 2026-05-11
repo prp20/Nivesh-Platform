@@ -444,3 +444,111 @@ class FundamentalScore(Base):
     reasoning_text              = Column(Text)
     
     computed_at                 = Column(TIMESTAMP(timezone=True), server_default=func.now())
+
+
+# ---------------------------------------------------------------------------
+# Agent Analysis Result Tables
+# ---------------------------------------------------------------------------
+
+class AgentFundAnalysis(Base):
+    """Stores LangGraph multi-agent analysis results for a single mutual fund."""
+    __tablename__ = "agent_fund_analysis"
+    __table_args__ = (
+        Index("ix_agent_fund_analysis_scheme_code", "scheme_code"),
+        Index("ix_agent_fund_analysis_analysed_at", "analysed_at"),
+    )
+
+    id              = Column(Integer, primary_key=True, autoincrement=True)
+    scheme_code     = Column(String(50), ForeignKey("fund_master.scheme_code"), nullable=False)
+    analysed_at     = Column(TIMESTAMP, server_default=func.now())
+    # Scores
+    composite_score = Column(Numeric(5, 2))   # 0-100
+    peer_percentile = Column(Numeric(5, 2))   # 0-100 (0=worst, 100=best)
+    category_rank   = Column(Integer)          # rank within category (1=best)
+    category_size   = Column(Integer)          # total peers in category
+    # LLM outputs
+    verdict_label   = Column(String(50))
+    verdict_text    = Column(Text)
+    key_strengths   = Column(JSON)             # ["...", "..."]
+    key_risks       = Column(JSON)
+    # Raw snapshot
+    raw_metrics     = Column(JSON)
+    status          = Column(String(20), default="PENDING")  # PENDING|COMPLETED|FAILED
+    error_message   = Column(Text)
+
+
+class AgentFundComparison(Base):
+    """Stores LangGraph multi-agent comparison results for 2-4 mutual funds."""
+    __tablename__ = "agent_fund_comparison"
+    __table_args__ = (
+        Index("ix_agent_fund_comparison_compared_at", "compared_at"),
+    )
+
+    id                 = Column(Integer, primary_key=True, autoincrement=True)
+    comparison_id      = Column(String(36), default=lambda: str(uuid.uuid4()), unique=True)
+    fund_codes         = Column(JSON, nullable=False)    # ["code1","code2",...]
+    compared_at        = Column(TIMESTAMP, server_default=func.now())
+    # Metrics & rankings
+    metrics_matrix     = Column(JSON)   # {scheme_code: {metric: value}}
+    rankings           = Column(JSON)   # {scheme_code: {metric: rank_1_to_4, overall_rank: int}}
+    winner_scheme_code = Column(String(50))
+    ranked_verdict     = Column(JSON)   # [{rank:1, code:..., name:..., summary:...}, ...]
+    narrative          = Column(Text)
+    status             = Column(String(20), default="PENDING")
+    error_message      = Column(Text)
+
+
+class AgentStockAnalysis(Base):
+    """Stores LangGraph multi-agent analysis results for a single stock."""
+    __tablename__ = "agent_stock_analysis"
+    __table_args__ = (
+        Index("ix_agent_stock_analysis_symbol", "symbol"),
+        Index("ix_agent_stock_analysis_analysed_at", "analysed_at"),
+    )
+
+    id                     = Column(Integer, primary_key=True, autoincrement=True)
+    symbol                 = Column(String(20), nullable=False)
+    analysed_at            = Column(TIMESTAMP, server_default=func.now())
+    # Sub-agent outputs
+    fundamental_score      = Column(Numeric(5, 2))    # 0-100
+    fundamental_signal     = Column(String(20))        # STRONG/GOOD/WEAK/POOR
+    fundamental_reasoning  = Column(Text)
+    technical_signal       = Column(String(20))        # BULLISH/NEUTRAL/BEARISH
+    technical_reasoning    = Column(Text)
+    valuation_signal       = Column(String(20))        # UNDERVALUED/FAIR/OVERVALUED
+    valuation_reasoning    = Column(Text)
+    # Aggregate
+    overall_health_score   = Column(Numeric(5, 2))    # 0-100
+    full_narrative         = Column(Text)
+    status                 = Column(String(20), default="PENDING")
+    error_message          = Column(Text)
+
+
+class AgentStockRecommendation(Base):
+    """Stores LangGraph BUY/HOLD/SELL recommendation for a single stock."""
+    __tablename__ = "agent_stock_recommendation"
+    __table_args__ = (
+        Index("ix_agent_stock_recommendation_symbol", "symbol"),
+        Index("ix_agent_stock_recommendation_recommended_at", "recommended_at"),
+    )
+
+    id                   = Column(Integer, primary_key=True, autoincrement=True)
+    symbol               = Column(String(20), nullable=False)
+    recommended_at       = Column(TIMESTAMP, server_default=func.now())
+    # Decision
+    signal               = Column(String(10))    # BUY / HOLD / SELL
+    confidence           = Column(String(10))    # HIGH / MEDIUM / LOW
+    time_horizon         = Column(String(10))    # SHORT / MEDIUM / LONG
+    # Price levels (may be None for SELL with low confidence)
+    entry_price_low      = Column(Numeric(12, 2))
+    entry_price_high     = Column(Numeric(12, 2))
+    target_price         = Column(Numeric(12, 2))
+    stop_loss            = Column(Numeric(12, 2))
+    # LLM outputs
+    key_catalysts        = Column(JSON)
+    key_risks            = Column(JSON)
+    recommendation_text  = Column(Text)
+    # Source analysis link
+    stock_analysis_id    = Column(Integer, ForeignKey("agent_stock_analysis.id"))
+    status               = Column(String(20), default="PENDING")
+    error_message        = Column(Text)

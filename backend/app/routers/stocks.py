@@ -360,6 +360,45 @@ async def get_fundamentals(
     return {"symbol": symbol.upper(), "statement_type": statement_type, "records": rows}
 
 
+# ─── GET /stocks/{symbol}/technicals ─────────────────────────────────────────
+
+@router.get("/{symbol}/technicals")
+async def get_technicals(
+    symbol:    str,
+    timeframe: str = Query("1d", regex="^(1d|1w|1mo)$"),
+    db: AsyncSession = Depends(get_db),
+    current_user: str = Depends(security.get_current_user),
+):
+    stock = await _get_stock_id(symbol, db)
+    if not stock:
+        raise HTTPException(404, f"Stock '{symbol}' not found")
+
+    sql = """
+        SELECT
+            ind_date, timeframe,
+            sma_20, sma_50, sma_200,
+            ema_9, ema_21, ema_50,
+            rsi_14,
+            macd_line, macd_signal, macd_hist,
+            bb_upper, bb_middle, bb_lower,
+            atr_14, adx_14,
+            stoch_k, stoch_d,
+            volume_sma_20, volume_sma_50, volume_ratio,
+            obv, vwap_20, cci_20, williams_r, roc_14,
+            beta_1y, rs_6m_vs_nifty,
+            pct_from_52w_high, pct_from_52w_low
+        FROM technical_indicators
+        WHERE stock_id = :sid AND timeframe = :tf
+        ORDER BY ind_date DESC
+        LIMIT 1
+    """
+    result = await db.execute(text(sql), {"sid": stock["id"], "tf": timeframe})
+    row = result.fetchone()
+    if not row:
+        return {"symbol": symbol.upper(), "timeframe": timeframe, "data": None}
+    return {"symbol": symbol.upper(), "timeframe": timeframe, "data": dict(row._mapping)}
+
+
 # ─── GET /stocks/{symbol}/shareholding ────────────────────────────────────────
 
 @router.get("/{symbol}/shareholding")

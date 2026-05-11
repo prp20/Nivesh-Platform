@@ -123,7 +123,17 @@ const stockService = {
   },
 
   getAgentInsights: async (symbol) => {
-    const response = await apiClient.post(`/pipeline/fundamentals/run/${symbol}`);
+    const response = await apiClient.get(`/agents/stock/${symbol}/analysis`);
+    return response.data;
+  },
+
+  triggerDailySync: async () => {
+    const response = await apiClient.post('/pipeline/sync/daily');
+    return response.data;
+  },
+
+  triggerBulkTechnicalAnalysis: async () => {
+    const response = await apiClient.post('/pipeline/technical/all');
     return response.data;
   }
 };

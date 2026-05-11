@@ -24,7 +24,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.security import require_admin
 from app.audit_log import AuditLog
-from app.database import get_db, raw_connection, AsyncSessionLocal
+from app.database import get_db, AsyncSessionLocal
+from app.db_compat import raw_connection, db_fetchrow
 from app.schemas import (
     FundamentalScoreRunRequest, 
     BulkFundamentalScoreRequest, 
@@ -174,12 +175,11 @@ async def trigger_price_ratio_refresh_one(
 ):
     """Synchronously refresh price-dependent ratios for a single stock. Returns updated values."""
     from pipeline.metric_recompute import recompute_price_dependent_ratios, _get_latest_close, _fetch_stocks_with_ratios
-    from app.database import raw_connection
 
     sym = symbol.upper()
     async with raw_connection() as conn:
-        row = await conn.fetchrow(
-            "SELECT id FROM stocks WHERE symbol=$1 AND is_active=TRUE", sym
+        row = await db_fetchrow(conn,
+            "SELECT id FROM stocks WHERE symbol=$1 AND is_active=TRUE", (sym,)
         )
     if not row:
         raise HTTPException(status_code=404, detail=f"Stock '{sym}' not found or inactive")
@@ -234,12 +234,10 @@ async def trigger_screener_scrape_one(
     Set force=true to bypass the checksum deduplication check.
     After a successful scrape, ratio recompute is triggered automatically.
     """
-    from app.database import raw_connection
-
     sym = symbol.upper()
     async with raw_connection() as conn:
-        row = await conn.fetchrow(
-            "SELECT id FROM stocks WHERE symbol=$1 AND is_active=TRUE", sym
+        row = await db_fetchrow(conn,
+            "SELECT id FROM stocks WHERE symbol=$1 AND is_active=TRUE", (sym,)
         )
     if not row:
         raise HTTPException(status_code=404, detail=f"Stock '{sym}' not found or inactive")
@@ -390,12 +388,11 @@ async def trigger_rating_compute_one(
 ):
     """Synchronously recomputes the composite rating for one stock. Returns score breakdown."""
     from pipeline.rating_engine import compute_rating_for_stock
-    from app.database import raw_connection
 
     sym = symbol.upper()
     async with raw_connection() as conn:
-        row = await conn.fetchrow(
-            "SELECT id FROM stocks WHERE symbol=$1 AND is_active=TRUE", sym
+        row = await db_fetchrow(conn,
+            "SELECT id FROM stocks WHERE symbol=$1 AND is_active=TRUE", (sym,)
         )
     if not row:
         raise HTTPException(status_code=404, detail=f"Stock '{sym}' not found or inactive")
@@ -515,15 +512,15 @@ async def trigger_fund_scoring_one(
     admin: str = Depends(require_admin),
     db: AsyncSession = Depends(get_db)
 ):
-    """Synchronously runs the Fund Fetch -> Reason pipeline."""
-    from fund_scorer.graph import run_fund_scorer
-    
-    result = await run_fund_scorer(scheme_code, db)
-    
+    """Synchronously runs the multi-agent fund analysis pipeline."""
+    from agents.fund_analyser.graph import run_fund_analyser
+
+    result = await run_fund_analyser(scheme_code, db)
+
     if result.get("status") == "FAILED":
         error_msg = result.get("error", "Unknown error")
-        raise HTTPException(status_code=422, detail=f"Fund scoring failed: {error_msg}")
-        
+        raise HTTPException(status_code=422, detail=f"Fund analysis failed: {error_msg}")
+
     return result
 
 

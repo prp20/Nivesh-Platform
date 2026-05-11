@@ -13,7 +13,7 @@ from jose import jwt, JWTError
 from .config import settings
 from .database import engine, init_db_pool, close_db_pool
 from .db_compat import is_sqlite
-from .routers import funds, benchmarks, navs, benchmark_navs, metrics, sync, auth, stocks, screener, pipeline
+from .routers import funds, benchmarks, navs, benchmark_navs, metrics, sync, auth, stocks, screener, pipeline, agents
 
 from .database import engine, Base
 from .rate_limiting import get_rate_limiter
@@ -164,6 +164,7 @@ app.include_router(sync.router, prefix=settings.API_V1_STR)
 app.include_router(stocks.router, prefix=settings.API_V1_STR)
 app.include_router(screener.router, prefix=settings.API_V1_STR)
 app.include_router(pipeline.router, prefix=settings.API_V1_STR)
+app.include_router(agents.router, prefix=settings.API_V1_STR)
 
 @app.get("/api/health", tags=["root"])
 async def root():

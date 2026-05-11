@@ -235,12 +235,12 @@ source "${VENV_DIR}/bin/activate"
 success "Virtual environment activated."
 
 info "Upgrading pip..."
-pip install --upgrade pip --quiet
+pip install --upgrade pip
 
 info "Installing Python dependencies (excluding TA-Lib)..."
 TEMP_REQ=$(mktemp)
 grep -iv 'ta.lib\|ta-lib' "${BACKEND_DIR}/requirements.txt" > "$TEMP_REQ" || true
-if pip install --prefer-binary -r "$TEMP_REQ" --quiet; then
+if pip install --prefer-binary -r "$TEMP_REQ"; then
   success "Python dependencies installed (TA-Lib excluded — installed in Step 9)."
 else
   rm -f "$TEMP_REQ"
