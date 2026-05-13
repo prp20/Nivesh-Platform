@@ -7,6 +7,7 @@ via environment variables (recommended for production deployments).
 
 import os
 import logging
+from typing import Optional
 from pydantic import SecretStr
 from pydantic_settings import BaseSettings
 
@@ -37,12 +38,22 @@ class Settings(BaseSettings):
     # Security: Authentication
     ENABLE_AUTH: bool = True
     SECRET_KEY: str = _DEV_SECRET_KEY
+    ALGORITHM: str = "HS256"
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 30
+    REFRESH_TOKEN_EXPIRE_DAYS: int = 7
     ADMIN_TOKEN: str = ""  # Dev mode: explicit admin token, optional
 
     # Admin portal credentials (set during setup)
     ADMIN_USERNAME: str = "admin"
     ADMIN_PASSWORD_HASH: str = ""  # bcrypt hash written by setup script
+
+    # Application metadata
+    APP_VERSION: str = "0.1.0"
+    ENVIRONMENT: str = "production"   # "development" | "production"
+    DEBUG: bool = False
+
+    # Migrations — direct Supabase URL (port 5432), used only by Alembic
+    ALEMBIC_URL: Optional[str] = None
     
     # LLM Configuration
     GOOGLE_API_KEY: str = ""

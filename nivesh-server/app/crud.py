@@ -12,10 +12,10 @@ from sqlalchemy.orm import joinedload
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.sql import Select
 from typing import Optional, List, Tuple
-from datetime import datetime
+from datetime import datetime, timezone
 import uuid
 
-from .models import FundMaster, BenchmarkMaster, FundNavHistory, BenchmarkNavHistory, FundMetrics, BenchmarkMetrics, SyncJob
+from .models import FundMaster, BenchmarkMaster, FundNavHistory, BenchmarkNavHistory, FundMetrics, BenchmarkMetrics, EtlRun, AdminUser
 from .schemas import (
     FundMasterCreate, FundMasterUpdate,
     BenchmarkMasterCreate, BenchmarkMasterUpdate,
@@ -430,8 +430,20 @@ async def bulk_insert_benchmark_navs(session: AsyncSession, benchmark_code: str,
     await session.commit()
     return len(rows)
 
-async def get_fund_nav_history(session: AsyncSession, scheme_code: str, limit: int = 100):
-    q = select(FundNavHistory).where(FundNavHistory.scheme_code == scheme_code).order_by(FundNavHistory.nav_date.desc()).limit(limit)
+async def get_fund_nav_history(
+    session: AsyncSession,
+    scheme_code: str,
+    limit: int = 100,
+    from_date=None,
+):
+    q = (
+        select(FundNavHistory)
+        .where(FundNavHistory.scheme_code == scheme_code)
+        .order_by(FundNavHistory.nav_date.desc())
+        .limit(limit)
+    )
+    if from_date is not None:
+        q = q.where(FundNavHistory.nav_date >= from_date)
     res = await session.execute(q)
     return res.scalars().all()
 
@@ -514,32 +526,114 @@ async def get_fund_metrics(session: AsyncSession, scheme_code: str):
     return res.scalar_one_or_none()
 
 # ============================================================================
-# SYNC JOB CRUD
+# ETL RUN CRUD  (replaces SyncJob + PipelineAudit)
 # ============================================================================
 
-async def create_sync_job(session: AsyncSession, scheme_code: str) -> Tuple[SyncJob, bool]:
-    job = SyncJob(scheme_code=scheme_code, status="RUNNING", message="Initializing sync...")
+async def start_etl_run(
+    session: AsyncSession,
+    pipeline_name: str,
+    entity_id: Optional[str] = None,
+    triggered_by: str = "manual",
+) -> Tuple["EtlRun", bool]:
+    """
+    Create a new RUNNING etl_run row.
+
+    Returns (run, True) if a new row was created.
+    Returns (existing_run, False) if a RUNNING row already exists
+    for this pipeline_name + entity_id (partial unique index prevents duplicates).
+    """
+    run = EtlRun(
+        pipeline_name=pipeline_name,
+        entity_id=entity_id,
+        status="RUNNING",
+        triggered_by=triggered_by,
+    )
     try:
-        session.add(job)
+        session.add(run)
         await session.commit()
-        await session.refresh(job)
-        return job, True
+        await session.refresh(run)
+        return run, True
     except IntegrityError:
         await session.rollback()
-        existing_job = await get_latest_sync_job(session, scheme_code)
-        return existing_job, False
+        existing = await get_latest_etl_run(session, pipeline_name, entity_id)
+        return existing, False
 
-async def update_sync_job(session: AsyncSession, job_id: str, status: Optional[str] = None, message: Optional[str] = None):
-    values = {}
-    if status: values['status'] = status
-    if message: values['message'] = message
-    
-    stmt = update(SyncJob).where(SyncJob.id == job_id).values(**values).returning(SyncJob)
+
+async def finish_etl_run(
+    session: AsyncSession,
+    run_id: int,
+    status: str,
+    records_in: int = 0,
+    records_out: int = 0,
+    error_msg: Optional[str] = None,
+) -> Optional["EtlRun"]:
+    """
+    Mark an etl_run as finished. Sets ended_at to NOW().
+    status should be: 'COMPLETED' | 'FAILED' | 'PARTIAL'
+    """
+    values: dict = {
+        "status": status,
+        "ended_at": datetime.now(timezone.utc),
+        "records_in": records_in,
+        "records_out": records_out,
+    }
+    if error_msg is not None:
+        values["error_msg"] = error_msg
+
+    stmt = (
+        update(EtlRun)
+        .where(EtlRun.id == run_id)
+        .values(**values)
+        .returning(EtlRun)
+    )
     res = await session.execute(stmt)
     await session.commit()
     return res.scalar_one_or_none()
 
-async def get_latest_sync_job(session: AsyncSession, scheme_code: str):
-    q = select(SyncJob).where(SyncJob.scheme_code == scheme_code).order_by(SyncJob.created_at.desc()).limit(1)
+
+async def get_latest_etl_run(
+    session: AsyncSession,
+    pipeline_name: str,
+    entity_id: Optional[str] = None,
+) -> Optional["EtlRun"]:
+    """Fetch the most recent etl_run for a pipeline + entity combination."""
+    q = (
+        select(EtlRun)
+        .where(EtlRun.pipeline_name == pipeline_name)
+        .order_by(EtlRun.started_at.desc())
+        .limit(1)
+    )
+    if entity_id is not None:
+        q = q.where(EtlRun.entity_id == entity_id)
     res = await session.execute(q)
     return res.scalar_one_or_none()
+
+
+async def get_etl_run_summary(
+    session: AsyncSession,
+    pipeline_name: Optional[str] = None,
+    limit: int = 50,
+) -> List["EtlRun"]:
+    """Return recent etl_run rows, optionally filtered by pipeline_name."""
+    q = select(EtlRun).order_by(EtlRun.started_at.desc()).limit(limit)
+    if pipeline_name:
+        q = q.where(EtlRun.pipeline_name == pipeline_name)
+    res = await session.execute(q)
+    return list(res.scalars().all())
+
+
+# ============================================================================
+# ADMIN USER CRUD
+# ============================================================================
+
+async def get_user_by_username(
+    session: AsyncSession, username: str
+) -> Optional["AdminUser"]:
+    """Used by the auth login endpoint to look up a user."""
+    result = await session.execute(
+        select(AdminUser).where(
+            AdminUser.username == username,
+            AdminUser.is_active.is_(True),
+        )
+    )
+    return result.scalar_one_or_none()

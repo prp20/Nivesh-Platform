@@ -2,10 +2,8 @@
 
 This document covers the `nivesh-server` REST API. The server is deployed on Render.com and exposes all market data and analytics endpoints.
 
-> **Phase status:** The API implementation is planned for Phase 2. This document reflects the intended endpoint design based on the existing router files and shared schemas.
-
 Base URL (local): `http://localhost:8000`
-Base URL (production): `https://nivesh-server.onrender.com` *(Phase 2)*
+Base URL (production): `https://nivesh-server.onrender.com`
 
 ---
 
@@ -18,13 +16,18 @@ Auth is controlled by the `ENABLE_AUTH` env var (default `false` in development)
 | `false` | All endpoints open — dev/test only |
 | `true` | Protected endpoints require `Authorization: Bearer <token>` |
 
+### Token design
+
+- **Access token** — short-lived JWT (default 15 min), returned in response body. Pass as `Authorization: Bearer <token>`.
+- **Refresh token** — long-lived JWT (default 7 days), set as an `HttpOnly` cookie at path `/api/v1/auth`. Never readable by JavaScript.
+
 ### Get a token
 
 ```bash
 POST /api/v1/auth/login
-Content-Type: application/x-www-form-urlencoded
+Content-Type: application/json
 
-username=admin&password=<ADMIN_PASSWORD>
+{"username": "admin", "password": "<ADMIN_PASSWORD>"}
 ```
 
 Response:
@@ -32,12 +35,15 @@ Response:
 {"access_token": "<jwt>", "token_type": "bearer", "expires_in": 900}
 ```
 
+The refresh token is set automatically as an `HttpOnly` cookie. Include cookies in subsequent calls to `/api/v1/auth/refresh`.
+
 ### Auth endpoints
 
 | Method | Path | Auth | Description |
 |--------|------|------|-------------|
-| `POST` | `/api/v1/auth/login` | None | Issue JWT |
-| `POST` | `/api/v1/auth/refresh` | Refresh token | Renew access token |
+| `POST` | `/api/v1/auth/login` | None | Issue access + refresh tokens |
+| `POST` | `/api/v1/auth/refresh` | Refresh cookie | Renew access token (re-issues refresh cookie) |
+| `POST` | `/api/v1/auth/logout` | Required | Revoke tokens, clear refresh cookie |
 | `GET`  | `/api/v1/auth/me` | Required | Current user info |
 
 ---
@@ -46,7 +52,9 @@ Response:
 
 | Method | Path | Auth | Description |
 |--------|------|------|-------------|
-| `GET`  | `/health` | None | DB connectivity + latency |
+| `GET`  | `/health` | None | Lightweight health check (Render use) — always 200, degrades gracefully |
+| `GET`  | `/api/health` | None | Full health check with DB latency |
+| `GET`  | `/api/v1/sync/status` | Required | Recent ETL run records (optional `?pipeline_name=` filter) |
 
 ---
 
@@ -104,9 +112,21 @@ All endpoints require JWT when `ENABLE_AUTH=true`.
 
 | Method | Path | Description |
 |--------|------|-------------|
-| `GET`  | `/api/v1/navs/{scheme_code}` | Fund NAV history |
+| `GET`  | `/api/v1/navs/{scheme_code}` | Fund NAV history (supports delta sync via `from_date`) |
 | `POST` | `/api/v1/navs/{scheme_code}/bulk` | Bulk upload NAV records |
 | `GET`  | `/api/v1/benchmark-navs/{benchmark_code}` | Benchmark NAV history |
+
+### Query params — `GET /api/v1/navs/{scheme_code}`
+
+| Param | Type | Description |
+|-------|------|-------------|
+| `limit` | int | Max records (default 100, max 5000) |
+| `from_date` | date | Return only NAVs on or after this date — for delta sync (`YYYY-MM-DD`) |
+
+Response is wrapped in the standard envelope:
+```json
+{"status": "ok", "data": [...], "meta": {"from_date": "2025-01-01", "count": 87}}
+```
 
 Bulk upload payload:
 ```json
@@ -119,9 +139,13 @@ Bulk upload payload:
 
 | Method | Path | Description |
 |--------|------|-------------|
-| `GET`  | `/api/v1/metrics/{scheme_code}` | Risk/return metrics (triggers background refresh if stale) |
+| `GET`  | `/api/v1/metrics/{scheme_code}` | Risk/return metrics — triggers background refresh if stale (>24 h) |
+| `GET`  | `/api/v1/metrics/{scheme_code}/status` | Latest ETL run status for a fund |
+| `POST` | `/api/v1/metrics/{scheme_code}/compute` | Manually trigger background recomputation |
 
-Metrics include: `absolute_return_1y/3y/5y/10y`, `sharpe_ratio`, `sortino_ratio`, `alpha`, `beta`, `std_dev`, `max_drawdown`, `tracking_error`, `information_ratio`, `upside_capture`, `downside_capture`.
+The `GET /metrics/{scheme_code}` response includes `sync_job_id`, `sync_status`, and `sync_message` alongside the metrics object so the client can poll for completion.
+
+Metrics include: `absolute_return_1y/3y/5y/10y`, `sharpe_ratio`, `sortino_ratio`, `alpha`, `beta`, `standard_deviation`, `maximum_drawdown`, `tracking_error`, `information_ratio`, `upside_capture`, `downside_capture`.
 
 ---
 
@@ -242,6 +266,22 @@ Requires JWT + admin role (`username == "admin"`).
 
 ---
 
+## Response Envelope
+
+Most list and delta-sync endpoints wrap their response in a standard envelope:
+
+```json
+{
+  "status": "ok",
+  "data": [...],
+  "meta": {}
+}
+```
+
+Paginated responses include `total`, `page`, and `page_size` in `meta`.
+
+---
+
 ## Shared Schemas
 
 Request/response types are defined in `nivesh-shared/schemas/`. Import pattern:
@@ -249,8 +289,10 @@ Request/response types are defined in `nivesh-shared/schemas/`. Import pattern:
 ```python
 from schemas.funds import FundMasterRead, FundMetricsResponse
 from schemas.stocks import StockListResponse, ScreenerResponse
-from schemas.market import BenchmarkMasterRead, SyncJobRead
+from schemas.market import BenchmarkMasterRead
 from schemas.auth import TokenResponse, LoginRequest
 ```
+
+Server-internal schemas (e.g. `EtlRunRead`, `ScoringStateSchema`) remain in `app/schemas.py`.
 
 Full schema definitions: see source files in `nivesh-shared/schemas/`.

@@ -142,7 +142,7 @@ Any type that appears in both server and client responses belongs in `nivesh-sha
 |-------|--------|-------------|
 | P0 | Done | Monorepo restructure |
 | P1 | Done | Supabase DB setup — 18 Alembic migrations + seed scripts |
-| P2 | Pending | Server Core API on Render |
+| P2 | Done | Server Core API on Render — auth, EtlRun model, delta-sync, Render deploy |
 | P3 | Pending | Ingestion pipeline (NSE bhavcopy, AMFI, FII/DII) |
 | P4 | Pending | Client SQLite + local API |
 | P5 | Pending | JWT auth + sync engine |
@@ -154,7 +154,4 @@ Any type that appears in both server and client responses belongs in `nivesh-sha
 
 ## Known Blockers
 
-See `BLOCKERS.md` in the repo root for deferred work that must be resolved before certain features go live.
-
-Current open blockers:
-- **BLOCKER-001** — App code still references old `sync_jobs` / `pipeline_audit` tables. The new DB only has `etl_runs`. Affects: `crud.py`, `routers/sync.py`, `app/sync.py`, `backend/pipeline/audit.py`.
+None open. BLOCKER-001 (SyncJob/PipelineAudit → EtlRun migration) was resolved in Phase 2.
