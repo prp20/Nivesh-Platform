@@ -97,8 +97,7 @@ def download_history(ticker: str, period: str) -> list[tuple]:
 def seed(dry_run: bool = False, period: str = "max"):
     conn = get_conn()
     benchmarks = fetch_benchmarks(conn)
-    # keep connection open — reuse for all inserts
-    conn.autocommit = False
+    # keep connection open — reuse for all inserts (psycopg2 is non-autocommit by default)
 
     if not benchmarks:
         print("  No benchmarks found in benchmark_master. Run seed_benchmarks.py first.")
