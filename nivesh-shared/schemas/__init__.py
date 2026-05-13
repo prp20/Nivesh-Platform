@@ -1,0 +1,1 @@
+# nivesh-shared schemas package
