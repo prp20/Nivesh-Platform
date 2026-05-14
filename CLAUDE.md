@@ -56,14 +56,25 @@ cd frontend && npm run dev
 | Phase | Status | Description |
 |---|---|---|
 | P0 | Done | Repo restructure — this layout |
-| P1 | Pending | Supabase DB setup + Alembic migrations |
-| P2 | Pending | Server: Core API on Render |
+| P1 | Done | Supabase DB setup — 18 Alembic migrations + seed scripts |
+| P2 | Done | Server: Core API on Render — auth, EtlRun model, delta-sync, Render deploy |
 | P3 | Pending | Server: Ingestion pipeline (NSE bhavcopy, AMFI) |
 | P4 | Pending | Client: SQLite + local API |
 | P5 | Pending | Client: JWT auth + sync engine |
 | P6 | Pending | Client: Agentic layer |
 | P7 | Pending | Client: UI adaptation |
 | P8 | Pending | CI/CD + production hardening |
+
+## Keeping CLAUDE.md Up to Date
+
+**This file must be updated whenever a phase completes or a significant change is made to the project structure, architecture rules, or development workflow.**
+
+- When a phase moves to Done: update the Implementation Phases table with the completion description.
+- When a new architectural rule is established or removed: update the Key Architecture Rules section.
+- When new sensitive file patterns are introduced: update the Sensitive Files section.
+- When directory structure changes (new top-level dirs, removed dirs): update the Directory Structure block.
+
+Do not defer these updates to a later commit — update CLAUDE.md in the same commit as the change.
 
 ## Key Architecture Rules
 

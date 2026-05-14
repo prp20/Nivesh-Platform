@@ -1,0 +1,5991 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "Nivesh API",
+    "version": "0.1.0"
+  },
+  "paths": {
+    "/api/v1/auth/login": {
+      "post": {
+        "tags": [
+          "auth"
+        ],
+        "summary": "Login",
+        "description": "Authenticate with username + password.\n\nReturns a short-lived access_token in the response body.\nSets an HttpOnly cookie with the refresh_token (never readable by JS).",
+        "operationId": "login_api_v1_auth_login_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LoginRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TokenResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/auth/refresh": {
+      "post": {
+        "tags": [
+          "auth"
+        ],
+        "summary": "Refresh",
+        "description": "Exchange a valid refresh_token cookie for a new access_token.\n\nThe refresh_token is read from the HttpOnly cookie \u2014 clients never\nneed to handle it explicitly.",
+        "operationId": "refresh_api_v1_auth_refresh_post",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TokenResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/auth/logout": {
+      "post": {
+        "tags": [
+          "auth"
+        ],
+        "summary": "Logout",
+        "description": "Clear the refresh_token cookie.\nAccess tokens expire naturally \u2014 no server-side blocklist needed.",
+        "operationId": "logout_api_v1_auth_logout_post",
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          }
+        }
+      }
+    },
+    "/api/v1/auth/me": {
+      "get": {
+        "tags": [
+          "auth"
+        ],
+        "summary": "Read Users Me",
+        "description": "Return the current authenticated user's info.",
+        "operationId": "read_users_me_api_v1_auth_me_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/funds/": {
+      "post": {
+        "tags": [
+          "funds"
+        ],
+        "summary": "Create Fund",
+        "description": "Create a new fund entry (Requires Auth).",
+        "operationId": "create_fund_api_v1_funds__post",
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/FundMasterCreate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FundMasterRead"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "get": {
+        "tags": [
+          "funds"
+        ],
+        "summary": "List Funds",
+        "description": "List all mutual funds with pagination and filtering.",
+        "operationId": "list_funds_api_v1_funds__get",
+        "parameters": [
+          {
+            "name": "is_active",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "boolean"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Filter by active status",
+              "title": "Is Active"
+            },
+            "description": "Filter by active status"
+          },
+          {
+            "name": "category",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Filter by scheme category",
+              "title": "Category"
+            },
+            "description": "Filter by scheme category"
+          },
+          {
+            "name": "subcategory",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Filter by scheme subcategory",
+              "title": "Subcategory"
+            },
+            "description": "Filter by scheme subcategory"
+          },
+          {
+            "name": "amc",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Filter by AMC name",
+              "title": "Amc"
+            },
+            "description": "Filter by AMC name"
+          },
+          {
+            "name": "plan_type",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Filter by plan type (Direct/Regular)",
+              "title": "Plan Type"
+            },
+            "description": "Filter by plan type (Direct/Regular)"
+          },
+          {
+            "name": "benchmark_code",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Filter by benchmark index code",
+              "title": "Benchmark Code"
+            },
+            "description": "Filter by benchmark index code"
+          },
+          {
+            "name": "q",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Search by fund name or code",
+              "title": "Q"
+            },
+            "description": "Search by fund name or code"
+          },
+          {
+            "name": "order_by",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Sort field (scheme_name, -scheme_name)",
+              "default": "scheme_name",
+              "title": "Order By"
+            },
+            "description": "Sort field (scheme_name, -scheme_name)"
+          },
+          {
+            "name": "skip",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 0,
+              "default": 0,
+              "title": "Skip"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 500,
+              "minimum": 1,
+              "default": 100,
+              "title": "Limit"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FundMasterListResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/funds/amcs": {
+      "get": {
+        "tags": [
+          "funds"
+        ],
+        "summary": "List Amcs",
+        "description": "Return distinct amc_name values from active funds.",
+        "operationId": "list_amcs_api_v1_funds_amcs_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array",
+                  "title": "Response List Amcs Api V1 Funds Amcs Get"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/funds/categories": {
+      "get": {
+        "tags": [
+          "funds"
+        ],
+        "summary": "List Categories",
+        "description": "Return distinct scheme_category values from active funds.",
+        "operationId": "list_categories_api_v1_funds_categories_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array",
+                  "title": "Response List Categories Api V1 Funds Categories Get"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/funds/categories/{category}/subcategories": {
+      "get": {
+        "tags": [
+          "funds"
+        ],
+        "summary": "List Subcategories",
+        "description": "Return distinct subcategories for a given category.",
+        "operationId": "list_subcategories_api_v1_funds_categories__category__subcategories_get",
+        "parameters": [
+          {
+            "name": "category",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Category"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  },
+                  "title": "Response List Subcategories Api V1 Funds Categories  Category  Subcategories Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/funds/compare": {
+      "get": {
+        "tags": [
+          "funds"
+        ],
+        "summary": "Compare Funds",
+        "description": "Compare multiple funds (max 4). Enforces same category matching.",
+        "operationId": "compare_funds_api_v1_funds_compare_get",
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "codes",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "description": "Comma-separated scheme codes for comparison",
+              "title": "Codes"
+            },
+            "description": "Comma-separated scheme codes for comparison"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ComparisonResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/funds/{scheme_code}": {
+      "get": {
+        "tags": [
+          "funds"
+        ],
+        "summary": "Read Fund",
+        "description": "Get details for a specific fund by its code.",
+        "operationId": "read_fund_api_v1_funds__scheme_code__get",
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "scheme_code",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Scheme Code"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FundMasterRead"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "put": {
+        "tags": [
+          "funds"
+        ],
+        "summary": "Update Fund",
+        "description": "Update fund details (Requires Auth).",
+        "operationId": "update_fund_api_v1_funds__scheme_code__put",
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "scheme_code",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Scheme Code"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/FundMasterUpdate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FundMasterRead"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "funds"
+        ],
+        "summary": "Delete Fund",
+        "description": "Delete (deactivate) a fund (Requires Auth).",
+        "operationId": "delete_fund_api_v1_funds__scheme_code__delete",
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "scheme_code",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Scheme Code"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/funds/{scheme_code}/similar": {
+      "get": {
+        "tags": [
+          "funds"
+        ],
+        "summary": "Get Similar Funds",
+        "description": "Get funds with the same category and subcategory.",
+        "operationId": "get_similar_funds_api_v1_funds__scheme_code__similar_get",
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "scheme_code",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Scheme Code"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/FundMasterRead"
+                  },
+                  "title": "Response Get Similar Funds Api V1 Funds  Scheme Code  Similar Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/benchmarks/": {
+      "post": {
+        "tags": [
+          "benchmarks"
+        ],
+        "summary": "Create Benchmark",
+        "operationId": "create_benchmark_api_v1_benchmarks__post",
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BenchmarkMasterCreate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BenchmarkMasterRead"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "get": {
+        "tags": [
+          "benchmarks"
+        ],
+        "summary": "List Benchmarks",
+        "operationId": "list_benchmarks_api_v1_benchmarks__get",
+        "parameters": [
+          {
+            "name": "q",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Search by name or code",
+              "title": "Q"
+            },
+            "description": "Search by name or code"
+          },
+          {
+            "name": "is_active",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "boolean"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Filter by active status",
+              "title": "Is Active"
+            },
+            "description": "Filter by active status"
+          },
+          {
+            "name": "skip",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 0,
+              "default": 0,
+              "title": "Skip"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 100,
+              "minimum": 1,
+              "default": 10,
+              "title": "Limit"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BenchmarkPaginated"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/benchmarks/{benchmark_code}": {
+      "get": {
+        "tags": [
+          "benchmarks"
+        ],
+        "summary": "Read Benchmark",
+        "operationId": "read_benchmark_api_v1_benchmarks__benchmark_code__get",
+        "parameters": [
+          {
+            "name": "benchmark_code",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Benchmark Code"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BenchmarkMasterRead"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "put": {
+        "tags": [
+          "benchmarks"
+        ],
+        "summary": "Update Benchmark",
+        "operationId": "update_benchmark_api_v1_benchmarks__benchmark_code__put",
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "benchmark_code",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Benchmark Code"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BenchmarkMasterUpdate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BenchmarkMasterRead"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "benchmarks"
+        ],
+        "summary": "Delete Benchmark",
+        "operationId": "delete_benchmark_api_v1_benchmarks__benchmark_code__delete",
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "benchmark_code",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Benchmark Code"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/navs/{scheme_code}/bulk": {
+      "post": {
+        "tags": [
+          "navs"
+        ],
+        "summary": "Upload Bulk Nav",
+        "operationId": "upload_bulk_nav_api_v1_navs__scheme_code__bulk_post",
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "scheme_code",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Scheme Code"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BulkNavUpload"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/navs/{scheme_code}": {
+      "get": {
+        "tags": [
+          "navs"
+        ],
+        "summary": "Get Nav History",
+        "description": "Retrieve NAV history for a fund.\n\nSupports delta sync via from_date: pass the date of your last sync\nand only newer records are returned. Wrap response includes meta.from_date\nso the client can track sync state.",
+        "operationId": "get_nav_history_api_v1_navs__scheme_code__get",
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "scheme_code",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Scheme Code"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 5000,
+              "minimum": 1,
+              "default": 100,
+              "title": "Limit"
+            }
+          },
+          {
+            "name": "from_date",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Return NAVs on or after this date (YYYY-MM-DD) \u2014 for delta sync",
+              "title": "From Date"
+            },
+            "description": "Return NAVs on or after this date (YYYY-MM-DD) \u2014 for delta sync"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/benchmark-navs/{benchmark_code}/bulk": {
+      "post": {
+        "tags": [
+          "benchmark-navs"
+        ],
+        "summary": "Upload Bulk Benchmark Nav",
+        "operationId": "upload_bulk_benchmark_nav_api_v1_benchmark_navs__benchmark_code__bulk_post",
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "benchmark_code",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Benchmark Code"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BulkNavUpload"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/benchmark-navs/{benchmark_code}/upload": {
+      "post": {
+        "tags": [
+          "benchmark-navs"
+        ],
+        "summary": "Upload Benchmark Csv",
+        "operationId": "upload_benchmark_csv_api_v1_benchmark_navs__benchmark_code__upload_post",
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "benchmark_code",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Benchmark Code"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/Body_upload_benchmark_csv_api_v1_benchmark_navs__benchmark_code__upload_post"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/benchmark-navs/{benchmark_code}": {
+      "get": {
+        "tags": [
+          "benchmark-navs"
+        ],
+        "summary": "Get Benchmark Nav History",
+        "operationId": "get_benchmark_nav_history_api_v1_benchmark_navs__benchmark_code__get",
+        "parameters": [
+          {
+            "name": "benchmark_code",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Benchmark Code"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "default": 100,
+              "title": "Limit"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/BenchmarkNavHistoryRead"
+                  },
+                  "title": "Response Get Benchmark Nav History Api V1 Benchmark Navs  Benchmark Code  Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/metrics/{scheme_code}": {
+      "get": {
+        "tags": [
+          "metrics"
+        ],
+        "summary": "Get Metrics",
+        "description": "Retrieve fund metrics, triggering a background sync if data is stale.",
+        "operationId": "get_metrics_api_v1_metrics__scheme_code__get",
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "scheme_code",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Scheme Code"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FundMetricsResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/metrics/{scheme_code}/status": {
+      "get": {
+        "tags": [
+          "metrics"
+        ],
+        "summary": "Get Sync Status",
+        "description": "Get the latest ETL run status for a fund. Returns None if no run exists.",
+        "operationId": "get_sync_status_api_v1_metrics__scheme_code__status_get",
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "scheme_code",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Scheme Code"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/metrics/{scheme_code}/compute": {
+      "post": {
+        "tags": [
+          "metrics"
+        ],
+        "summary": "Compute Metrics Endpoint",
+        "description": "Manually trigger a background metrics recomputation.",
+        "operationId": "compute_metrics_endpoint_api_v1_metrics__scheme_code__compute_post",
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "scheme_code",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Scheme Code"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/sync/all": {
+      "post": {
+        "tags": [
+          "sync"
+        ],
+        "summary": "Trigger Full Sync",
+        "description": "Trigger a background job to sync all funds. Prevents concurrent syncs.",
+        "operationId": "trigger_full_sync_api_v1_sync_all_post",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/sync/{scheme_code}": {
+      "post": {
+        "tags": [
+          "sync"
+        ],
+        "summary": "Sync Single Fund",
+        "description": "Sync a single fund immediately.",
+        "operationId": "sync_single_fund_api_v1_sync__scheme_code__post",
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "scheme_code",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Scheme Code"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/stocks": {
+      "get": {
+        "tags": [
+          "Stocks"
+        ],
+        "summary": "List Stocks",
+        "description": "List stocks with optional filtering and pagination.\n\nArgs:\n    sector: Filter by sector name\n    industry: Filter by industry name\n    market_cap_cat: Filter by market cap category (Large/Mid/Small)\n    is_index: Filter by index flag (True for indices only, False for stocks)\n    page: Page number (1-indexed)\n    limit: Results per page (1-100)\n    sort_by: Sort column (symbol, company_name, sector)\n    order: Sort order (asc/desc)\n\nReturns:\n    StockListResponse with paginated results",
+        "operationId": "list_stocks_api_v1_stocks_get",
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "sector",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Sector"
+            }
+          },
+          {
+            "name": "industry",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Industry"
+            }
+          },
+          {
+            "name": "market_cap_cat",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Market Cap Cat"
+            }
+          },
+          {
+            "name": "is_index",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "default": false,
+              "title": "Is Index"
+            }
+          },
+          {
+            "name": "page",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 10000,
+              "minimum": 1,
+              "default": 1,
+              "title": "Page"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 100,
+              "minimum": 1,
+              "default": 25,
+              "title": "Limit"
+            }
+          },
+          {
+            "name": "sort_by",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 50,
+              "default": "symbol",
+              "title": "Sort By"
+            }
+          },
+          {
+            "name": "order",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "pattern": "^(asc|desc)$",
+              "default": "asc",
+              "title": "Order"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StockListResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/stocks/search": {
+      "get": {
+        "tags": [
+          "Stocks"
+        ],
+        "summary": "Search Stocks",
+        "operationId": "search_stocks_api_v1_stocks_search_get",
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "q",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 50,
+              "title": "Q"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 20,
+              "minimum": 1,
+              "default": 10,
+              "title": "Limit"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/stocks/{symbol}": {
+      "get": {
+        "tags": [
+          "Stocks"
+        ],
+        "summary": "Get Stock",
+        "operationId": "get_stock_api_v1_stocks__symbol__get",
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "symbol",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Symbol"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/stocks/{symbol}/price": {
+      "get": {
+        "tags": [
+          "Stocks"
+        ],
+        "summary": "Get Price History",
+        "operationId": "get_price_history_api_v1_stocks__symbol__price_get",
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "symbol",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Symbol"
+            }
+          },
+          {
+            "name": "from_date",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "From Date"
+            }
+          },
+          {
+            "name": "to_date",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "To Date"
+            }
+          },
+          {
+            "name": "interval",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "pattern": "^(1d|1w|1mo)$",
+              "default": "1d",
+              "title": "Interval"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 2000,
+              "minimum": 1,
+              "default": 365,
+              "title": "Limit"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/stocks/{symbol}/fundamentals": {
+      "get": {
+        "tags": [
+          "Stocks"
+        ],
+        "summary": "Get Fundamentals",
+        "operationId": "get_fundamentals_api_v1_stocks__symbol__fundamentals_get",
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "symbol",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Symbol"
+            }
+          },
+          {
+            "name": "statement_type",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "pattern": "^(PL|BS|CF)$",
+              "default": "PL",
+              "title": "Statement Type"
+            }
+          },
+          {
+            "name": "period_type",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "pattern": "^(annual|quarterly)$",
+              "default": "annual",
+              "title": "Period Type"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 20,
+              "minimum": 1,
+              "default": 5,
+              "title": "Limit"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/stocks/{symbol}/shareholding": {
+      "get": {
+        "tags": [
+          "Stocks"
+        ],
+        "summary": "Get Shareholding",
+        "operationId": "get_shareholding_api_v1_stocks__symbol__shareholding_get",
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "symbol",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Symbol"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 20,
+              "minimum": 1,
+              "default": 8,
+              "title": "Limit"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/screener": {
+      "get": {
+        "summary": "Screener",
+        "description": "Dynamic stock screener with 15+ validated filter parameters.\n\nAll numeric ranges are validated (min <= max), columns are restricted to allow-list,\nand pagination is bounded. Safe against SQL injection.\n\nArgs:\n    min_pe, max_pe: P/E ratio range (0-500)\n    min_pb, max_pb: P/B ratio range (0-50)\n    min_roe: Minimum ROE (%)\n    min_roce: Minimum ROCE (%)\n    min_pat_margin: Minimum PAT margin (%)\n    min_ebitda_margin: Minimum EBITDA margin (%)\n    min_revenue_growth: Minimum revenue growth (%)\n    min_pat_growth: Minimum PAT growth (%)\n    max_debt_equity: Maximum debt/equity ratio (0-100)\n    min_interest_cov: Minimum interest coverage\n    min_cfo_to_pat: Minimum CFO-to-PAT ratio\n    sector: Sector name (string match)\n    market_cap_cat: Market cap category (Large/Mid/Small)\n    rating_label: Stock rating label\n    page: Page number (1-indexed)\n    limit: Results per page (1-100)\n    sort_by: Sort column (from SORT_COLUMNS allow-list)\n    order: Sort order (asc/desc)\n\nReturns:\n    ScreenerResponse with results, total count, applied filters",
+        "operationId": "screener_api_v1_screener_get",
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "min_pe",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Min Pe"
+            }
+          },
+          {
+            "name": "max_pe",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Max Pe"
+            }
+          },
+          {
+            "name": "min_pb",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Min Pb"
+            }
+          },
+          {
+            "name": "max_pb",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Max Pb"
+            }
+          },
+          {
+            "name": "min_roe",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Min Roe"
+            }
+          },
+          {
+            "name": "min_roce",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Min Roce"
+            }
+          },
+          {
+            "name": "min_pat_margin",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Min Pat Margin"
+            }
+          },
+          {
+            "name": "min_ebitda_margin",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Min Ebitda Margin"
+            }
+          },
+          {
+            "name": "min_revenue_growth",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Min Revenue Growth"
+            }
+          },
+          {
+            "name": "min_pat_growth",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Min Pat Growth"
+            }
+          },
+          {
+            "name": "max_debt_equity",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Max Debt Equity"
+            }
+          },
+          {
+            "name": "min_interest_cov",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Min Interest Cov"
+            }
+          },
+          {
+            "name": "min_cfo_to_pat",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Min Cfo To Pat"
+            }
+          },
+          {
+            "name": "sector",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Sector"
+            }
+          },
+          {
+            "name": "market_cap_cat",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Market Cap Cat"
+            }
+          },
+          {
+            "name": "rating_label",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Rating Label"
+            }
+          },
+          {
+            "name": "min_roic",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Min Roic"
+            }
+          },
+          {
+            "name": "min_ev_ebitda",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Min Ev Ebitda"
+            }
+          },
+          {
+            "name": "max_ev_ebitda",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Max Ev Ebitda"
+            }
+          },
+          {
+            "name": "min_piotroski",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Min Piotroski"
+            }
+          },
+          {
+            "name": "min_fcf_yield",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Min Fcf Yield"
+            }
+          },
+          {
+            "name": "min_beta",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Min Beta"
+            }
+          },
+          {
+            "name": "max_beta",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Max Beta"
+            }
+          },
+          {
+            "name": "min_rs_6m",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Min Rs 6M"
+            }
+          },
+          {
+            "name": "min_volume_ratio",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Min Volume Ratio"
+            }
+          },
+          {
+            "name": "page",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 10000,
+              "minimum": 1,
+              "default": 1,
+              "title": "Page"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 100,
+              "minimum": 1,
+              "default": 25,
+              "title": "Limit"
+            }
+          },
+          {
+            "name": "sort_by",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 50,
+              "default": "total_score",
+              "title": "Sort By"
+            }
+          },
+          {
+            "name": "order",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "pattern": "^(asc|desc)$",
+              "default": "desc",
+              "title": "Order"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ScreenerResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/stocks/{symbol}/ratios": {
+      "get": {
+        "summary": "Get Ratios",
+        "description": "Get financial ratios history for a stock.",
+        "operationId": "get_ratios_api_v1_stocks__symbol__ratios_get",
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "symbol",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Symbol"
+            }
+          },
+          {
+            "name": "period_type",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "pattern": "^(annual|ttm)$",
+              "default": "annual",
+              "title": "Period Type"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 20,
+              "minimum": 1,
+              "default": 5,
+              "title": "Limit"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/compare": {
+      "get": {
+        "summary": "Compare Stocks",
+        "description": "Compare up to 5 stocks side-by-side.",
+        "operationId": "compare_stocks_api_v1_compare_get",
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "symbols",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "description": "Comma-separated symbols, max 5",
+              "title": "Symbols"
+            },
+            "description": "Comma-separated symbols, max 5"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/pipeline/prices/all": {
+      "post": {
+        "tags": [
+          "Pipeline Triggers"
+        ],
+        "summary": "Trigger daily price ingestion for all stocks",
+        "description": "Fetches the last 5 trading days of OHLCV data for all active non-index stocks.\nRuns as a background task. Safe to re-run (uses ON CONFLICT DO UPDATE).\n\nRequires admin authentication. Operation is audited.",
+        "operationId": "trigger_price_ingestion_api_v1_pipeline_prices_all_post",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/pipeline/prices/indices": {
+      "post": {
+        "tags": [
+          "Pipeline Triggers"
+        ],
+        "summary": "Trigger price ingestion for indices only",
+        "description": "Fetches the last 5 trading days for all active index instruments (is_index=TRUE).\n\nRequires admin authentication. Operation is audited.",
+        "operationId": "trigger_index_ingestion_api_v1_pipeline_prices_indices_post",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/pipeline/prices/backfill": {
+      "post": {
+        "tags": [
+          "Pipeline Triggers"
+        ],
+        "summary": "Trigger 5-year price history backfill",
+        "description": "Backfills full price history for all active stocks.\nUse only for initial setup or after adding new stocks.\nThis is a long-running operation (~10\u201330 minutes for 500 stocks).\n\nRequires admin authentication. Operation is audited. Be cautious about running\nduring business hours as it consumes significant bandwidth.",
+        "operationId": "trigger_price_backfill_api_v1_pipeline_prices_backfill_post",
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "period",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "pattern": "^(1y|2y|3y|5y)$",
+              "default": "5y",
+              "title": "Period"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/pipeline/prices/refresh/{symbol}": {
+      "post": {
+        "tags": [
+          "Pipeline Triggers"
+        ],
+        "summary": "Trigger deep price sync for one stock",
+        "description": "Synchronously fetches historical price data for a single stock.\nUseful for correcting historical data errors or filling gaps.\n\nRequires admin authentication. Operation is audited.",
+        "operationId": "trigger_price_refresh_one_api_v1_pipeline_prices_refresh__symbol__post",
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "symbol",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Symbol"
+            }
+          },
+          {
+            "name": "period",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "pattern": "^(1mo|6mo|1y|2y|5y|max)$",
+              "default": "1y",
+              "title": "Period"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/pipeline/metrics/price-refresh/all": {
+      "post": {
+        "tags": [
+          "Pipeline Triggers"
+        ],
+        "summary": "Refresh PE/PB/PS for all stocks",
+        "description": "Recomputes price-dependent ratios (PE, PB, PS, dividend yield) for all active stocks.\nReads latest close from price_data; reads EPS/book_value from stored financial_ratios.\nDoes NOT touch quarterly metrics (ROE, ROCE, margins, etc.).",
+        "operationId": "trigger_price_ratio_refresh_all_api_v1_pipeline_metrics_price_refresh_all_post",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/pipeline/metrics/price-refresh/{symbol}": {
+      "post": {
+        "tags": [
+          "Pipeline Triggers"
+        ],
+        "summary": "Refresh PE/PB/PS for one stock",
+        "description": "Synchronously refresh price-dependent ratios for a single stock. Returns updated values.",
+        "operationId": "trigger_price_ratio_refresh_one_api_v1_pipeline_metrics_price_refresh__symbol__post",
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "symbol",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Symbol"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/pipeline/screener/all": {
+      "post": {
+        "tags": [
+          "Pipeline Triggers"
+        ],
+        "summary": "Trigger screener.in scrape for all overdue stocks",
+        "description": "Scrapes screener.in fundamentals for all stocks not updated in `days_since_last` days.\nDefault: 90 days. Uses checksum deduplication \u2014 skips unchanged data.\nThis is a slow operation (2\u20135 sec delay per stock to be polite to screener.in).\nAfter completion, triggers financial ratio recompute automatically.",
+        "operationId": "trigger_screener_scrape_all_api_v1_pipeline_screener_all_post",
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "days_since_last",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 365,
+              "minimum": 1,
+              "default": 90,
+              "title": "Days Since Last"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/pipeline/screener/{symbol}": {
+      "post": {
+        "tags": [
+          "Pipeline Triggers"
+        ],
+        "summary": "Trigger screener.in scrape for a single stock",
+        "description": "Starts a screener.in scrape for a single stock as a background task.\nReturns immediately \u2014 poll GET /pipeline/status to track progress.\nSet force=true to bypass the checksum deduplication check.\nAfter a successful scrape, ratio recompute is triggered automatically.",
+        "operationId": "trigger_screener_scrape_one_api_v1_pipeline_screener__symbol__post",
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "symbol",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Symbol"
+            }
+          },
+          {
+            "name": "force",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "description": "Bypass checksum and force re-scrape",
+              "default": false,
+              "title": "Force"
+            },
+            "description": "Bypass checksum and force re-scrape"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/pipeline/screener/status": {
+      "get": {
+        "tags": [
+          "Pipeline Triggers"
+        ],
+        "summary": "Show last scrape date and overdue stocks",
+        "description": "Returns last scrape date per stock and flags stocks overdue for scraping.",
+        "operationId": "get_screener_status_api_v1_pipeline_screener_status_get",
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "overdue_days",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "default": 90,
+              "title": "Overdue Days"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/pipeline/technical/all": {
+      "post": {
+        "tags": [
+          "Pipeline Triggers"
+        ],
+        "summary": "Run technical analysis for all stocks",
+        "description": "Computes all TA indicators (SMA, EMA, RSI, MACD, Bollinger, ATR, ADX, Stochastic)\nfor all active stocks from price_data and stores in technical_indicators.\nRuns as a background task. Safe to re-run.",
+        "operationId": "trigger_technical_analysis_all_api_v1_pipeline_technical_all_post",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/pipeline/technical/{symbol}": {
+      "post": {
+        "tags": [
+          "Pipeline Triggers"
+        ],
+        "summary": "Run technical analysis for a single stock",
+        "description": "Synchronously computes TA indicators for a single stock.\nReturns the computed indicator values on success.\nRequires at least 20 rows in price_data (200 recommended for full SMA-200).",
+        "operationId": "trigger_technical_analysis_one_api_v1_pipeline_technical__symbol__post",
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "symbol",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Symbol"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/pipeline/technical/status": {
+      "get": {
+        "tags": [
+          "Pipeline Triggers"
+        ],
+        "summary": "Show TA computation status per stock",
+        "description": "Returns last TA computation date per stock; flags MISSING or STALE (>2 days old).",
+        "operationId": "get_technical_status_api_v1_pipeline_technical_status_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/pipeline/ratings/all": {
+      "post": {
+        "tags": [
+          "Pipeline Triggers"
+        ],
+        "summary": "Recompute stock ratings for all stocks",
+        "description": "Recomputes composite stock ratings (fundamental + valuation + technical + momentum + shareholding).\nRuns as a background task. Requires financial_ratios and/or technical_indicators to be populated.",
+        "operationId": "trigger_rating_compute_all_api_v1_pipeline_ratings_all_post",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/pipeline/ratings/{symbol}": {
+      "post": {
+        "tags": [
+          "Pipeline Triggers"
+        ],
+        "summary": "Recompute rating for a single stock",
+        "description": "Synchronously recomputes the composite rating for one stock. Returns score breakdown.",
+        "operationId": "trigger_rating_compute_one_api_v1_pipeline_ratings__symbol__post",
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "symbol",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Symbol"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/pipeline/fundamentals/stage/fetch/{symbol}": {
+      "post": {
+        "tags": [
+          "Pipeline Triggers"
+        ],
+        "summary": "Fetch: Trigger only the Fetch agent",
+        "description": "Fetches raw financial statements for a stock. First stage of fundamental scoring.",
+        "operationId": "trigger_fetch_stage_api_v1_pipeline_fundamentals_stage_fetch__symbol__post",
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "symbol",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Symbol"
+            }
+          },
+          {
+            "name": "period_type",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "default": "annual",
+              "title": "Period Type"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ScoringStateSchema"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/pipeline/fundamentals/stage/compute": {
+      "post": {
+        "tags": [
+          "Pipeline Triggers"
+        ],
+        "summary": "Compute: Trigger only the Scoring engine",
+        "description": "Runs deterministic calculations on provided financial statements.",
+        "operationId": "trigger_compute_stage_api_v1_pipeline_fundamentals_stage_compute_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ScoringStateSchema"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ScoringStateSchema"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/pipeline/fundamentals/stage/reason": {
+      "post": {
+        "tags": [
+          "Pipeline Triggers"
+        ],
+        "summary": "Reason: Trigger only the AI Reasoning agent",
+        "description": "Generates qualitative AI reasoning based on computed scores.",
+        "operationId": "trigger_reason_stage_api_v1_pipeline_fundamentals_stage_reason_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ScoringStateSchema"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ScoringStateSchema"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/pipeline/fundamentals/stage/persist": {
+      "post": {
+        "tags": [
+          "Pipeline Triggers"
+        ],
+        "summary": "Persist: Save results to database",
+        "description": "Saves the scoring results to the database.",
+        "operationId": "trigger_persist_stage_api_v1_pipeline_fundamentals_stage_persist_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ScoringStateSchema"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ScoringStateSchema"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/pipeline/fundamentals/run/{symbol}": {
+      "post": {
+        "tags": [
+          "Pipeline Triggers"
+        ],
+        "summary": "Full Run: Trigger end-to-end scoring pipeline",
+        "description": "Synchronously runs the full Fetch -> Compute -> Reason -> Persist pipeline.",
+        "operationId": "trigger_fundamental_scoring_one_api_v1_pipeline_fundamentals_run__symbol__post",
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "symbol",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Symbol"
+            }
+          },
+          {
+            "name": "period_type",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "default": "annual",
+              "title": "Period Type"
+            }
+          },
+          {
+            "name": "score_version",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "default": "v1.0",
+              "title": "Score Version"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/pipeline/funds/run/{scheme_code}": {
+      "post": {
+        "tags": [
+          "Pipeline Triggers"
+        ],
+        "summary": "Fund Run: Trigger end-to-end fund scoring pipeline",
+        "description": "Synchronously runs the Fund Fetch -> Reason pipeline.",
+        "operationId": "trigger_fund_scoring_one_api_v1_pipeline_funds_run__scheme_code__post",
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "scheme_code",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Scheme Code"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/pipeline/fundamentals/bulk-run": {
+      "post": {
+        "tags": [
+          "Pipeline Triggers"
+        ],
+        "summary": "Bulk Run: Trigger scoring for multiple stocks",
+        "description": "Starts fundamental scoring for multiple stocks in the background.",
+        "operationId": "trigger_fundamental_scoring_bulk_api_v1_pipeline_fundamentals_bulk_run_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BulkFundamentalScoreRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/pipeline/status": {
+      "get": {
+        "tags": [
+          "Pipeline Triggers"
+        ],
+        "summary": "Overall pipeline health and live progress polling",
+        "description": "Shows last run time, status, and live record counts (progress) for all pipeline jobs.",
+        "operationId": "get_pipeline_status_api_v1_pipeline_status_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ]
+      }
+    },
+    "/api/health": {
+      "get": {
+        "tags": [
+          "root"
+        ],
+        "summary": "Root",
+        "description": "System health check.\nVerifies API status and database connectivity.",
+        "operationId": "root_api_health_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/sync/status": {
+      "get": {
+        "tags": [
+          "system"
+        ],
+        "summary": "Sync Status",
+        "description": "Recent ETL run records, optionally filtered by pipeline_name.",
+        "operationId": "sync_status_api_v1_sync_status_get",
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "pipeline_name",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Pipeline Name"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "default": 20,
+              "title": "Limit"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/": {
+      "get": {
+        "tags": [
+          "root"
+        ],
+        "summary": "Fallback Root",
+        "operationId": "fallback_root__get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "BenchmarkMasterCreate": {
+        "properties": {
+          "benchmark_code": {
+            "type": "string",
+            "title": "Benchmark Code"
+          },
+          "benchmark_name": {
+            "type": "string",
+            "title": "Benchmark Name"
+          },
+          "ticker": {
+            "type": "string",
+            "title": "Ticker"
+          },
+          "benchmark_type": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Benchmark Type"
+          },
+          "asset_class": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Asset Class"
+          },
+          "is_active": {
+            "type": "boolean",
+            "title": "Is Active",
+            "default": true
+          }
+        },
+        "type": "object",
+        "required": [
+          "benchmark_code",
+          "benchmark_name",
+          "ticker"
+        ],
+        "title": "BenchmarkMasterCreate"
+      },
+      "BenchmarkMasterRead": {
+        "properties": {
+          "benchmark_code": {
+            "type": "string",
+            "title": "Benchmark Code"
+          },
+          "benchmark_name": {
+            "type": "string",
+            "title": "Benchmark Name"
+          },
+          "ticker": {
+            "type": "string",
+            "title": "Ticker"
+          },
+          "benchmark_type": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Benchmark Type"
+          },
+          "asset_class": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Asset Class"
+          },
+          "is_active": {
+            "type": "boolean",
+            "title": "Is Active",
+            "default": true
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Updated At"
+          },
+          "metrics": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/BenchmarkMetricsRead"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "latest_close": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Latest Close"
+          },
+          "change_percent": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Change Percent"
+          }
+        },
+        "type": "object",
+        "required": [
+          "benchmark_code",
+          "benchmark_name",
+          "ticker",
+          "created_at",
+          "updated_at"
+        ],
+        "title": "BenchmarkMasterRead"
+      },
+      "BenchmarkMasterUpdate": {
+        "properties": {
+          "benchmark_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Benchmark Name"
+          },
+          "benchmark_type": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Benchmark Type"
+          },
+          "ticker": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ticker"
+          },
+          "asset_class": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Asset Class"
+          },
+          "is_active": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Is Active"
+          }
+        },
+        "type": "object",
+        "title": "BenchmarkMasterUpdate"
+      },
+      "BenchmarkMetricsRead": {
+        "properties": {
+          "benchmark_code": {
+            "type": "string",
+            "title": "Benchmark Code"
+          },
+          "current_nav": {
+            "type": "number",
+            "title": "Current Nav"
+          },
+          "nav_date": {
+            "type": "string",
+            "format": "date",
+            "title": "Nav Date"
+          },
+          "cagr_3year": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cagr 3Year"
+          },
+          "cagr_5year": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cagr 5Year"
+          },
+          "sortino_ratio": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sortino Ratio"
+          },
+          "sharpe_ratio": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sharpe Ratio"
+          },
+          "standard_deviation": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Standard Deviation"
+          },
+          "maximum_drawdown": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Maximum Drawdown"
+          },
+          "metrics_calculated_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Metrics Calculated At"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Updated At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "benchmark_code",
+          "current_nav",
+          "nav_date",
+          "metrics_calculated_at",
+          "updated_at"
+        ],
+        "title": "BenchmarkMetricsRead"
+      },
+      "BenchmarkNavHistoryRead": {
+        "properties": {
+          "benchmark_code": {
+            "type": "string",
+            "title": "Benchmark Code"
+          },
+          "nav_date": {
+            "type": "string",
+            "format": "date",
+            "title": "Nav Date"
+          },
+          "index_value": {
+            "type": "number",
+            "title": "Index Value"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "benchmark_code",
+          "nav_date",
+          "index_value",
+          "created_at"
+        ],
+        "title": "BenchmarkNavHistoryRead"
+      },
+      "BenchmarkPaginated": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/BenchmarkMasterRead"
+            },
+            "type": "array",
+            "title": "Items"
+          },
+          "total": {
+            "type": "integer",
+            "title": "Total"
+          }
+        },
+        "type": "object",
+        "required": [
+          "items",
+          "total"
+        ],
+        "title": "BenchmarkPaginated"
+      },
+      "Body_upload_benchmark_csv_api_v1_benchmark_navs__benchmark_code__upload_post": {
+        "properties": {
+          "file": {
+            "type": "string",
+            "format": "binary",
+            "title": "File"
+          }
+        },
+        "type": "object",
+        "required": [
+          "file"
+        ],
+        "title": "Body_upload_benchmark_csv_api_v1_benchmark_navs__benchmark_code__upload_post"
+      },
+      "BulkFundamentalScoreRequest": {
+        "properties": {
+          "symbols": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Symbols"
+          },
+          "period_type": {
+            "type": "string",
+            "title": "Period Type",
+            "default": "annual"
+          },
+          "score_version": {
+            "type": "string",
+            "title": "Score Version",
+            "default": "v1.0"
+          },
+          "recompute": {
+            "type": "boolean",
+            "title": "Recompute",
+            "default": false
+          }
+        },
+        "type": "object",
+        "title": "BulkFundamentalScoreRequest"
+      },
+      "BulkNavUpload": {
+        "properties": {
+          "data": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Data"
+          }
+        },
+        "type": "object",
+        "required": [
+          "data"
+        ],
+        "title": "BulkNavUpload"
+      },
+      "ComparisonResponse": {
+        "properties": {
+          "funds": {
+            "items": {
+              "$ref": "#/components/schemas/FundComparisonItem"
+            },
+            "type": "array",
+            "title": "Funds"
+          },
+          "ranking": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/RankingResult"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "warning": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Warning"
+          }
+        },
+        "type": "object",
+        "required": [
+          "funds"
+        ],
+        "title": "ComparisonResponse",
+        "description": "Unified response for multi-fund comparison metrics."
+      },
+      "FundComparisonItem": {
+        "properties": {
+          "scheme_code": {
+            "type": "string",
+            "title": "Scheme Code"
+          },
+          "fund_info": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/FundMasterRead"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "metrics": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/FundMetricsRead"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "type": "object",
+        "required": [
+          "scheme_code"
+        ],
+        "title": "FundComparisonItem",
+        "description": "Container for fund master details and computed metrics for comparison."
+      },
+      "FundMasterCreate": {
+        "properties": {
+          "scheme_code": {
+            "type": "string",
+            "title": "Scheme Code"
+          },
+          "scheme_name": {
+            "type": "string",
+            "title": "Scheme Name"
+          },
+          "amc_name": {
+            "type": "string",
+            "title": "Amc Name"
+          },
+          "inception_date": {
+            "type": "string",
+            "format": "date",
+            "title": "Inception Date"
+          },
+          "plan_type": {
+            "type": "string",
+            "title": "Plan Type"
+          },
+          "scheme_category": {
+            "type": "string",
+            "title": "Scheme Category"
+          },
+          "scheme_subcategory": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Scheme Subcategory"
+          },
+          "benchmark_index_code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Benchmark Index Code"
+          },
+          "isin": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Isin"
+          },
+          "manager_experience": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Manager Experience"
+          },
+          "is_active": {
+            "type": "boolean",
+            "title": "Is Active",
+            "default": true
+          }
+        },
+        "type": "object",
+        "required": [
+          "scheme_code",
+          "scheme_name",
+          "amc_name",
+          "inception_date",
+          "plan_type",
+          "scheme_category"
+        ],
+        "title": "FundMasterCreate"
+      },
+      "FundMasterListResponse": {
+        "properties": {
+          "total": {
+            "type": "integer",
+            "title": "Total"
+          },
+          "skip": {
+            "type": "integer",
+            "title": "Skip"
+          },
+          "limit": {
+            "type": "integer",
+            "title": "Limit"
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/FundMasterRead"
+            },
+            "type": "array",
+            "title": "Items"
+          }
+        },
+        "type": "object",
+        "required": [
+          "total",
+          "skip",
+          "limit",
+          "items"
+        ],
+        "title": "FundMasterListResponse"
+      },
+      "FundMasterRead": {
+        "properties": {
+          "scheme_code": {
+            "type": "string",
+            "title": "Scheme Code"
+          },
+          "scheme_name": {
+            "type": "string",
+            "title": "Scheme Name"
+          },
+          "amc_name": {
+            "type": "string",
+            "title": "Amc Name"
+          },
+          "inception_date": {
+            "type": "string",
+            "format": "date",
+            "title": "Inception Date"
+          },
+          "plan_type": {
+            "type": "string",
+            "title": "Plan Type"
+          },
+          "scheme_category": {
+            "type": "string",
+            "title": "Scheme Category"
+          },
+          "scheme_subcategory": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Scheme Subcategory"
+          },
+          "benchmark_index_code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Benchmark Index Code"
+          },
+          "isin": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Isin"
+          },
+          "manager_experience": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Manager Experience"
+          },
+          "is_active": {
+            "type": "boolean",
+            "title": "Is Active",
+            "default": true
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Updated At"
+          },
+          "metrics": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/FundMetricsRead"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "type": "object",
+        "required": [
+          "scheme_code",
+          "scheme_name",
+          "amc_name",
+          "inception_date",
+          "plan_type",
+          "scheme_category",
+          "created_at",
+          "updated_at"
+        ],
+        "title": "FundMasterRead"
+      },
+      "FundMasterUpdate": {
+        "properties": {
+          "scheme_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Scheme Name"
+          },
+          "amc_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Amc Name"
+          },
+          "inception_date": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Inception Date"
+          },
+          "plan_type": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Plan Type"
+          },
+          "scheme_category": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Scheme Category"
+          },
+          "scheme_subcategory": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Scheme Subcategory"
+          },
+          "benchmark_index_code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Benchmark Index Code"
+          },
+          "isin": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Isin"
+          },
+          "manager_experience": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Manager Experience"
+          },
+          "is_active": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Is Active"
+          }
+        },
+        "type": "object",
+        "title": "FundMasterUpdate"
+      },
+      "FundMetricsRead": {
+        "properties": {
+          "aum_in_crores": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Aum In Crores"
+          },
+          "expense_ratio": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Expense Ratio"
+          },
+          "fund_rating": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Fund Rating"
+          },
+          "volatility": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Volatility"
+          },
+          "cagr_3year": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cagr 3Year"
+          },
+          "cagr_5year": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cagr 5Year"
+          },
+          "absolute_return_1y": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Absolute Return 1Y"
+          },
+          "absolute_return_3y": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Absolute Return 3Y"
+          },
+          "absolute_return_5y": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Absolute Return 5Y"
+          },
+          "absolute_return_10y": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Absolute Return 10Y"
+          },
+          "short_term_return_6m": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Short Term Return 6M"
+          },
+          "upside_capture": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Upside Capture"
+          },
+          "downside_capture": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Downside Capture"
+          },
+          "sortino_ratio": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sortino Ratio"
+          },
+          "sharpe_ratio": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sharpe Ratio"
+          },
+          "alpha": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Alpha"
+          },
+          "beta": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Beta"
+          },
+          "standard_deviation": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Standard Deviation"
+          },
+          "maximum_drawdown": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Maximum Drawdown"
+          },
+          "tracking_error": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Tracking Error"
+          },
+          "information_ratio": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Information Ratio"
+          },
+          "calculation_period_start_date": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Calculation Period Start Date"
+          },
+          "calculation_period_end_date": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Calculation Period End Date"
+          },
+          "has_sufficient_data": {
+            "type": "boolean",
+            "title": "Has Sufficient Data",
+            "default": true
+          },
+          "data_completeness_percentage": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Data Completeness Percentage"
+          },
+          "final_verdict": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Final Verdict"
+          },
+          "scheme_code": {
+            "type": "string",
+            "title": "Scheme Code"
+          },
+          "current_nav": {
+            "type": "number",
+            "title": "Current Nav"
+          },
+          "nav_date": {
+            "type": "string",
+            "format": "date",
+            "title": "Nav Date"
+          },
+          "metrics_calculated_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Metrics Calculated At"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Updated At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "scheme_code",
+          "current_nav",
+          "nav_date",
+          "metrics_calculated_at",
+          "updated_at"
+        ],
+        "title": "FundMetricsRead"
+      },
+      "FundMetricsReadWithoutNav": {
+        "properties": {
+          "aum_in_crores": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Aum In Crores"
+          },
+          "expense_ratio": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Expense Ratio"
+          },
+          "fund_rating": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Fund Rating"
+          },
+          "volatility": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Volatility"
+          },
+          "cagr_3year": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cagr 3Year"
+          },
+          "cagr_5year": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cagr 5Year"
+          },
+          "absolute_return_1y": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Absolute Return 1Y"
+          },
+          "absolute_return_3y": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Absolute Return 3Y"
+          },
+          "absolute_return_5y": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Absolute Return 5Y"
+          },
+          "absolute_return_10y": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Absolute Return 10Y"
+          },
+          "short_term_return_6m": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Short Term Return 6M"
+          },
+          "upside_capture": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Upside Capture"
+          },
+          "downside_capture": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Downside Capture"
+          },
+          "sortino_ratio": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sortino Ratio"
+          },
+          "sharpe_ratio": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sharpe Ratio"
+          },
+          "alpha": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Alpha"
+          },
+          "beta": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Beta"
+          },
+          "standard_deviation": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Standard Deviation"
+          },
+          "maximum_drawdown": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Maximum Drawdown"
+          },
+          "tracking_error": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Tracking Error"
+          },
+          "information_ratio": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Information Ratio"
+          },
+          "calculation_period_start_date": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Calculation Period Start Date"
+          },
+          "calculation_period_end_date": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Calculation Period End Date"
+          },
+          "has_sufficient_data": {
+            "type": "boolean",
+            "title": "Has Sufficient Data",
+            "default": true
+          },
+          "data_completeness_percentage": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Data Completeness Percentage"
+          },
+          "final_verdict": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Final Verdict"
+          },
+          "scheme_code": {
+            "type": "string",
+            "title": "Scheme Code"
+          },
+          "metrics_calculated_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Metrics Calculated At"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Updated At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "scheme_code",
+          "metrics_calculated_at",
+          "updated_at"
+        ],
+        "title": "FundMetricsReadWithoutNav"
+      },
+      "FundMetricsResponse": {
+        "properties": {
+          "metrics": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/FundMetricsReadWithoutNav"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "sync_job_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sync Job Id"
+          },
+          "sync_status": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sync Status"
+          },
+          "sync_message": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sync Message"
+          }
+        },
+        "type": "object",
+        "title": "FundMetricsResponse"
+      },
+      "FundRanking": {
+        "properties": {
+          "scheme_code": {
+            "type": "string",
+            "title": "Scheme Code"
+          },
+          "rank": {
+            "type": "integer",
+            "title": "Rank"
+          },
+          "composite_score": {
+            "type": "number",
+            "title": "Composite Score"
+          },
+          "group_scores": {
+            "additionalProperties": {
+              "type": "number"
+            },
+            "type": "object",
+            "title": "Group Scores"
+          },
+          "wins": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Wins",
+            "default": []
+          },
+          "is_recommended": {
+            "type": "boolean",
+            "title": "Is Recommended",
+            "default": false
+          },
+          "recommendation_reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Recommendation Reason"
+          }
+        },
+        "type": "object",
+        "required": [
+          "scheme_code",
+          "rank",
+          "composite_score",
+          "group_scores"
+        ],
+        "title": "FundRanking",
+        "description": "Individual fund's ranking in a comparison."
+      },
+      "HTTPValidationError": {
+        "properties": {
+          "detail": {
+            "items": {
+              "$ref": "#/components/schemas/ValidationError"
+            },
+            "type": "array",
+            "title": "Detail"
+          }
+        },
+        "type": "object",
+        "title": "HTTPValidationError"
+      },
+      "LoginRequest": {
+        "properties": {
+          "username": {
+            "type": "string",
+            "title": "Username"
+          },
+          "password": {
+            "type": "string",
+            "title": "Password"
+          }
+        },
+        "type": "object",
+        "required": [
+          "username",
+          "password"
+        ],
+        "title": "LoginRequest",
+        "description": "Body for POST /api/v1/auth/login."
+      },
+      "RankingResult": {
+        "properties": {
+          "rankings": {
+            "items": {
+              "$ref": "#/components/schemas/FundRanking"
+            },
+            "type": "array",
+            "title": "Rankings"
+          },
+          "comparison_summary": {
+            "type": "string",
+            "title": "Comparison Summary"
+          }
+        },
+        "type": "object",
+        "required": [
+          "rankings",
+          "comparison_summary"
+        ],
+        "title": "RankingResult",
+        "description": "Full ranking output from the comparison engine."
+      },
+      "ScoringStateSchema": {
+        "properties": {
+          "stock_id": {
+            "type": "integer",
+            "title": "Stock Id"
+          },
+          "symbol": {
+            "type": "string",
+            "title": "Symbol"
+          },
+          "period_type": {
+            "type": "string",
+            "title": "Period Type"
+          },
+          "score_version": {
+            "type": "string",
+            "title": "Score Version"
+          },
+          "statements_data": {
+            "additionalProperties": {
+              "items": {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              "type": "array"
+            },
+            "type": "object",
+            "title": "Statements Data",
+            "default": {}
+          },
+          "pl_results": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pl Results"
+          },
+          "bs_results": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Bs Results"
+          },
+          "cf_results": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cf Results"
+          },
+          "composite_score": {
+            "type": "number",
+            "title": "Composite Score",
+            "default": 0.0
+          },
+          "reasoning_label": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reasoning Label"
+          },
+          "reasoning_text": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reasoning Text"
+          },
+          "status": {
+            "type": "string",
+            "title": "Status"
+          },
+          "error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error"
+          },
+          "logs": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Logs",
+            "default": []
+          }
+        },
+        "type": "object",
+        "required": [
+          "stock_id",
+          "symbol",
+          "period_type",
+          "score_version",
+          "status"
+        ],
+        "title": "ScoringStateSchema",
+        "description": "Pydantic representation of the LangGraph ScoringState."
+      },
+      "ScreenerResponse": {
+        "properties": {
+          "results": {
+            "items": {
+              "$ref": "#/components/schemas/StockScreenerResult"
+            },
+            "type": "array",
+            "title": "Results"
+          },
+          "total": {
+            "type": "integer",
+            "title": "Total"
+          },
+          "page": {
+            "type": "integer",
+            "title": "Page"
+          },
+          "limit": {
+            "type": "integer",
+            "title": "Limit"
+          },
+          "filters_applied": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Filters Applied"
+          }
+        },
+        "type": "object",
+        "required": [
+          "results",
+          "total",
+          "page",
+          "limit",
+          "filters_applied"
+        ],
+        "title": "ScreenerResponse"
+      },
+      "StockListResponse": {
+        "properties": {
+          "results": {
+            "items": {
+              "$ref": "#/components/schemas/StockListResult"
+            },
+            "type": "array",
+            "title": "Results"
+          },
+          "total": {
+            "type": "integer",
+            "title": "Total"
+          },
+          "page": {
+            "type": "integer",
+            "title": "Page"
+          },
+          "limit": {
+            "type": "integer",
+            "title": "Limit"
+          }
+        },
+        "type": "object",
+        "required": [
+          "results",
+          "total",
+          "page",
+          "limit"
+        ],
+        "title": "StockListResponse"
+      },
+      "StockListResult": {
+        "properties": {
+          "id": {
+            "type": "integer",
+            "title": "Id"
+          },
+          "symbol": {
+            "type": "string",
+            "title": "Symbol"
+          },
+          "company_name": {
+            "type": "string",
+            "title": "Company Name"
+          },
+          "sector": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sector"
+          },
+          "industry": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Industry"
+          },
+          "summary": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Summary"
+          },
+          "market_cap_cat": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Market Cap Cat"
+          },
+          "latest_close": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Latest Close"
+          },
+          "latest_date": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Latest Date"
+          },
+          "rating_label": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Rating Label"
+          },
+          "total_score": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Total Score"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "symbol",
+          "company_name"
+        ],
+        "title": "StockListResult"
+      },
+      "StockScreenerResult": {
+        "properties": {
+          "symbol": {
+            "type": "string",
+            "title": "Symbol"
+          },
+          "company_name": {
+            "type": "string",
+            "title": "Company Name"
+          },
+          "sector": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sector"
+          },
+          "industry": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Industry"
+          },
+          "summary": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Summary"
+          },
+          "market_cap_cat": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Market Cap Cat"
+          },
+          "latest_close": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Latest Close"
+          },
+          "latest_date": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Latest Date"
+          },
+          "roe": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Roe"
+          },
+          "roce": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Roce"
+          },
+          "pat_margin": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pat Margin"
+          },
+          "pe_ratio": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pe Ratio"
+          },
+          "pb_ratio": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pb Ratio"
+          },
+          "debt_equity": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Debt Equity"
+          },
+          "revenue_growth": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Revenue Growth"
+          },
+          "pat_growth": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pat Growth"
+          },
+          "eps": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Eps"
+          },
+          "interest_cov": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Interest Cov"
+          },
+          "cfo_to_pat": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cfo To Pat"
+          },
+          "market_cap": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Market Cap"
+          },
+          "low_52w": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Low 52W"
+          },
+          "high_52w": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "High 52W"
+          },
+          "revenue_per_share": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Revenue Per Share"
+          },
+          "dividend_yield": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Dividend Yield"
+          },
+          "rating_label": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Rating Label"
+          },
+          "total_score": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Total Score"
+          },
+          "ev_ebitda": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ev Ebitda"
+          },
+          "roic": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Roic"
+          },
+          "fcf_yield": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Fcf Yield"
+          },
+          "piotroski_f_score": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Piotroski F Score"
+          },
+          "altman_z_score": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Altman Z Score"
+          },
+          "beta_1y": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Beta 1Y"
+          },
+          "rs_6m_vs_nifty": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Rs 6M Vs Nifty"
+          },
+          "pct_from_52w_high": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pct From 52W High"
+          },
+          "pct_from_52w_low": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pct From 52W Low"
+          },
+          "volume_ratio": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Volume Ratio"
+          }
+        },
+        "type": "object",
+        "required": [
+          "symbol",
+          "company_name"
+        ],
+        "title": "StockScreenerResult"
+      },
+      "TokenResponse": {
+        "properties": {
+          "access_token": {
+            "type": "string",
+            "title": "Access Token"
+          },
+          "token_type": {
+            "type": "string",
+            "title": "Token Type",
+            "default": "bearer"
+          },
+          "expires_in": {
+            "type": "integer",
+            "title": "Expires In"
+          }
+        },
+        "type": "object",
+        "required": [
+          "access_token",
+          "expires_in"
+        ],
+        "title": "TokenResponse",
+        "description": "Response for /auth/login and /auth/refresh."
+      },
+      "ValidationError": {
+        "properties": {
+          "loc": {
+            "items": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "integer"
+                }
+              ]
+            },
+            "type": "array",
+            "title": "Location"
+          },
+          "msg": {
+            "type": "string",
+            "title": "Message"
+          },
+          "type": {
+            "type": "string",
+            "title": "Error Type"
+          }
+        },
+        "type": "object",
+        "required": [
+          "loc",
+          "msg",
+          "type"
+        ],
+        "title": "ValidationError"
+      }
+    },
+    "securitySchemes": {
+      "OAuth2PasswordBearer": {
+        "type": "oauth2",
+        "flows": {
+          "password": {
+            "scopes": {},
+            "tokenUrl": "/api/v1/auth/login"
+          }
+        }
+      }
+    }
+  }
+}
