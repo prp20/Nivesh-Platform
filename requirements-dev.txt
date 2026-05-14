@@ -1,5 +1,5 @@
-# Root dev install — links all packages in editable mode
+# Root dev install — installs shared package + all app dependencies
 # Usage: pip install -r requirements-dev.txt
 -e ./nivesh-shared
--e ./nivesh-server
-# -e ./nivesh-client  # Uncomment after Phase 4 adds client requirements.txt
+-r ./nivesh-server/requirements.txt
+# -r ./nivesh-client/requirements.txt  # Uncomment after Phase 4 adds client requirements.txt

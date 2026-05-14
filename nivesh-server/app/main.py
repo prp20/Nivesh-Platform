@@ -17,7 +17,14 @@ from .routers import funds, benchmarks, navs, benchmark_navs, metrics, sync, aut
 from . import crud as _crud, security
 from .database import engine, Base
 from .rate_limiting import get_rate_limiter
-from pipeline.scheduler import configure_scheduler, scheduler
+
+try:
+    from pipeline.scheduler import configure_scheduler, scheduler as _scheduler
+    _HAS_SCHEDULER = True
+except ModuleNotFoundError:
+    _HAS_SCHEDULER = False
+    configure_scheduler = lambda: None  # noqa: E731
+    _scheduler = None
 
 logger = logging.getLogger(__name__)
 
@@ -49,10 +56,13 @@ async def lifespan(app: FastAPI):
     except Exception as e:
         logger.warning(f"[startup] DB connection failed on startup: {e}")
 
-    # Configure and start scheduler
-    configure_scheduler()
-    scheduler.start()
-    logger.info("Scheduler started successfully")
+    # Configure and start scheduler (Phase 3 — skipped if pipeline module absent)
+    if _HAS_SCHEDULER:
+        configure_scheduler()
+        _scheduler.start()
+        logger.info("Scheduler started successfully")
+    else:
+        logger.info("Scheduler skipped — pipeline module not yet available (Phase 3)")
 
     # Export OpenAPI spec to docs/ in development mode
     if settings.ENVIRONMENT == "development":
@@ -69,7 +79,8 @@ async def lifespan(app: FastAPI):
 
     yield
     # Shutdown logic
-    scheduler.shutdown(wait=False)
+    if _HAS_SCHEDULER and _scheduler is not None:
+        _scheduler.shutdown(wait=False)
     await close_db_pool()
 
     logger.info("Scheduler shut down")
