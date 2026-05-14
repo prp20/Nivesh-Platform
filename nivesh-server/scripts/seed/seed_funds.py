@@ -26,7 +26,7 @@ except ImportError:
     sys.exit(1)
 
 DATA_DIR = Path(__file__).parent.parent.parent / "data"
-FUNDS_CSV = DATA_DIR / "scheme_master_with_benchmark.csv"
+FUNDS_CSV = DATA_DIR / "new_equity_only_updated.csv"
 
 
 def get_conn():

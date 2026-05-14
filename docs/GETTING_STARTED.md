@@ -120,47 +120,64 @@ alembic history --verbose
 
 ## 5. Seed the Database
 
-Seed scripts read from CSV files in `nivesh-server/data/` and upsert into the database using the Supavisor pooler URL (port 6543).
+Seeding happens in two layers:
+- **Master data + benchmark NAV** — fast, from CSV files and Yahoo Finance (~5 min)
+- **Historical data** — slow, from AMFI and Yahoo Finance (~60–90 min total)
 
-> **Dependency:** `seed_benchmark_nav.py` fetches from Yahoo Finance — install `yfinance` first:
+> **Dependencies:** Install before running any seed:
 > ```bash
-> pip install "yfinance>=0.2.40"
+> pip install "yfinance>=0.2.40" mftool tqdm
 > ```
 
 ```bash
 # From nivesh-server/
 export DATABASE_URL="postgresql://postgres.[ref]:[password]@aws-0-ap-southeast-1.pooler.supabase.com:6543/postgres"
-
-# Run all seeds in dependency order (benchmarks → stocks → funds → benchmark NAV history)
-python scripts/seed/run_all_seeds.py
-
-# Optional: limit how far back benchmark NAV history is fetched (default: max)
-python scripts/seed/run_all_seeds.py --period 5y
 ```
 
-### What gets seeded
-
-| Script | Table | Source | Rows |
-|--------|-------|--------|------|
-| `seed_benchmarks.py` | `benchmark_master` | `data/indices.csv` | ~10 indices |
-| `seed_stocks.py` | `stocks` | `data/stocks.csv` + `data/indices.csv` | ~500+ equities + indices |
-| `seed_funds.py` | `fund_master` | `data/scheme_master_with_benchmark.csv` | ~2518 funds |
-| `seed_benchmark_nav.py` | `benchmark_nav_history` | Yahoo Finance (yfinance) | years of daily index NAV |
-
-### Preview without writing (dry run)
+### Option A — Full historical load (recommended, one command)
 
 ```bash
-python scripts/seed/run_all_seeds.py --dry-run
+python scripts/seed_historical_data.py
 ```
 
-### Run individual seeds
+This runs all three phases in order:
+
+| Phase | Script | Tables | Source | Runtime |
+|-------|--------|--------|--------|---------|
+| 1a | `seed_benchmarks.py` | `benchmark_master` | `data/indices.csv` | <1 min |
+| 1b | `seed_stocks.py` | `stocks` | `data/stocks.csv` | <1 min |
+| 1c | `seed_funds.py` | `fund_master` | `data/scheme_master_with_benchmark.csv` | <1 min |
+| 1d | `seed_benchmark_nav.py` | `benchmark_nav_history` | Yahoo Finance | ~2 min |
+| 2  | fund NAV sync | `fund_nav_history`, `fund_metrics` | AMFI (mftool) | ~30–60 min |
+| 3  | `seed_stock_prices.py` | `price_data` | Yahoo Finance | ~20–40 min |
+
+**Flags:**
 
 ```bash
-python scripts/seed/seed_benchmarks.py
-python scripts/seed/seed_stocks.py
-python scripts/seed/seed_funds.py
-python scripts/seed/seed_benchmark_nav.py          # fetches from Yahoo Finance
-python scripts/seed/seed_benchmark_nav.py --period 5y  # limit to last 5 years
+# Limit history window (faster for dev)
+python scripts/seed_historical_data.py --nav-period 5y --price-period 2y --fund-period 1y
+
+# Skip phases already completed
+python scripts/seed_historical_data.py --skip-master
+python scripts/seed_historical_data.py --skip-master --skip-nav   # prices only
+
+# Preview row counts without writing
+python scripts/seed_historical_data.py --dry-run
+```
+
+### Option B — Step by step
+
+```bash
+# Phase 1: Master data + benchmark NAV history (~5 min)
+python scripts/seed/run_all_seeds.py --period max
+
+# Phase 2: Fund NAV history + metrics (~30–60 min)
+python scripts/sync_data.py           # all history
+python scripts/sync_data.py 1y        # last year only (faster for dev)
+
+# Phase 3: Stock price history (~20–40 min)
+python scripts/seed/seed_stock_prices.py --period 5y
+python scripts/seed/seed_stock_prices.py --period 2y  # faster for dev
 ```
 
 ---
@@ -175,10 +192,12 @@ In the Supabase dashboard, open **Table Editor** and confirm:
 
 You can also run SQL directly in **SQL Editor**:
 ```sql
-SELECT COUNT(*) FROM benchmark_master;
-SELECT COUNT(*) FROM stocks;
-SELECT COUNT(*) FROM fund_master;
-SELECT COUNT(*) FROM benchmark_nav_history;
+SELECT COUNT(*) FROM benchmark_master;       -- ~10
+SELECT COUNT(*) FROM stocks;                 -- ~500
+SELECT COUNT(*) FROM fund_master;            -- ~2500
+SELECT COUNT(*) FROM benchmark_nav_history;  -- tens of thousands
+SELECT COUNT(*) FROM fund_nav_history;       -- millions (after Phase 2)
+SELECT COUNT(*) FROM price_data;             -- millions (after Phase 3)
 SELECT COUNT(*) FROM etl_runs;
 ```
 
