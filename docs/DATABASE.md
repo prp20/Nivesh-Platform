@@ -67,8 +67,6 @@ Unified ETL job tracking. Replaces the old `sync_jobs` (MF) and `pipeline_audit`
 
 Partial unique index prevents duplicate `RUNNING` jobs for the same `(pipeline_name, entity_id)`.
 
-> **BLOCKER-001:** App code in `crud.py`, `routers/sync.py`, `app/sync.py`, and `backend/pipeline/audit.py` still references the old `sync_jobs` / `pipeline_audit` tables. See `BLOCKERS.md` for the full column mapping.
-
 ---
 
 ### Mutual Funds

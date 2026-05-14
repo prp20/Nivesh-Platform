@@ -121,7 +121,7 @@ async def trigger_price_backfill(
     return {
         "message": f"Price backfill ({period}) started in background",
         "job": "price_backfill",
-        "warning": "This is a long-running operation. Monitor pipeline_audit table for status.",
+        "warning": "This is a long-running operation. Monitor etl_runs table for status.",
     }
 
 
@@ -572,8 +572,9 @@ async def get_pipeline_status(admin: str = Depends(require_admin)):
     """Shows last run time, status, and live record counts (progress) for all pipeline jobs."""
     from app.database import raw_connection
     sql = """
-        SELECT DISTINCT ON (job_name)
-            job_name,
+        SELECT DISTINCT ON (pipeline_name)
+            pipeline_name AS job_name,
+            entity_id,
             status,
             started_at,
             ended_at,
@@ -581,8 +582,8 @@ async def get_pipeline_status(admin: str = Depends(require_admin)):
             records_out,
             EXTRACT(EPOCH FROM (COALESCE(ended_at, NOW()) - started_at))::int AS duration_sec,
             error_msg
-        FROM pipeline_audit
-        ORDER BY job_name, started_at DESC
+        FROM etl_runs
+        ORDER BY pipeline_name, started_at DESC
     """
     rows = []
     try:

@@ -5,21 +5,6 @@ from sqlalchemy.orm import relationship
 import uuid
 from .database import Base
 
-class SyncJob(Base):
-    """Tracks the progress of a background synchronization task"""
-    __tablename__ = "sync_jobs"
-    
-    id = Column(String(50), primary_key=True, default=lambda: str(uuid.uuid4()))
-    scheme_code = Column(String(50), ForeignKey("fund_master.scheme_code", ondelete="CASCADE"), nullable=False)
-    status = Column(String(20), default="RUNNING")  # RUNNING, COMPLETED, FAILED
-    message = Column(String(500))
-    created_at = Column(TIMESTAMP, server_default=func.now())
-    updated_at = Column(TIMESTAMP, server_default=func.now(), onupdate=func.now())
-
-    __table_args__ = (
-        Index('uq_running_sync_job', 'scheme_code', unique=True, postgresql_where=text("status = 'RUNNING'")),
-    )
-
 class FundMaster(Base):
     """Master data for mutual fund schemes"""
     __tablename__ = "fund_master"
@@ -58,8 +43,8 @@ class FundMaster(Base):
     isin = Column(String(50), unique=True, index=True)
     manager_experience = Column(String(500))
     is_active = Column(Boolean, default=True)
-    created_at = Column(TIMESTAMP, server_default=func.now())
-    updated_at = Column(TIMESTAMP, server_default=func.now(), onupdate=func.now())
+    created_at = Column(TIMESTAMP(timezone=True), server_default=func.now())
+    updated_at = Column(TIMESTAMP(timezone=True), server_default=func.now(), onupdate=func.now())
 
     # Relationships
     metrics = relationship("FundMetrics", back_populates="fund", uselist=False)
@@ -75,8 +60,8 @@ class BenchmarkMaster(Base):
     benchmark_type = Column(String(100))
     asset_class = Column(String(50))
     is_active = Column(Boolean, default=True)
-    created_at = Column(TIMESTAMP, server_default=func.now())
-    updated_at = Column(TIMESTAMP, server_default=func.now(), onupdate=func.now())
+    created_at = Column(TIMESTAMP(timezone=True), server_default=func.now())
+    updated_at = Column(TIMESTAMP(timezone=True), server_default=func.now(), onupdate=func.now())
 
     # Relationships
     metrics = relationship("BenchmarkMetrics", back_populates="benchmark", uselist=False)
@@ -92,7 +77,7 @@ class FundNavHistory(Base):
     scheme_code = Column(String(50), ForeignKey("fund_master.scheme_code", ondelete="CASCADE"), primary_key=True)
     nav_date = Column(Date, primary_key=True)
     nav_value = Column(Numeric(15, 4), nullable=False)
-    created_at = Column(TIMESTAMP, server_default=func.now())
+    created_at = Column(TIMESTAMP(timezone=True), server_default=func.now())
 
 
 class BenchmarkNavHistory(Base):
@@ -105,7 +90,7 @@ class BenchmarkNavHistory(Base):
     benchmark_code = Column(String(50), ForeignKey("benchmark_master.benchmark_code", ondelete="CASCADE"), primary_key=True)
     nav_date = Column(Date, primary_key=True)
     index_value = Column(Numeric(15, 4), nullable=False)
-    created_at = Column(TIMESTAMP, server_default=func.now())
+    created_at = Column(TIMESTAMP(timezone=True), server_default=func.now())
 
 
 class BenchmarkMetrics(Base):
@@ -121,8 +106,8 @@ class BenchmarkMetrics(Base):
     sharpe_ratio = Column(Numeric(10, 4))
     standard_deviation = Column(Numeric(10, 4))
     maximum_drawdown = Column(Numeric(10, 4))
-    metrics_calculated_at = Column(TIMESTAMP, server_default=func.now())
-    updated_at = Column(TIMESTAMP, server_default=func.now(), onupdate=func.now())
+    metrics_calculated_at = Column(TIMESTAMP(timezone=True), server_default=func.now())
+    updated_at = Column(TIMESTAMP(timezone=True), server_default=func.now(), onupdate=func.now())
 
     # Relationships
     benchmark = relationship("BenchmarkMaster", back_populates="metrics")
@@ -156,13 +141,13 @@ class FundMetrics(Base):
     maximum_drawdown = Column(Numeric(10, 4))
     tracking_error = Column(Numeric(10, 4))
     information_ratio = Column(Numeric(10, 4))
-    metrics_calculated_at = Column(TIMESTAMP, server_default=func.now())
+    metrics_calculated_at = Column(TIMESTAMP(timezone=True), server_default=func.now())
     calculation_period_start_date = Column(Date)
     calculation_period_end_date = Column(Date)
     has_sufficient_data = Column(Boolean, default=True)
     data_completeness_percentage = Column(Numeric(5, 2))
     final_verdict = Column(String(1000))
-    updated_at = Column(TIMESTAMP, server_default=func.now(), onupdate=func.now())
+    updated_at = Column(TIMESTAMP(timezone=True), server_default=func.now(), onupdate=func.now())
 
     # Relationships
     fund = relationship("FundMaster", back_populates="metrics")
@@ -390,19 +375,54 @@ class StockRating(Base):
     score_breakdown_   = Column("score_breakdown", JSONB)
 
 
-class PipelineAudit(Base):
-    __tablename__ = "pipeline_audit"
+class EtlRun(Base):
+    """
+    Unified ETL run log — replaces SyncJob (MF) and PipelineAudit (stocks).
 
-    id          = Column(Integer, primary_key=True)
-    job_name    = Column(String(60), nullable=False)
-    stock_id    = Column(Integer, ForeignKey("stocks.id"))
-    status      = Column(String(10), nullable=False)
-    started_at  = Column(TIMESTAMP(timezone=True), server_default=func.now())
-    ended_at    = Column(TIMESTAMP(timezone=True))
-    records_in  = Column(Integer, default=0)
-    records_out = Column(Integer, default=0)
-    error_msg   = Column(Text)
-    metadata_   = Column("metadata", JSONB)
+    One row per pipeline execution. pipeline_name identifies the job type;
+    entity_id is the scheme_code (MF jobs) or stock symbol (stock jobs).
+    Market-wide jobs (e.g. 'fund_metrics_all') leave entity_id as NULL.
+    """
+    __tablename__ = "etl_runs"
+
+    __table_args__ = (
+        # Prevent two concurrent RUNNING jobs for the same pipeline + entity.
+        Index(
+            "uq_etl_runs_running",
+            "pipeline_name", "entity_id",
+            unique=True,
+            postgresql_where=text("status = 'RUNNING'"),
+        ),
+        Index("ix_etl_runs_pipeline_started", "pipeline_name", "started_at"),
+        Index("ix_etl_runs_status", "status", "started_at"),
+    )
+
+    id            = Column(BigInteger, primary_key=True, autoincrement=True)
+    pipeline_name = Column(String(60), nullable=False)
+    entity_id     = Column(String(50), nullable=True)   # scheme_code / symbol / None
+    status        = Column(String(10), nullable=False, default="RUNNING")
+    # RUNNING | COMPLETED | FAILED | PARTIAL
+    triggered_by  = Column(String(20), nullable=False, default="scheduler")
+    # scheduler | manual | backfill
+    started_at    = Column(TIMESTAMP(timezone=True), server_default=func.now())
+    ended_at      = Column(TIMESTAMP(timezone=True), nullable=True)
+    records_in    = Column(Integer, nullable=False, default=0)
+    records_out   = Column(Integer, nullable=False, default=0)
+    error_msg     = Column(Text, nullable=True)
+    metadata_     = Column("metadata", JSONB, nullable=True)
+
+
+class AdminUser(Base):
+    """Admin users for the Nivesh platform."""
+    __tablename__ = "admin_users"
+
+    id               = Column(BigInteger, primary_key=True, autoincrement=True)
+    username         = Column(String(50), nullable=False, unique=True)
+    password_hash    = Column(Text, nullable=False)
+    is_active        = Column(Boolean, nullable=False, default=True)
+    created_at       = Column(TIMESTAMP(timezone=True), server_default=func.now())
+    updated_at       = Column(TIMESTAMP(timezone=True), server_default=func.now(),
+                              onupdate=func.now())
 
 
 class FundamentalScore(Base):

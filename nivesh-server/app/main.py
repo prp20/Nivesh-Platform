@@ -2,18 +2,19 @@ from contextlib import asynccontextmanager
 from pathlib import Path
 import logging
 from datetime import datetime, timezone
-from fastapi import FastAPI, Request
+from typing import Optional
+from fastapi import FastAPI, Request, Depends
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy import text
+from sqlalchemy.ext.asyncio import AsyncSession
 from jose import jwt, JWTError
 
-
 from .config import settings
-from .database import engine, init_db_pool, close_db_pool
+from .database import engine, get_db, init_db_pool, close_db_pool
 from .routers import funds, benchmarks, navs, benchmark_navs, metrics, sync, auth, stocks, screener, pipeline
-
+from . import crud as _crud, security
 from .database import engine, Base
 from .rate_limiting import get_rate_limiter
 from pipeline.scheduler import configure_scheduler, scheduler
@@ -38,39 +39,33 @@ async def lifespan(app: FastAPI):
     if groq_key:
         os.environ["GROQ_API_KEY"] = groq_key
 
-    # Startup logic
-    async with engine.begin() as conn:
-        # Mutate DB state: create extensions, tables, and audit logs.
-        await conn.execute(text("CREATE EXTENSION IF NOT EXISTS pg_trgm;"))
-        await conn.run_sync(Base.metadata.create_all)
-        
-        # Create legacy audit_log table if it doesn't exist
-        await conn.execute(text("""
-            CREATE TABLE IF NOT EXISTS audit_log (
-                id BIGSERIAL PRIMARY KEY,
-                timestamp TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
-                action VARCHAR(100) NOT NULL,
-                user_account VARCHAR(100) NOT NULL,
-                resource VARCHAR(500) NOT NULL,
-                details JSONB,
-                status VARCHAR(20) NOT NULL,
-                error_message TEXT,
-                created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
-            );
-        """))
-        await conn.execute(text("""
-            CREATE INDEX IF NOT EXISTS ix_audit_log_user_timestamp
-                ON audit_log(user_account, created_at DESC);
-        """))
-        await conn.execute(text("""
-            CREATE INDEX IF NOT EXISTS ix_audit_log_action
-                ON audit_log(action, created_at DESC);
-        """))
+    # Startup: verify DB connectivity — fail fast if Supabase is unreachable.
+    # Table schema is managed by Alembic migrations (alembic upgrade head).
+    # Do NOT call Base.metadata.create_all here.
+    try:
+        async with engine.begin() as conn:
+            await conn.execute(text("SELECT 1"))
+        logger.info(f"[startup] Supabase connection OK — env={settings.ENVIRONMENT}")
+    except Exception as e:
+        logger.warning(f"[startup] DB connection failed on startup: {e}")
 
     # Configure and start scheduler
     configure_scheduler()
     scheduler.start()
     logger.info("Scheduler started successfully")
+
+    # Export OpenAPI spec to docs/ in development mode
+    if settings.ENVIRONMENT == "development":
+        try:
+            import json
+            from pathlib import Path
+            spec = app.openapi()
+            out = Path(__file__).parent.parent.parent / "docs" / "api-contract.json"
+            out.parent.mkdir(parents=True, exist_ok=True)
+            out.write_text(json.dumps(spec, indent=2))
+            logger.info(f"OpenAPI spec written to {out}")
+        except Exception as e:
+            logger.warning(f"OpenAPI export failed: {e}")
 
     yield
     # Shutdown logic
@@ -81,9 +76,12 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(
     title=settings.PROJECT_NAME,
-    version="1.0.0",
+    version=settings.APP_VERSION,
     openapi_url=f"{settings.API_V1_STR}/openapi.json",
-    lifespan=lifespan
+    # Hide interactive docs in production
+    docs_url="/docs" if settings.ENVIRONMENT != "production" else None,
+    redoc_url=None,
+    lifespan=lifespan,
 )
 
 # Enable CORS
@@ -148,6 +146,26 @@ app.include_router(stocks.router, prefix=settings.API_V1_STR)
 app.include_router(screener.router, prefix=settings.API_V1_STR)
 app.include_router(pipeline.router, prefix=settings.API_V1_STR)
 
+@app.get("/health", tags=["system"], include_in_schema=False)
+async def health_render():
+    """
+    Lightweight health check used by Render and UptimeRobot.
+    Always returns HTTP 200 (status field shows degraded if DB is down).
+    """
+    try:
+        async with engine.connect() as conn:
+            await conn.execute(text("SELECT 1"))
+        db_status = "ok"
+    except Exception:
+        db_status = "error"
+    return {
+        "status": "ok" if db_status == "ok" else "degraded",
+        "db": db_status,
+        "version": settings.APP_VERSION,
+        "environment": settings.ENVIRONMENT,
+    }
+
+
 @app.get("/api/health", tags=["root"])
 async def root():
     """
@@ -177,16 +195,32 @@ async def root():
         "timestamp": datetime.now(timezone.utc).isoformat(),
         "api": {
             "name": settings.PROJECT_NAME,
-            "version": "1.0.0",
+            "version": settings.APP_VERSION,
             "status": "running",
-            "environment": "development" if not settings.ENABLE_AUTH else "production",
+            "environment": settings.ENVIRONMENT,
         },
         "database": {
             "status": db_status,
             "name": db_name,
             "latency_ms": round((time.time() - start_time) * 1000, 2)
         },
-        "documentation": "/docs"
+        "documentation": "/docs" if settings.ENVIRONMENT != "production" else None,
+    }
+
+
+@app.get("/api/v1/sync/status", tags=["system"])
+async def sync_status(
+    pipeline_name: Optional[str] = None,
+    limit: int = 20,
+    db: AsyncSession = Depends(get_db),
+    _user=Depends(security.get_current_user),
+):
+    """Recent ETL run records, optionally filtered by pipeline_name."""
+    from . import schemas as _schemas
+    runs = await _crud.get_etl_run_summary(db, pipeline_name, limit)
+    return {
+        "runs": [_schemas.EtlRunRead.model_validate(r) for r in runs],
+        "total": len(runs),
     }
 
 # SPA Fallback routing for production deployment

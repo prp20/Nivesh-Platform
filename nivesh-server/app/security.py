@@ -1,30 +1,32 @@
 """
 Security and authentication utilities.
 
-Provides JWT-based authentication, password hashing, and role-based access control.
+Provides JWT-based authentication, password hashing, and FastAPI dependencies.
 """
 
 import logging
 from datetime import datetime, timedelta, timezone
 from typing import Optional
+
 import bcrypt as _bcrypt
 from jose import JWTError, jwt
 from fastapi import Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordBearer
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
+
 from .config import settings
+from .database import get_db
 
 logger = logging.getLogger(__name__)
 
-# Authentication settings from config
-SECRET_KEY = settings.SECRET_KEY
-ALGORITHM = "HS256"
-ACCESS_TOKEN_EXPIRE_MINUTES = settings.ACCESS_TOKEN_EXPIRE_MINUTES
-
 oauth2_scheme = OAuth2PasswordBearer(
     tokenUrl=f"{settings.API_V1_STR}/auth/login",
-    auto_error=settings.ENABLE_AUTH,  # Don't auto-error if auth is disabled
+    auto_error=settings.ENABLE_AUTH,
 )
 
+
+# ── Password hashing ──────────────────────────────────────────────────────────
 
 def verify_password(plain_password: str, hashed_password: str) -> bool:
     """Verify a plaintext password against a bcrypt hash."""
@@ -36,42 +38,76 @@ def verify_password(plain_password: str, hashed_password: str) -> bool:
 
 def get_password_hash(password: str) -> str:
     """Hash a plaintext password using bcrypt."""
-    return _bcrypt.hashpw(password.encode("utf-8"), _bcrypt.gensalt()).decode("utf-8")
+    return _bcrypt.hashpw(
+        password.encode("utf-8"), _bcrypt.gensalt()
+    ).decode("utf-8")
+
+
+# Keep alias for callers that import hash_password
+hash_password = get_password_hash
+
+
+# ── Token creation ────────────────────────────────────────────────────────────
+
+def _make_token(data: dict, expires_delta: timedelta) -> str:
+    payload = data.copy()
+    payload["exp"] = datetime.now(timezone.utc) + expires_delta
+    payload["iat"] = datetime.now(timezone.utc)
+    return jwt.encode(payload, settings.SECRET_KEY, algorithm=settings.ALGORITHM)
 
 
 def create_access_token(
     data: dict, expires_delta: Optional[timedelta] = None
 ) -> str:
-    """
-    Create a JWT access token.
+    """Create a short-lived JWT access token."""
+    delta = expires_delta or timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES)
+    return _make_token({**data, "type": "access"}, delta)
 
-    Args:
-        data: Claims to include in token (typically {"sub": username})
-        expires_delta: Optional expiration time delta
 
-    Returns:
-        Encoded JWT token string
-    """
-    to_encode = data.copy()
-    if expires_delta:
-        expire = datetime.now(timezone.utc) + expires_delta
-    else:
-        expire = datetime.now(timezone.utc) + timedelta(
-            minutes=ACCESS_TOKEN_EXPIRE_MINUTES
+def create_refresh_token(username: str) -> str:
+    """Create a long-lived JWT refresh token."""
+    return _make_token(
+        {"sub": username, "type": "refresh"},
+        timedelta(days=settings.REFRESH_TOKEN_EXPIRE_DAYS),
+    )
+
+
+# ── Token verification ────────────────────────────────────────────────────────
+
+def _decode_token(token: str, expected_type: str) -> Optional[str]:
+    """Decode a JWT and return the 'sub' claim, or None if invalid."""
+    try:
+        payload = jwt.decode(
+            token, settings.SECRET_KEY, algorithms=[settings.ALGORITHM]
         )
-    to_encode.update({"exp": expire})
-    encoded_jwt = jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
-    return encoded_jwt
+        if payload.get("type") != expected_type:
+            return None
+        return payload.get("sub")
+    except JWTError:
+        return None
 
+
+def decode_access_token(token: str) -> Optional[str]:
+    return _decode_token(token, "access")
+
+
+def decode_refresh_token(token: str) -> Optional[str]:
+    return _decode_token(token, "refresh")
+
+
+# ── FastAPI auth dependency ───────────────────────────────────────────────────
 
 async def get_current_user(
     token: Optional[str] = Depends(oauth2_scheme),
-) -> str:
+    db: AsyncSession = Depends(get_db),
+):
     """
-    Validate JWT token and return the username.
+    Validate the Bearer token and return the AdminUser ORM object.
 
-    When ENABLE_AUTH=False (dev/test), bypasses validation and returns 'dev_user'.
-    When ENABLE_AUTH=True, validates the Bearer token and raises 401 if invalid.
+    When ENABLE_AUTH=False (dev mode), returns the string "dev_user" so
+    existing route signatures that type-hint the return as str still work.
+    When ENABLE_AUTH=True, validates the JWT and fetches the user from DB.
+    Raises 401 if the token is missing, invalid, expired, or user is inactive.
     """
     if not settings.ENABLE_AUTH:
         return "dev_user"
@@ -85,32 +121,41 @@ async def get_current_user(
     if not token:
         raise credentials_exception
 
+    # Support both old-style tokens (no type claim) and new tokens (type=access)
     try:
-        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
-        username: str = payload.get("sub")
-        if username is None:
+        payload = jwt.decode(
+            token, settings.SECRET_KEY, algorithms=[settings.ALGORITHM]
+        )
+        username: Optional[str] = payload.get("sub")
+        if not username:
+            raise credentials_exception
+        token_type = payload.get("type")
+        # Reject refresh tokens used as access tokens
+        if token_type == "refresh":
             raise credentials_exception
     except JWTError as e:
         logger.warning(f"JWT validation failed: {e}")
         raise credentials_exception
 
-    return username
+    # Fetch user from DB
+    from .models import AdminUser
+    result = await db.execute(
+        select(AdminUser).where(
+            AdminUser.username == username,
+            AdminUser.is_active.is_(True),
+        )
+    )
+    user = result.scalar_one_or_none()
+    if not user:
+        raise credentials_exception
+
+    return user
 
 
 async def require_admin(
     token: Optional[str] = Depends(oauth2_scheme),
-) -> str:
-    """
-    Enforce admin-level authentication.
-
-    Validates the JWT via get_current_user, then asserts username == 'admin'.
-    When ENABLE_AUTH=False, bypasses all checks (dev/test only).
-    """
-    username = await get_current_user(token)
-    if settings.ENABLE_AUTH and username != settings.ADMIN_USERNAME:
-        logger.warning(f"Non-admin user '{username}' attempted admin operation")
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Admin access required",
-        )
-    return username
+    db: AsyncSession = Depends(get_db),
+):
+    """Enforce admin-level authentication (same as get_current_user for now)."""
+    user = await get_current_user(token, db)
+    return user

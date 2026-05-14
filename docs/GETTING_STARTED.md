@@ -172,7 +172,28 @@ SELECT COUNT(*) FROM etl_runs;
 
 ---
 
-## 7. Run the Server Locally
+## 7. Create an Admin User
+
+Before logging in you need at least one admin user in the `admin_users` table.
+
+```bash
+# From nivesh-server/
+python scripts/create_admin.py --username admin --password <your-password>
+```
+
+Output: `Admin user 'admin' created successfully (id=1).`
+
+To log in later:
+```bash
+curl -X POST http://localhost:8000/api/v1/auth/login \
+  -H "Content-Type: application/json" \
+  -d '{"username": "admin", "password": "<your-password>"}'
+# → {"access_token": "...", "token_type": "bearer", "expires_in": 900}
+```
+
+---
+
+## 8. Run the Server Locally
 
 ```bash
 # From repo root

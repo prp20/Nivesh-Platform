@@ -60,13 +60,13 @@ def get_aum_by_isin(isin: str) -> dict | None:
         logger.error(f"Error in get_aum_by_isin for {isin}: {e}")
         return None
 
-async def sync_fund_data(session: AsyncSession, scheme_code: str, job_id: Optional[str] = None) -> Optional[float]:
+async def sync_fund_data(session: AsyncSession, scheme_code: str, job_id: Optional[int] = None) -> Optional[float]:
     """Fetch latest NAV and recompute metrics for a single fund. Returns AUM if found."""
     mf = Mftool()
-    
+
     async def update_progress(msg: str):
+        # Log progress — no intermediate DB write (etl_runs only records final state)
         if job_id:
-            await crud.update_sync_job(session, job_id, message=msg)
             logger.info(f"Job {job_id} [{scheme_code}]: {msg}")
 
     try:
@@ -75,8 +75,8 @@ async def sync_fund_data(session: AsyncSession, scheme_code: str, job_id: Option
         fund_master = await crud.get_fund_master_by_code(session, scheme_code)
         if not fund_master:
             logger.error(f"Fund master not found for {scheme_code}")
-            if job_id: 
-                await crud.update_sync_job(session, job_id, status="FAILED", message="Fund master not found")
+            if job_id:
+                await crud.finish_etl_run(session, job_id, "FAILED", error_msg="Fund master not found")
             return
 
         await update_progress("Downloading historical NAV data...")
@@ -108,8 +108,8 @@ async def sync_fund_data(session: AsyncSession, scheme_code: str, job_id: Option
         
         if nav_df is None:
             logger.warning(f"No NAV data found for {scheme_code}")
-            if job_id: 
-                await crud.update_sync_job(session, job_id, status="FAILED", message="No NAV data found")
+            if job_id:
+                await crud.finish_etl_run(session, job_id, "FAILED", error_msg="No NAV data found")
             return
 
         # 2. Transform to dict - handle various date formats
@@ -183,7 +183,7 @@ async def sync_fund_data(session: AsyncSession, scheme_code: str, job_id: Option
         if not calc_results or "current_nav" not in calc_results:
             logger.warning(f"Insufficient data to compute metrics for {scheme_code}")
             if job_id:
-                await crud.update_sync_job(session, job_id, status="FAILED", message="Insufficient data for analysis")
+                await crud.finish_etl_run(session, job_id, "FAILED", error_msg="Insufficient data for analysis")
             return
 
         def to_float(val):
@@ -231,14 +231,14 @@ async def sync_fund_data(session: AsyncSession, scheme_code: str, job_id: Option
         await crud.upsert_fund_metrics(session, metrics_payload)
         
         if job_id:
-            await crud.update_sync_job(session, job_id, status="COMPLETED", message="Analysis complete")
+            await crud.finish_etl_run(session, job_id, "COMPLETED", records_out=len(nav_dict))
         logger.info(f"Successfully synced {scheme_code} (AUM: {aum})")
         return aum
-        
+
     except Exception as e:
         logger.error(f"Error syncing {scheme_code}: {e}")
         if job_id:
-            await crud.update_sync_job(session, job_id, status="FAILED", message=str(e))
+            await crud.finish_etl_run(session, job_id, "FAILED", error_msg=str(e))
 
 def pd_to_date(date_str: str) -> str:
     """Standardizes date formats from mftool (often DD-MM-YYYY) to YYYY-MM-DD."""
@@ -257,7 +257,7 @@ async def sync_all_funds(session: AsyncSession):
     for scheme_code in scheme_codes:
         # Dedicated session per fund — failure in one does not contaminate others.
         async with session_factory() as fund_session:
-            job, created = await crud.create_sync_job(fund_session, scheme_code)
+            job, created = await crud.start_etl_run(fund_session, "amfi_nav", entity_id=scheme_code, triggered_by="scheduler")
             if created:
                 await sync_fund_data(fund_session, scheme_code, job_id=job.id)
             # If a job already exists (RUNNING), skip to avoid duplicate work.

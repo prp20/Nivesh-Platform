@@ -26,7 +26,16 @@ _async_db_url = _async_url(settings.DATABASE_URL)
 _sync_db_url = _sync_url(_async_db_url)
 
 # Using Supabase Session Pooler (port 5432) which supports prepared statements.
-engine = create_async_engine(_async_db_url, echo=False)
+engine = create_async_engine(
+    _async_db_url,
+    # Tuned for Supabase free tier: 60 direct / 200 pooler → 20 backend connections.
+    # Keep pool small so restarts don't exhaust the limit.
+    pool_size=5,
+    max_overflow=3,
+    pool_pre_ping=True,    # Drop stale connections before use
+    pool_recycle=300,      # Recycle connections every 5 minutes
+    echo=False,
+)
 AsyncSessionLocal = sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
 session_factory = AsyncSessionLocal
 Base = declarative_base()
@@ -60,7 +69,11 @@ async def close_db_pool():
 
 async def get_db():
     async with AsyncSessionLocal() as session:
-        yield session
+        try:
+            yield session
+        except Exception:
+            await session.rollback()
+            raise
 
 
 @asynccontextmanager

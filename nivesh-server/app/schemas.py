@@ -516,3 +516,45 @@ class FundamentalScoreRead(BaseModel):
     computed_at: datetime
     model_config = ConfigDict(from_attributes=True)
 
+
+
+# ============================================================================
+# AUTH SCHEMAS  (Phase 2)
+# ============================================================================
+
+class LoginRequest(BaseModel):
+    """Body for POST /api/v1/auth/login."""
+    username: str
+    password: str
+
+
+class TokenResponse(BaseModel):
+    """Response for /auth/login and /auth/refresh."""
+    access_token: str
+    token_type: str = "bearer"
+    expires_in: int   # seconds until access_token expires
+
+
+class RefreshRequest(BaseModel):
+    """Body for POST /auth/refresh (fallback when cookie is unavailable)."""
+    refresh_token: str
+
+
+# ============================================================================
+# ETL RUN SCHEMAS  (replaces SyncJobRead)
+# ============================================================================
+
+class EtlRunRead(BaseModel):
+    """Response schema for etl_run rows."""
+    id: int
+    pipeline_name: str
+    entity_id: Optional[str] = None
+    status: str
+    triggered_by: str
+    started_at: Optional[datetime] = None
+    ended_at: Optional[datetime] = None
+    records_in: int = 0
+    records_out: int = 0
+    error_msg: Optional[str] = None
+
+    model_config = ConfigDict(from_attributes=True)
