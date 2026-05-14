@@ -58,7 +58,7 @@ cd frontend && npm run dev
 | P0 | Done | Repo restructure — this layout |
 | P1 | Done | Supabase DB setup — 18 Alembic migrations + seed scripts |
 | P2 | Done | Server: Core API on Render — auth, EtlRun model, delta-sync, Render deploy |
-| P3 | Pending | Server: Ingestion pipeline (NSE bhavcopy, AMFI) |
+| P3 | Done | Server: Ingestion pipeline — APScheduler (7 jobs), pipeline/ package, fundamental_scorer/, fund_scorer/ |
 | P4 | Pending | Client: SQLite + local API |
 | P5 | Pending | Client: JWT auth + sync engine |
 | P6 | Pending | Client: Agentic layer |

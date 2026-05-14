@@ -82,6 +82,11 @@ ACCESS_TOKEN_EXPIRE_MINUTES=15
 REFRESH_TOKEN_EXPIRE_DAYS=7
 ENVIRONMENT=development
 ENABLE_AUTH=false
+
+# Optional — required only for LangGraph AI fundamental/fund scoring
+# Get a free key at https://console.groq.com
+# Without this, scoring falls back to template-based reasoning text
+GROQ_API_KEY=
 ```
 
 > **Important:** Never commit `.env`. It is in `.gitignore`.
@@ -325,6 +330,7 @@ curl -X POST https://nivesh-api.onrender.com/api/v1/auth/login \
 
 ### Notes
 
+- **Scheduler on free tier:** Render's free tier spins down after inactivity — the APScheduler won't fire while the instance is asleep. Upgrade to a Starter plan ($7/mo) for always-on scheduling.
 - **Free tier sleeps** after 15 minutes of inactivity. First request after sleep takes ~30 s (cold start). Upgrade to a paid plan to avoid this.
 - **`ENABLE_AUTH` is `true` in production** (set in render.yaml). All protected endpoints require a valid `Authorization: Bearer <token>` header.
 - **Redeployment:** every push to `main` triggers a new deploy automatically once the GitHub integration is active.

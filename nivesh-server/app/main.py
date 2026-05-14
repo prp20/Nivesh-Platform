@@ -1,6 +1,14 @@
 from contextlib import asynccontextmanager
 from pathlib import Path
 import logging
+
+# Attach a handler to the root logger so app-level log calls appear in the
+# uvicorn console. Uvicorn only configures handlers for its own loggers;
+# without this, all logging.getLogger(__name__) calls are silently dropped.
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(levelname)s:%(name)s:%(message)s",
+)
 from datetime import datetime, timezone
 from typing import Optional
 from fastapi import FastAPI, Request, Depends

@@ -212,42 +212,75 @@ Requires JWT + admin role (`username == "admin"`).
 
 | Method | Path | Description |
 |--------|------|-------------|
-| `POST` | `/api/v1/pipeline/prices/all` | Ingest last 5 days OHLCV for all stocks |
-| `POST` | `/api/v1/pipeline/prices/backfill` | Full historical backfill — param: `period` (e.g. `5y`) |
-| `POST` | `/api/v1/pipeline/prices/refresh/{symbol}` | Refresh single stock |
+| `POST` | `/api/v1/pipeline/prices/all` | Ingest last 5 days OHLCV for all active non-index stocks |
+| `POST` | `/api/v1/pipeline/prices/indices` | Ingest last 5 days OHLCV for index stocks |
+| `POST` | `/api/v1/pipeline/prices/backfill` | Full historical backfill — query param: `period` (default `5y`) |
+| `POST` | `/api/v1/pipeline/prices/refresh/{symbol}` | Refresh single stock — query param: `period` (default `1mo`) |
+
+### Metrics recompute
+
+| Method | Path | Description |
+|--------|------|-------------|
+| `POST` | `/api/v1/pipeline/metrics/recompute` | Refresh PE/PB/PS ratios for all stocks from latest close |
+| `POST` | `/api/v1/pipeline/metrics/recompute/{symbol}` | Refresh PE/PB/PS for a single stock |
 
 ### Fundamental scraper
 
 | Method | Path | Description |
 |--------|------|-------------|
-| `POST` | `/api/v1/pipeline/screener/all` | Scrape overdue stocks (>90 days) |
-| `POST` | `/api/v1/pipeline/screener/{symbol}` | Scrape single stock |
+| `POST` | `/api/v1/pipeline/screener/all` | Scrape overdue stocks (not updated in >90 days) — query param: `days_since_last` |
+| `POST` | `/api/v1/pipeline/screener/{symbol}` | Scrape single stock — query param: `force` (default false, bypasses checksum) |
+
+### Ratio engine
+
+| Method | Path | Description |
+|--------|------|-------------|
+| `POST` | `/api/v1/pipeline/ratios/all` | Compute financial ratios for all stocks from their financial statements |
+| `POST` | `/api/v1/pipeline/ratios/{symbol}` | Compute ratios for a single stock |
 
 ### Technical analysis
 
 | Method | Path | Description |
 |--------|------|-------------|
-| `POST` | `/api/v1/pipeline/technical/all` | Run TA indicators for all stocks |
-| `POST` | `/api/v1/pipeline/technical/{symbol}` | Run TA for single stock |
+| `POST` | `/api/v1/pipeline/technical/all` | Compute TA-Lib indicators for all active stocks |
+| `POST` | `/api/v1/pipeline/technical/{symbol}` | Compute TA indicators for a single stock |
+| `GET`  | `/api/v1/pipeline/technical/status` | Per-stock TA status: last computed date + OK / STALE / MISSING flag |
 
 ### Rating engine
 
 | Method | Path | Description |
 |--------|------|-------------|
-| `POST` | `/api/v1/pipeline/ratings/all` | Recompute composite ratings |
+| `POST` | `/api/v1/pipeline/ratings/all` | Recompute composite ratings for all stocks |
+| `POST` | `/api/v1/pipeline/ratings/{symbol}` | Recompute rating for a single stock |
 
 ### Fundamental scoring (LangGraph AI)
 
+Requires `GROQ_API_KEY` env var for LLM reasoning (falls back to template text if unset).
+
 | Method | Path | Description |
 |--------|------|-------------|
-| `POST` | `/api/v1/pipeline/fundamentals/run/{symbol}` | Full scoring pipeline (fetch → compute → AI reason → persist) |
-| `POST` | `/api/v1/pipeline/fundamentals/bulk-run` | Background scoring for multiple symbols |
+| `POST` | `/api/v1/pipeline/fundamentals/run/{symbol}` | Full pipeline: Fetch → Compute → Reason → Persist |
+| `POST` | `/api/v1/pipeline/fundamentals/bulk-run` | Background scoring for multiple symbols (body: `{symbols, period_type, score_version}`) |
+| `POST` | `/api/v1/pipeline/fundamentals/stage/fetch/{symbol}` | Stage 1 only — fetch statements, return state dict |
+| `POST` | `/api/v1/pipeline/fundamentals/stage/compute` | Stage 2 only — compute scores from state dict (body: `ScoringStateSchema`) |
+| `POST` | `/api/v1/pipeline/fundamentals/stage/reason` | Stage 3 only — AI reasoning from state dict |
+| `POST` | `/api/v1/pipeline/fundamentals/stage/persist` | Stage 4 only — persist state dict to DB |
+
+`ScoringStateSchema` response fields: `stock_id`, `symbol`, `period_type`, `score_version`, `statements_data`, `pl_results`, `bs_results`, `cf_results`, `composite_score`, `reasoning_label`, `reasoning_text`, `status`, `error`, `logs`.
+
+### Fund scoring (LangGraph AI)
+
+| Method | Path | Description |
+|--------|------|-------------|
+| `POST` | `/api/v1/pipeline/funds/run/{scheme_code}` | Score a fund: quantitative metrics + Groq LLM verdict |
+
+Response fields: `scheme_code`, `fund_name`, `quality_score` (0–10), `rating_label` (Excellent/Good/Average/Below Average/Poor), `reasoning_text`, `breakdown`.
 
 ### ETL status
 
 | Method | Path | Description |
 |--------|------|-------------|
-| `GET`  | `/api/v1/pipeline/status` | Overall pipeline health (reads from `etl_runs`) |
+| `GET`  | `/api/v1/pipeline/status` | Overall pipeline health — latest `etl_runs` rows per pipeline |
 
 ---
 

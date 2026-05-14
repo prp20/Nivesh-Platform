@@ -15,7 +15,12 @@ from typing import Optional, List, Tuple
 from datetime import datetime, timezone
 import uuid
 
-from .models import FundMaster, BenchmarkMaster, FundNavHistory, BenchmarkNavHistory, FundMetrics, BenchmarkMetrics, EtlRun, AdminUser
+from .models import (
+    FundMaster, BenchmarkMaster, FundNavHistory, BenchmarkNavHistory,
+    FundMetrics, BenchmarkMetrics, EtlRun, AdminUser,
+    Stock, PriceData, TechnicalIndicator, FinancialStatement,
+    FinancialRatio, ShareholdingPattern, StockRating, FundamentalScore,
+)
 from .schemas import (
     FundMasterCreate, FundMasterUpdate,
     BenchmarkMasterCreate, BenchmarkMasterUpdate,
@@ -637,3 +642,246 @@ async def get_user_by_username(
         )
     )
     return result.scalar_one_or_none()
+
+
+# ============================================================================
+# STOCK PIPELINE CRUD
+# ============================================================================
+
+
+async def get_active_stocks(
+    session: AsyncSession, is_index: bool = False
+) -> list:
+    """Return all active stocks, optionally filtered by is_index flag."""
+    result = await session.execute(
+        select(Stock)
+        .where(Stock.is_active.is_(True), Stock.is_index.is_(is_index))
+        .order_by(Stock.symbol)
+    )
+    return list(result.scalars().all())
+
+
+async def upsert_price_data(session: AsyncSession, rows: list) -> int:
+    """
+    Bulk upsert OHLCV rows into price_data.
+
+    ON CONFLICT (stock_id, price_date) → update all OHLCV fields.
+    Returns the number of rows processed.
+    """
+    if not rows:
+        return 0
+    stmt = pg_insert(PriceData).values(rows)
+    excluded = stmt.excluded
+    stmt = stmt.on_conflict_do_update(
+        index_elements=["stock_id", "price_date"],
+        set_={
+            "open":      excluded.open,
+            "high":      excluded.high,
+            "low":       excluded.low,
+            "close":     excluded.close,
+            "adj_close": excluded.adj_close,
+            "volume":    excluded.volume,
+        },
+    )
+    await session.execute(stmt)
+    await session.commit()
+    return len(rows)
+
+
+async def get_price_data_for_ta(
+    session: AsyncSession, stock_id: int, lookback_days: int = 260
+) -> list:
+    """
+    Fetch the most recent N days of price_data for a single stock.
+
+    Returns PriceData ORM objects ordered ascending by price_date so
+    TA-Lib arrays are in the correct chronological order.
+    """
+    from sqlalchemy import desc
+    result = await session.execute(
+        select(PriceData)
+        .where(PriceData.stock_id == stock_id)
+        .order_by(desc(PriceData.price_date))
+        .limit(lookback_days)
+    )
+    rows = list(result.scalars().all())
+    rows.reverse()  # oldest → newest for TA-Lib
+    return rows
+
+
+async def upsert_technical_indicators(session: AsyncSession, rows: list) -> int:
+    """
+    Bulk upsert technical indicator rows.
+
+    ON CONFLICT (stock_id, ind_date, timeframe) → update all indicator columns.
+    Returns the number of rows processed.
+    """
+    if not rows:
+        return 0
+    stmt = pg_insert(TechnicalIndicator).values(rows)
+    excluded = stmt.excluded
+    stmt = stmt.on_conflict_do_update(
+        index_elements=["stock_id", "ind_date", "timeframe"],
+        set_={
+            "sma_20": excluded.sma_20,
+            "sma_50": excluded.sma_50,
+            "sma_200": excluded.sma_200,
+            "ema_9": excluded.ema_9,
+            "ema_21": excluded.ema_21,
+            "ema_50": excluded.ema_50,
+            "rsi_14": excluded.rsi_14,
+            "macd_line": excluded.macd_line,
+            "macd_signal": excluded.macd_signal,
+            "macd_hist": excluded.macd_hist,
+            "bb_upper": excluded.bb_upper,
+            "bb_middle": excluded.bb_middle,
+            "bb_lower": excluded.bb_lower,
+            "atr_14": excluded.atr_14,
+            "adx_14": excluded.adx_14,
+            "stoch_k": excluded.stoch_k,
+            "stoch_d": excluded.stoch_d,
+            "volume_sma_20": excluded.volume_sma_20,
+            "volume_sma_50": excluded.volume_sma_50,
+            "volume_ratio": excluded.volume_ratio,
+            "obv": excluded.obv,
+            "vwap_20": excluded.vwap_20,
+            "cci_20": excluded.cci_20,
+            "williams_r": excluded.williams_r,
+            "roc_14": excluded.roc_14,
+            "beta_1y": excluded.beta_1y,
+            "rs_6m_vs_nifty": excluded.rs_6m_vs_nifty,
+            "pct_from_52w_high": excluded.pct_from_52w_high,
+            "pct_from_52w_low": excluded.pct_from_52w_low,
+        },
+    )
+    await session.execute(stmt)
+    await session.commit()
+    return len(rows)
+
+
+async def upsert_financial_statement(session: AsyncSession, row: dict) -> bool:
+    """
+    Upsert a single financial statement row with checksum-based deduplication.
+
+    Skips the upsert if raw_checksum matches the stored value.
+    Returns True if the row was inserted/updated, False if skipped (unchanged).
+    """
+    existing = await session.execute(
+        select(FinancialStatement.raw_checksum).where(
+            FinancialStatement.stock_id == row["stock_id"],
+            FinancialStatement.statement_type == row["statement_type"],
+            FinancialStatement.period_type == row["period_type"],
+            FinancialStatement.period_end == row["period_end"],
+        )
+    )
+    stored_checksum = existing.scalar_one_or_none()
+    if stored_checksum is not None and stored_checksum == row.get("raw_checksum"):
+        return False  # unchanged — skip
+
+    stmt = pg_insert(FinancialStatement).values(row)
+    excluded = stmt.excluded
+    stmt = stmt.on_conflict_do_update(
+        index_elements=["stock_id", "statement_type", "period_type", "period_end"],
+        set_={
+            "data":         excluded.data,
+            "raw_data":     excluded.raw_data,
+            "raw_checksum": excluded.raw_checksum,
+            "scraped_at":   excluded.scraped_at,
+        },
+    )
+    await session.execute(stmt)
+    await session.commit()
+    return True
+
+
+async def upsert_financial_ratios(session: AsyncSession, row: dict) -> int:
+    """
+    Upsert a single financial ratios row.
+
+    ON CONFLICT (stock_id, period_end, period_type) → update all ratio columns.
+    Returns 1 on success.
+    """
+    stmt = pg_insert(FinancialRatio).values(row)
+    conflict_keys = {"id", "stock_id", "period_end", "period_type"}
+    set_ = {k: v for k, v in row.items() if k not in conflict_keys}
+    stmt = stmt.on_conflict_do_update(
+        index_elements=["stock_id", "period_end", "period_type"],
+        set_=set_,
+    )
+    await session.execute(stmt)
+    await session.commit()
+    return 1
+
+
+async def upsert_shareholding(session: AsyncSession, row: dict) -> int:
+    """
+    Upsert a single shareholding pattern row.
+
+    ON CONFLICT (stock_id, period_end) → update all shareholding columns.
+    Returns 1 on success.
+    """
+    stmt = pg_insert(ShareholdingPattern).values(row)
+    excluded = stmt.excluded
+    stmt = stmt.on_conflict_do_update(
+        index_elements=["stock_id", "period_end"],
+        set_={
+            "promoter_pct":    excluded.promoter_pct,
+            "fii_pct":         excluded.fii_pct,
+            "dii_pct":         excluded.dii_pct,
+            "public_pct":      excluded.public_pct,
+            "pledged_pct":     excluded.pledged_pct,
+            "promoter_change": excluded.promoter_change,
+            "fii_change":      excluded.fii_change,
+            "scraped_at":      excluded.scraped_at,
+        },
+    )
+    await session.execute(stmt)
+    await session.commit()
+    return 1
+
+
+async def upsert_stock_rating(session: AsyncSession, row: dict) -> int:
+    """
+    Upsert a single stock rating row.
+
+    ON CONFLICT (stock_id, rated_on) → update all score columns.
+    Returns 1 on success.
+    """
+    stmt = pg_insert(StockRating).values(row)
+    excluded = stmt.excluded
+    stmt = stmt.on_conflict_do_update(
+        index_elements=["stock_id", "rated_on"],
+        set_={
+            "total_score":        excluded.total_score,
+            "rating_label":       excluded.rating_label,
+            "fundamental_score":  excluded.fundamental_score,
+            "valuation_score":    excluded.valuation_score,
+            "technical_score":    excluded.technical_score,
+            "momentum_score":     excluded.momentum_score,
+            "quality_score":      excluded.quality_score,
+            "shareholding_score": excluded.shareholding_score,
+            "score_breakdown":    excluded.score_breakdown,
+        },
+    )
+    await session.execute(stmt)
+    await session.commit()
+    return 1
+
+
+async def upsert_fundamental_score(session: AsyncSession, row: dict) -> int:
+    """
+    Upsert a single fundamental score row (LangGraph AI scoring output).
+
+    ON CONFLICT (stock_id, period_end, score_version) → update all score columns.
+    Returns 1 on success.
+    """
+    stmt = pg_insert(FundamentalScore).values(row)
+    conflict_keys = {"id", "stock_id", "period_end", "score_version"}
+    set_ = {k: v for k, v in row.items() if k not in conflict_keys}
+    stmt = stmt.on_conflict_do_update(
+        index_elements=["stock_id", "period_end", "score_version"],
+        set_=set_,
+    )
+    await session.execute(stmt)
+    await session.commit()
+    return 1
