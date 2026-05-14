@@ -1,18 +1,55 @@
-# General
-.DS_Store
-*.log
-.env
-.venv
+# Python
 __pycache__/
-*.pyc
+*.py[cod]
+*.pyo
+*.pyd
+*.egg-info/
+dist/
+build/
+*.egg
+.eggs/
+*.whl
+pip-log.txt
 
-# Project specific
-frontend/node_modules
-frontend/dist
-backend/venv
-backend/db_data
-backend/__pycache__
-CLAUDE.md
-.claude/
-memory/*
-local_tests/*
+# Virtual environments
+venv/
+.venv/
+env/
+ENV/
+
+# Environment variables — NEVER commit secrets
+.env
+.env.*
+!.env.example
+
+# Database files — never commit
+*.db
+*.sqlite
+*.sqlite3
+backend/db_data/
+
+# Logs
+*.log
+*.log.*
+logs/
+
+# Node / frontend
+node_modules/
+dist/
+.cache/
+
+# IDEs
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Alembic compiled
+alembic/versions/*.pyc
+
+# Claude Code local settings (personal, not project-wide)
+.claude/settings.local.json

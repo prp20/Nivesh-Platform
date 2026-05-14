@@ -1,139 +1,233 @@
 # Getting Started
 
-Welcome to the Nivesh Elite Platform! This guide will walk you through setting up the project locally.
-
-## 🛠️ Prerequisites
-
-Ensure you have the following installed:
-- **Python 3.10+**: [Download here](https://www.python.org/downloads/)
-- **Node.js 18+**: [Download here](https://nodejs.org/)
-- **Docker Desktop**: Recommended for local PostgreSQL. [Download here](https://www.docker.com/get-started/)
-- **Git**: [Download here](https://git-scm.com/downloads)
+This guide walks you through setting up the Nivesh Platform from a fresh clone — including creating a Supabase project, running Alembic migrations, and seeding the database with initial data.
 
 ---
 
-## 🚀 One-Command Setup
+## Prerequisites
 
-The easiest way to get started is using the provided setup scripts which automate dependency installation, database configuration, and initial data seeding.
+| Tool | Version | Notes |
+|------|---------|-------|
+| Python | 3.10+ | `python --version` |
+| pip | Latest | comes with Python |
+| Git | Any | `git --version` |
+| psycopg2-binary | (pip) | installed via requirements below |
+
+No Docker required. The database lives on Supabase (free tier is sufficient).
+
+---
+
+## 1. Clone and Install
 
 ```bash
-# Linux / macOS
-chmod +x setup/setup.sh && ./setup/setup.sh
+git clone https://github.com/prp20/Nivesh-Platform.git
+cd Nivesh-Platform
 
-# Windows (PowerShell — Recommended)
-powershell -ExecutionPolicy RemoteSigned -File setup\setup.ps1
+# Install all three packages + dev tools in editable mode
+pip install -r requirements-dev.txt
+```
 
-# Windows (CMD)
-setup\setup.bat
+`requirements-dev.txt` installs `nivesh-shared`, `nivesh-server`, and `nivesh-client` in editable mode so imports resolve correctly across the monorepo.
+
+---
+
+## 2. Create a Supabase Project
+
+1. Go to [supabase.com](https://supabase.com) and sign in.
+2. Click **New Project** — choose a name (e.g., `nivesh-platform`), region closest to you, and a strong database password. **Save this password.**
+3. Wait ~2 minutes for the project to provision.
+
+### Get your connection strings
+
+In the Supabase dashboard: **Project Settings → Database → Connection string**
+
+You need **two** URLs:
+
+| URL | Where to find it | Port | Used for |
+|-----|-----------------|------|---------|
+| Supavisor Pooler | Connection string tab → **Session Pooler** | `6543` | Runtime (FastAPI) |
+| Direct | Connection string tab → **Direct connection** | `5432` | Alembic migrations only |
+
+Both URLs look like:
+```
+postgresql://postgres.[ref]:[password]@...supabase.com:[port]/postgres
+```
+
+Replace `[YOUR-PASSWORD]` with the password you saved above.
+
+---
+
+## 3. Configure Environment
+
+```bash
+cd nivesh-server
+cp .env.example .env
+```
+
+Edit `.env` and fill in:
+
+```env
+# Runtime — Supavisor pooler (port 6543) — used by FastAPI
+DATABASE_URL=postgresql://postgres.[ref]:[password]@aws-0-ap-southeast-1.pooler.supabase.com:6543/postgres
+
+# Migrations — Direct connection (port 5432) — used only by Alembic
+ALEMBIC_URL=postgresql://postgres:[password]@db.[ref].supabase.co:5432/postgres
+
+# Generate a secret key:
+# python -c "import secrets; print(secrets.token_hex(32))"
+SECRET_KEY=replace-with-256-bit-random-string
+
+ALGORITHM=HS256
+ACCESS_TOKEN_EXPIRE_MINUTES=15
+REFRESH_TOKEN_EXPIRE_DAYS=7
+ENVIRONMENT=development
+ENABLE_AUTH=false
+```
+
+> **Important:** Never commit `.env`. It is in `.gitignore`.
+
+---
+
+## 4. Run Alembic Migrations
+
+This creates all 18 tables in your Supabase database.
+
+```bash
+# From nivesh-server/
+export ALEMBIC_URL="postgresql://postgres:[password]@db.[ref].supabase.co:5432/postgres"
+
+alembic upgrade head
+```
+
+Expected output (abridged):
+```
+INFO  [alembic.runtime.migration] Running upgrade  -> 001, base extensions + trigger function
+INFO  [alembic.runtime.migration] Running upgrade 001 -> 002, admin_users table
+INFO  [alembic.runtime.migration] Running upgrade 002 -> 003, etl_runs table
+...
+INFO  [alembic.runtime.migration] Running upgrade 017 -> 018, fundamental_scores table
+```
+
+If a migration fails, fix the issue and re-run `alembic upgrade head` — it resumes from where it left off.
+
+To check current state:
+```bash
+alembic current
+alembic history --verbose
 ```
 
 ---
 
-## 🔑 External Services Setup
+## 5. Seed the Database
 
-### 1. Groq API Key
-Used for AI-powered financial insights.
-1. Sign in to the [Groq Console](https://console.groq.com/).
-2. Create a new API Key (e.g., `nivesh-dev`).
-3. Store it for use in your `.env` file.
+Seed scripts read from CSV files in `nivesh-server/data/` and upsert into the database using the Supavisor pooler URL (port 6543).
 
-### 2. Supabase (Managed Database)
-If you prefer not to use local Docker, you can use Supabase:
-1. Sign up at [Supabase](https://supabase.com).
-2. Create a new project and set a secure database password.
-3. In **Project Settings > Database**, go to the **Connection string** tab.
-4. Select **Session Pooler** and copy the URI (use port **6543**, not 5432).
-5. Replace `[YOUR-PASSWORD]` with your actual password and set in `backend/.env` as:
-   ```
-   DATABASE_URL=postgresql+asyncpg://postgres.<ref>:<password>@aws-0-<region>.pooler.supabase.com:6543/postgres
-   ```
-
-> **⚠️ Important:** `asyncpg` is **not** compatible with Supabase's port 5432 (PgBouncer transaction mode). Always use the **Session Pooler** on port **6543**.
-
----
-
-## 💻 Manual Local Setup
-
-If the automate script doesn't fit your needs, follow these manual steps:
-
-### 1. Database
 ```bash
-docker-compose up -d
+# From nivesh-server/
+export DATABASE_URL="postgresql://postgres.[ref]:[password]@aws-0-ap-southeast-1.pooler.supabase.com:6543/postgres"
+
+# Run all seeds in dependency order (benchmarks → stocks → funds)
+python scripts/seed/run_all_seeds.py
 ```
-*Verification*: Connect to `localhost:5432` with user `nivesh_admin` and password `nivesh_password_123`.
 
-### 2. Backend
+### What gets seeded
+
+| Script | Table | Source CSV | Rows |
+|--------|-------|-----------|------|
+| `seed_benchmarks.py` | `benchmark_master` | `data/indices.csv` | ~10 indices |
+| `seed_stocks.py` | `stocks` | `data/stocks.csv` + `data/indices.csv` | ~500+ equities + indices |
+| `seed_funds.py` | `fund_master` | `data/scheme_master_with_benchmark.csv` | ~2518 funds |
+
+### Preview without writing (dry run)
+
 ```bash
-cd backend
-python -m venv venv
-source venv/bin/activate  # Linux/macOS
-# or: venv\Scripts\activate.bat on Windows
-pip install -r requirements.txt
-uvicorn app.main:app --reload --port 8000
+python scripts/seed/run_all_seeds.py --dry-run
 ```
-- **Swagger UI**: [http://localhost:8000/docs](http://localhost:8000/docs)
 
-### 3. Frontend
+### Run individual seeds
+
 ```bash
-cd frontend
-npm install
-npm run dev
-```
-- **Local Dev Server**: [http://localhost:5173](http://localhost:5173)
-
----
-
-## 🏗️ Initial Data Load
-
-To populate your environment with initial data (run from the `backend/` directory):
-```bash
-# Activate the virtual environment first
-source venv/bin/activate  # Linux/macOS
-# venv\Scripts\activate.bat  # Windows
-
-# 1. Seed benchmark indices (from local CSV files)
-python scripts/seed_indices.py
-
-# 2. Seed fund master records
-python scripts/seed_funds.py
-
-# 3. Fetch NAV history and compute metrics (30–60 min)
-python scripts/sync_data.py
-
-# 4. Seed stock master (18 large-cap + 3 index symbols)
-python scripts/seed/seed_stock_master.py
-
-# 5. Backfill 5 years of OHLCV price history (20–40 min)
-python scripts/seed/backfill_prices.py 5y
+python scripts/seed/seed_benchmarks.py
+python scripts/seed/seed_stocks.py
+python scripts/seed/seed_funds.py
 ```
 
 ---
 
-## 🛠️ Troubleshooting
+## 6. Verify in Supabase
 
-### Python 3.10+ Not Found
-Ensure `python --version` returns 3.10 or higher. On Linux, use `sudo apt-get install python3.10`.
+In the Supabase dashboard, open **Table Editor** and confirm:
 
-### PostgreSQL Connection Failed
-If Docker is running but connection fails:
-```bash
-docker compose -f backend/docker-compose.yml logs postgres
-docker compose -f backend/docker-compose.yml restart postgres
+- `benchmark_master` — has rows for NIFTY50, SENSEX, NIFTYBANK, etc.
+- `stocks` — has equity rows + index rows (is_index=true)
+- `fund_master` — has ~2500 mutual fund rows
+
+You can also run SQL directly in **SQL Editor**:
+```sql
+SELECT COUNT(*) FROM benchmark_master;
+SELECT COUNT(*) FROM stocks;
+SELECT COUNT(*) FROM fund_master;
+SELECT COUNT(*) FROM etl_runs;
 ```
-
-### Port 8000 Already in Use
-If another process is using port 8000:
-- **Linux/macOS**: `lsof -i :8000` then `kill -9 <PID>`
-- **Backend Port Change**: `NIVESH_PORT=8001 uvicorn app.main:app --reload`
-
-### ta-lib Compilation Fails (Linux)
-Install system dependencies: `sudo apt-get install libta-lib-dev libta-lib0`.
 
 ---
 
-## 🔐 Security & Production
-- **JWT Auth**: Enable by setting `ENABLE_AUTH=true` in `backend/.env`.
-- **Secret Key**: Generate a secure key using `python -c "import secrets; print(secrets.token_urlsafe(32))"`.
-- **CORS**: Configure allowed origins in `app/main.py`.
+## 7. Create an Admin User
 
-For more details, see [ARCHITECTURE.md](./ARCHITECTURE.md) and [CONTRIBUTING.md](./CONTRIBUTING.md).
+Before logging in you need at least one admin user in the `admin_users` table.
+
+```bash
+# From nivesh-server/
+python scripts/create_admin.py --username admin --password <your-password>
+```
+
+Output: `Admin user 'admin' created successfully (id=1).`
+
+To log in later:
+```bash
+curl -X POST http://localhost:8000/api/v1/auth/login \
+  -H "Content-Type: application/json" \
+  -d '{"username": "admin", "password": "<your-password>"}'
+# → {"access_token": "...", "token_type": "bearer", "expires_in": 900}
+```
+
+---
+
+## 8. Run the Server Locally
+
+```bash
+# From repo root
+cd nivesh-server
+uvicorn app.main:app --port 8000 --reload
+```
+
+API docs: http://localhost:8000/docs
+
+Health check:
+```bash
+curl http://localhost:8000/health
+```
+
+---
+
+## Troubleshooting
+
+### `ALEMBIC_URL not set` error
+Make sure you `export ALEMBIC_URL=...` in the same shell session before running `alembic upgrade head`. Or set it in `.env` — but note Alembic reads it from the env var, not the `.env` file directly (unless you add `python-dotenv` loading to `env.py`).
+
+### `psycopg2` not installed
+```bash
+pip install psycopg2-binary
+```
+
+### Migration fails on extension
+Supabase free tier has `pg_trgm` and `uuid-ossp` pre-installed. If you see "extension already exists", that's fine — migrations use `CREATE EXTENSION IF NOT EXISTS`.
+
+### Alembic says `Target database is not up to date`
+Someone ran a partial migration. Run `alembic current` to see where it stopped, then `alembic upgrade head` to continue.
+
+### Connection refused on port 5432
+You are using the pooler URL (6543) for Alembic. Switch to the **direct connection** URL (5432) for migrations. The pooler runs in transaction mode and doesn't support DDL reliably.
+
+### Seed script: `no such table`
+Migrations haven't been applied yet. Run `alembic upgrade head` first.

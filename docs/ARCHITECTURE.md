@@ -1,81 +1,157 @@
-# System Architecture & Design
+# Architecture Overview
 
-Nivesh Elite is a professional-grade financial analytics ecosystem designed for high-performance and aesthetic excellence. This document details the technical implementation, from the database schema to the frontend design system.
-
----
-
-## 🏗️ Technical Overview
-
-The platform follows a modern microservices-inspired architecture with a clear separation between the presentation layer and the analytical backend.
-
-### High-Level Architecture
-- **Frontend**: A sleek, dark-mode React application powered by the **Califino** design system.
-- **Backend**: A high-performance asynchronous API built with FastAPI, handling complex risk calculations.
-- **Data Pipelines**:
-  - **MF Engine**: Just-In-Time (JIT) synchronization with AMFI.
-  - **Stock Engine**: Multi-stage pipeline for OHLCV ingestion, fundamental scraping, and YoY ratio computation.
-- **Database**: PostgreSQL 16, utilizing GIN trigram indexes for full-text search and LATERAL JOINs for high-performance analytics.
+Nivesh is a personal stock and mutual fund analytics platform structured as a monorepo with three pip packages.
 
 ---
 
-## 🚀 Backend Design
+## Package Layout
 
-The backend is an asynchronous powerhouse structured into specialized layers:
+```
+stock_platform/
+├── nivesh-server/     ← Cloud FastAPI (PostgreSQL via Supabase)
+├── nivesh-client/     ← Local FastAPI + React (SQLite)
+├── nivesh-shared/     ← Shared Pydantic schemas (pip-installable)
+├── backend/           ← LEGACY — original monolith, reference only
+├── frontend/          ← LEGACY — original frontend, reference only
+├── docs/              ← This documentation
+└── requirements-dev.txt
+```
 
-### Module Breakdown
-- `app/routers/`: API endpoint definitions.
-- `app/analytics.py`: Core financial calculation engine for MFs (Sharpe, Sortino, Drawdowns).
-- `app/sync.py`: JIT data fetching logic for Mutual Funds.
-- `pipeline/`: Equity Data Pipeline (Price ingestion, Fundamental scraping, Ratio engine).
-- `app/models.py` & `app/crud.py`: Database schema and ORM operations.
+### Package responsibilities
 
-### Analytical Cores
-1. **Mutual Fund Analytics**: Computes risk-adjusted returns and capture ratios vs benchmarks.
-2. **Equity Ratio Engine**: Vectorized computation of 17 fundamental ratios via Pandas/NumPy.
+| Package | Deployed on | Database | Purpose |
+|---------|------------|----------|---------|
+| `nivesh-server` | Render.com | Supabase PostgreSQL | All market data, analytics, ingestion pipelines |
+| `nivesh-client` | User's machine | SQLite (`~/.nivesh/`) | Portfolio, local UI, agent layer |
+| `nivesh-shared` | Both (pip install) | — | Shared Pydantic v2 schemas (API contract) |
 
----
-
-## 🎨 Frontend Architecture
-
-Built for visual excellence and responsive performance.
-
-### Tech Stack
-- **Framework**: React 19 (Vite)
-- **State Management**: Redux Toolkit (thunks for JIT sync)
-- **Styling**: Vanilla CSS with **Califino** tokens (Glassmorphism, CSS Variables)
-- **Visualization**: Recharts for performance tracking
-
-### Design System (Califino)
-- **Glassmorphism**: 20px blur effects with silver borders (`rgba(69, 70, 76, 0.2)`).
-- **Color Palette**: Dark Navy (`#0f1419`) canvas with Gold (`#e9c349`) and Emerald (`#66dd8b`) accents.
-- **Micro-animations**: Smooth transitions (300ms) and UI feedback loops for background jobs.
+**Core rule:** The server owns all canonical market data. The client never connects directly to PostgreSQL — all data flows via the server REST API.
 
 ---
 
-## 🐘 Database Schema
+## Data Flow
 
-### Master Data
-- `fund_master`: AMFI codes, scheme names, categories, and fund house details.
-- `stocks`: NSE/BSE symbol master with GIN trigram index on `company_name`.
-- `benchmark_master`: Market indices mapping.
-
-### Time-Series Data
-- `fund_nav_history` / `benchmark_nav_history`: Composite keys `(code, nav_date)`.
-- `price_data`: OHLCV daily data from Yahoo Finance.
-
-### Computed Data
-- `fund_metrics`: Deep risk/return profiles.
-- `financial_statements`: Normalized P&L, BS, and CF stored as **JSONB** for flexibility.
-- `financial_ratios`: History of 17 computed fundamental ratios per stock.
-- `stock_ratings`: Composite scores across Fundamental, Valuation, and Technical components.
-
-### Performance Optimizations
-- **LATERAL JOINs**: Used in screener queries to fetch the latest ratio/price/rating in a single round-trip.
-- **JSONB Deduplication**: `raw_checksum` (MD5) prevents redundant writes during re-runs of scrapers.
+```
+AMFI / NSE / Yahoo Finance
+        │
+        ▼
+  nivesh-server  ──── Supabase PostgreSQL
+  (Render.com)         (market data, all tables)
+        │
+        │  REST API (JSON)
+        ▼
+  nivesh-client  ──── SQLite (~/.nivesh/)
+  (local machine)     (portfolio, JWT tokens, TTL cache)
+        │
+        ▼
+  React UI (browser)
+```
 
 ---
 
-## 🔐 Security
-- **JWT Authentication**: Stateless BAerer tokens (HS256).
-- **Stateless Auth**: `ENABLE_AUTH` flag for environment-specific security.
-- **Role-Based Access**: Specialized `require_admin` dependency for data pipelines.
+## nivesh-server
+
+Cloud FastAPI application. Owns all financial data and computation.
+
+### Key files
+
+| Path | Role |
+|------|------|
+| `app/main.py` | FastAPI entry, lifespan (scheduler start/stop) |
+| `app/config.py` | Pydantic Settings — reads env vars |
+| `app/database.py` | Async SQLAlchemy engine → Supabase |
+| `app/security.py` | JWT encode/decode, bcrypt |
+| `app/routers/` | Route handlers |
+| `app/analytics.py` | Fund metrics: Sharpe, Sortino, Alpha, Beta |
+| `app/sync.py` | AMFI NAV sync |
+| `app/ingestion/` | (Phase 3) APScheduler jobs |
+| `alembic/` | Alembic migrations (raw SQL, 18 files) |
+| `scripts/seed/` | One-time data seeding scripts |
+| `data/` | CSV files for initial seeding |
+
+### Database connection rules
+
+Two URLs are required — do not mix them up:
+
+| URL | Env var | Port | Use |
+|-----|---------|------|-----|
+| Supavisor pooler | `DATABASE_URL` | `6543` | Runtime (FastAPI, seed scripts) |
+| Direct | `ALEMBIC_URL` | `5432` | Alembic migrations only |
+
+The pooler (6543) uses IPv4 and works on Render free tier. The direct URL uses IPv6 and is only needed for DDL during migrations.
+
+### Schema import pattern
+
+```python
+# Correct — from shared package
+from schemas.funds import FundMasterRead, FundMetricsResponse
+from schemas.stocks import StockListResponse, ScreenerResponse
+from schemas.market import BenchmarkMasterRead
+from schemas.auth import TokenResponse
+
+# Allowed — server-internal only
+from app.schemas import ScoringStateSchema  # LangGraph state
+```
+
+---
+
+## nivesh-client
+
+Local FastAPI + React application. Stores only user-private data.
+
+### Key rules
+
+- SQLite at `~/.nivesh/nivesh_client.db` — auto-created on first run
+- JWT tokens stored in SQLite `auth_tokens` table, **never** in browser localStorage
+- All market data fetched from `nivesh-server` and cached locally with TTL
+- Never connects directly to Supabase
+- Never runs heavy computation (pandas-ta, scipy) — server pre-computes all indicators
+
+---
+
+## nivesh-shared
+
+Pip-installable package containing all Pydantic v2 schemas used by both server and client.
+
+### Schema files
+
+| File | Contains |
+|------|---------|
+| `schemas/funds.py` | FundMaster, FundMetrics, FundNav, Comparison schemas |
+| `schemas/stocks.py` | Stock, Screener, FundamentalScore schemas |
+| `schemas/market.py` | Benchmark, MarketSnapshot, SyncJob schemas |
+| `schemas/auth.py` | TokenResponse, LoginRequest schemas |
+
+### Install pattern
+
+```bash
+# In development (editable)
+pip install -e ./nivesh-shared
+
+# In production (Render build)
+pip install -e ../nivesh-shared -r requirements.txt
+```
+
+Any type that appears in both server and client responses belongs in `nivesh-shared`. Server-internal types (LangGraph state, ORM internals) stay in `app/schemas.py`.
+
+---
+
+## Implementation Phases
+
+| Phase | Status | Description |
+|-------|--------|-------------|
+| P0 | Done | Monorepo restructure |
+| P1 | Done | Supabase DB setup — 18 Alembic migrations + seed scripts |
+| P2 | Done | Server Core API on Render — auth, EtlRun model, delta-sync, Render deploy |
+| P3 | Pending | Ingestion pipeline (NSE bhavcopy, AMFI, FII/DII) |
+| P4 | Pending | Client SQLite + local API |
+| P5 | Pending | JWT auth + sync engine |
+| P6 | Pending | Agentic layer |
+| P7 | Pending | React UI |
+| P8 | Pending | CI/CD + production hardening |
+
+---
+
+## Known Blockers
+
+None open. BLOCKER-001 (SyncJob/PipelineAudit → EtlRun migration) was resolved in Phase 2.

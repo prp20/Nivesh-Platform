@@ -1,0 +1,35 @@
+services:
+  - type: web
+    name: nivesh-api
+    runtime: python
+    region: oregon
+    plan: free
+    rootDir: nivesh-server
+    buildCommand: pip install -e ../nivesh-shared -r requirements.txt
+    startCommand: uvicorn app.main:app --host 0.0.0.0 --port $PORT
+    healthCheckPath: /health
+    envVars:
+      - key: DATABASE_URL
+        sync: false
+      - key: SECRET_KEY
+        generateValue: true
+      - key: ENVIRONMENT
+        value: production
+      - key: APP_VERSION
+        value: 0.1.0
+      - key: ENABLE_AUTH
+        value: "true"
+      - key: ACCESS_TOKEN_EXPIRE_MINUTES
+        value: "15"
+      - key: REFRESH_TOKEN_EXPIRE_DAYS
+        value: "7"
+      - key: ADMIN_USERNAME
+        sync: false
+      - key: ADMIN_PASSWORD_HASH
+        sync: false
+      - key: GROQ_API_KEY
+        sync: false
+      - key: GOOGLE_API_KEY
+        sync: false
+      - key: LANGSMITH_TRACING
+        value: "false"

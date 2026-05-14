@@ -1,0 +1,30 @@
+version: '3.8'
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: nivesh_postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: nivesh_db
+      POSTGRES_USER: nivesh_admin
+      POSTGRES_PASSWORD: nivesh_password_123
+    ports:
+      - "5432:5432"
+    volumes:
+      - nivesh_pg_data:/var/lib/postgresql/data
+    healthcheck:
+      test: [ "CMD-SHELL", "pg_isready -U nivesh_admin -d nivesh_db" ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - nivesh_network
+
+volumes:
+  nivesh_pg_data:
+
+
+networks:
+  nivesh_network:
+    driver: bridge
