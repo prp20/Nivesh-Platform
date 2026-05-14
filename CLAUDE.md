@@ -59,7 +59,7 @@ cd frontend && npm run dev
 | P1 | Done | Supabase DB setup — 18 Alembic migrations + seed scripts |
 | P2 | Done | Server: Core API on Render — auth, EtlRun model, delta-sync, Render deploy |
 | P3 | Done | Server: Ingestion pipeline — APScheduler (7 jobs), pipeline/ package, fundamental_scorer/, fund_scorer/ |
-| P4 | Pending | Client: SQLite + local API |
+| P4 | Done | Client: SQLite + local API — FastAPI :8001, SQLAlchemy/aiosqlite, Alembic, APScheduler, proxy/local/agent/auth routers |
 | P5 | Pending | Client: JWT auth + sync engine |
 | P6 | Pending | Client: Agentic layer |
 | P7 | Pending | Client: UI adaptation |

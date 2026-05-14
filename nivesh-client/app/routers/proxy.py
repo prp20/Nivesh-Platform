@@ -1,0 +1,274 @@
+"""
+Proxy router — /proxy/* → Render server API.
+
+Pattern for every endpoint:
+  1. Build cache_key for this request
+  2. Check local cache — return immediately if fresh
+  3. Try server — on success, update cache, return data
+  4. On OfflineError — return stale cache with _offline flag, or 503
+
+The response shapes are exactly what the server returns — no transformation.
+The React UI already knows these shapes from the shared schemas package.
+
+IMPORTANT: Route ordering matters in FastAPI.
+  /proxy/funds/compare  MUST be declared BEFORE /proxy/funds/{scheme_code}
+  /proxy/stocks/screener MUST be declared BEFORE /proxy/stocks/{symbol}
+"""
+
+import logging
+from typing import Optional
+
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from ..config import settings
+from ..database import get_db
+from ..services.cache import get_cached, make_cache_key, set_cached
+from ..services.http_client import OfflineError, ServerClient
+
+logger = logging.getLogger(__name__)
+router = APIRouter(prefix="/proxy", tags=["proxy"])
+
+
+def _offline_wrap(data: dict) -> dict:
+    """Attach an offline flag to any cached response served stale."""
+    if isinstance(data, dict):
+        return {**data, "_offline": True, "_stale": True}
+    return data
+
+
+# ── Mutual Funds ──────────────────────────────────────────────────────────────
+
+@router.get("/funds/compare")
+async def proxy_fund_compare(
+    scheme_codes: str = Query(..., description="Comma-separated scheme codes"),
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Fund comparison — ComparisonResponse shape.
+    Cache key uses sorted codes so AAAA,BBBB == BBBB,AAAA.
+    Declared BEFORE /funds/{scheme_code} to avoid route shadowing.
+    """
+    codes_sorted = ",".join(sorted(scheme_codes.split(",")))
+    cache_key = f"funds:compare:{codes_sorted}"
+    cached, is_fresh = await get_cached(db, cache_key)
+    if is_fresh:
+        return cached
+
+    try:
+        async with ServerClient(db) as client:
+            data = await client.get(
+                "/api/v1/funds/compare",
+                params={"scheme_codes": scheme_codes},
+            )
+        await set_cached(db, cache_key, data, settings.CACHE_TTL_FUND_DETAIL)
+        return data
+    except OfflineError:
+        if cached:
+            return _offline_wrap(cached)
+        raise HTTPException(503, "Server offline and no cached data available")
+
+
+@router.get("/funds")
+async def proxy_fund_list(
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+):
+    """GET /api/v1/funds — all query params forwarded, result cached by param hash."""
+    params = dict(request.query_params)
+    cache_key = make_cache_key("funds:list", params)
+
+    cached, is_fresh = await get_cached(db, cache_key)
+    if is_fresh:
+        return cached
+
+    try:
+        async with ServerClient(db) as client:
+            data = await client.get("/api/v1/funds", params=params)
+        await set_cached(db, cache_key, data, settings.CACHE_TTL_FUND_LIST)
+        return data
+    except OfflineError:
+        if cached:
+            return _offline_wrap(cached)
+        raise HTTPException(503, "Server offline and no cached data available")
+
+
+@router.get("/funds/{scheme_code}/nav")
+async def proxy_fund_nav(
+    scheme_code: str,
+    limit: int = Query(default=365),
+    db: AsyncSession = Depends(get_db),
+):
+    cache_key = f"funds:nav:{scheme_code}:{limit}"
+    cached, is_fresh = await get_cached(db, cache_key)
+    if is_fresh:
+        return cached
+
+    try:
+        async with ServerClient(db) as client:
+            data = await client.get(
+                f"/api/v1/funds/{scheme_code}/nav",
+                params={"limit": limit},
+            )
+        await set_cached(db, cache_key, data, settings.CACHE_TTL_FUND_NAV)
+        return data
+    except OfflineError:
+        if cached:
+            return _offline_wrap(cached)
+        raise HTTPException(503, "Server offline")
+
+
+@router.get("/funds/{scheme_code}")
+async def proxy_fund_detail(
+    scheme_code: str, db: AsyncSession = Depends(get_db)
+):
+    cache_key = f"funds:detail:{scheme_code}"
+    cached, is_fresh = await get_cached(db, cache_key)
+    if is_fresh:
+        return cached
+
+    try:
+        async with ServerClient(db) as client:
+            data = await client.get(f"/api/v1/funds/{scheme_code}")
+        await set_cached(db, cache_key, data, settings.CACHE_TTL_FUND_DETAIL)
+        return data
+    except OfflineError:
+        if cached:
+            return _offline_wrap(cached)
+        raise HTTPException(503, "Server offline")
+
+
+# ── Benchmarks ────────────────────────────────────────────────────────────────
+
+@router.get("/benchmarks")
+async def proxy_benchmarks(
+    request: Request, db: AsyncSession = Depends(get_db)
+):
+    params = dict(request.query_params)
+    cache_key = make_cache_key("benchmarks:list", params)
+    cached, is_fresh = await get_cached(db, cache_key)
+    if is_fresh:
+        return cached
+
+    try:
+        async with ServerClient(db) as client:
+            data = await client.get("/api/v1/benchmarks", params=params)
+        await set_cached(db, cache_key, data, settings.CACHE_TTL_BENCHMARKS)
+        return data
+    except OfflineError:
+        if cached:
+            return _offline_wrap(cached)
+        raise HTTPException(503, "Server offline")
+
+
+@router.get("/benchmarks/{code}/nav")
+async def proxy_benchmark_nav(
+    code: str,
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+):
+    params = dict(request.query_params)
+    cache_key = make_cache_key(f"benchmarks:nav:{code}", params)
+    cached, is_fresh = await get_cached(db, cache_key)
+    if is_fresh:
+        return cached
+
+    try:
+        async with ServerClient(db) as client:
+            data = await client.get(f"/api/v1/benchmarks/{code}/nav", params=params)
+        await set_cached(db, cache_key, data, settings.CACHE_TTL_BENCHMARKS)
+        return data
+    except OfflineError:
+        if cached:
+            return _offline_wrap(cached)
+        raise HTTPException(503, "Server offline")
+
+
+# ── Stocks ────────────────────────────────────────────────────────────────────
+
+@router.get("/stocks/screener")
+async def proxy_screener(
+    request: Request, db: AsyncSession = Depends(get_db)
+):
+    """
+    Stock screener — ScreenerResponse shape.
+    Short TTL (15 min) because screener results are filter-sensitive.
+    Declared BEFORE /stocks/{symbol} to avoid route shadowing.
+    """
+    params = dict(request.query_params)
+    cache_key = make_cache_key("stocks:screener", params)
+    cached, is_fresh = await get_cached(db, cache_key)
+    if is_fresh:
+        return cached
+
+    try:
+        async with ServerClient(db) as client:
+            data = await client.get("/api/v1/stocks/screener", params=params)
+        await set_cached(db, cache_key, data, settings.CACHE_TTL_SCREENER)
+        return data
+    except OfflineError:
+        if cached:
+            return _offline_wrap(cached)
+        raise HTTPException(503, "Server offline")
+
+
+@router.get("/stocks")
+async def proxy_stock_list(
+    request: Request, db: AsyncSession = Depends(get_db)
+):
+    params = dict(request.query_params)
+    cache_key = make_cache_key("stocks:list", params)
+    cached, is_fresh = await get_cached(db, cache_key)
+    if is_fresh:
+        return cached
+
+    try:
+        async with ServerClient(db) as client:
+            data = await client.get("/api/v1/stocks", params=params)
+        await set_cached(db, cache_key, data, settings.CACHE_TTL_STOCK_LIST)
+        return data
+    except OfflineError:
+        if cached:
+            return _offline_wrap(cached)
+        raise HTTPException(503, "Server offline")
+
+
+@router.get("/stocks/{symbol}")
+async def proxy_stock_detail(
+    symbol: str, db: AsyncSession = Depends(get_db)
+):
+    cache_key = f"stocks:detail:{symbol.upper()}"
+    cached, is_fresh = await get_cached(db, cache_key)
+    if is_fresh:
+        return cached
+
+    try:
+        async with ServerClient(db) as client:
+            data = await client.get(f"/api/v1/stocks/{symbol.upper()}")
+        await set_cached(db, cache_key, data, settings.CACHE_TTL_STOCK_DETAIL)
+        return data
+    except OfflineError:
+        if cached:
+            return _offline_wrap(cached)
+        raise HTTPException(503, "Server offline")
+
+
+# ── ETL / Pipeline Status ─────────────────────────────────────────────────────
+
+@router.get("/sync/status")
+async def proxy_sync_status(db: AsyncSession = Depends(get_db)):
+    """Pipeline run status — short TTL, always try server first."""
+    cache_key = "etl:status"
+    cached, is_fresh = await get_cached(db, cache_key)
+    if is_fresh:
+        return cached
+
+    try:
+        async with ServerClient(db) as client:
+            data = await client.get("/api/v1/sync/status")
+        await set_cached(db, cache_key, data, settings.CACHE_TTL_ETL_STATUS)
+        return data
+    except OfflineError:
+        if cached:
+            return _offline_wrap(cached)
+        return {"runs": [], "total": 0, "_offline": True}
