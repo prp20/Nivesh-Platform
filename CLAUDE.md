@@ -60,9 +60,9 @@ cd frontend && npm run dev
 | P2 | Done | Server: Core API on Render — auth, EtlRun model, delta-sync, Render deploy |
 | P3 | Done | Server: Ingestion pipeline — APScheduler (7 jobs), pipeline/ package, fundamental_scorer/, fund_scorer/ |
 | P4 | Done | Client: SQLite + local API — FastAPI :8001, SQLAlchemy/aiosqlite, Alembic, APScheduler, proxy/local/agent/auth routers |
-| P5 | Pending | Client: JWT auth + sync engine |
-| P6 | Pending | Client: Agentic layer |
-| P7 | Pending | Client: UI adaptation |
+| P5 | Done | Client: React UI adaptation — proxy routes, auth overhaul (no localStorage), Portfolio/Watchlist/AgentChat pages, ProtectedRoute, SyncStatusBar |
+| P6 | Pending | Client: Agentic layer (LLM wiring) |
+| P7 | Pending | Client: Sync engine + JWT refresh |
 | P8 | Pending | CI/CD + production hardening |
 
 ## Keeping CLAUDE.md Up to Date
