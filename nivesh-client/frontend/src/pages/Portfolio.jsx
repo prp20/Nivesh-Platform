@@ -1,155 +1,271 @@
-import React, { useEffect } from 'react';
-import { useDispatch, useSelector } from 'react-redux';
-import { Link } from 'react-router-dom';
-import { fetchFunds } from '../store/slices/fundsSlice';
-import { motion } from 'framer-motion';
+import { useState, useEffect, useCallback } from 'react';
+import portfolioService from '../api/services/portfolioService';
+import fundService from '../api/services/fundService';
+import stockService from '../api/services/stockService';
 
-const Portfolio = () => {
-    const dispatch = useDispatch();
-    const { items, loading } = useSelector((state) => state.funds);
+// ── Add Holding Modal ──────────────────────────────────────────────────────────
 
-    useEffect(() => {
-        if (items.length === 0) {
-            dispatch(fetchFunds({ skip: 0, limit: 10 }));
+const AddHoldingModal = ({ onClose, onSaved }) => {
+    const [form, setForm] = useState({
+        symbol: '', asset_type: 'STOCK', quantity: '', avg_cost: '',
+        buy_date: new Date().toISOString().split('T')[0],
+        broker: '', folio_number: '', notes: '',
+    });
+    const [error, setError] = useState(null);
+    const [saving, setSaving] = useState(false);
+
+    const handleSubmit = async (e) => {
+        e.preventDefault();
+        setError(null);
+        setSaving(true);
+        try {
+            await portfolioService.addHolding({
+                symbol: form.symbol.toUpperCase(),
+                asset_type: form.asset_type,
+                quantity: parseFloat(form.quantity),
+                avg_cost: parseFloat(form.avg_cost),
+                buy_date: form.buy_date,
+                broker: form.broker || undefined,
+                folio_number: form.folio_number || undefined,
+                notes: form.notes || undefined,
+            });
+            onSaved();
+        } catch (err) {
+            setError(err.response?.data?.detail ?? 'Failed to save holding');
+        } finally {
+            setSaving(false);
         }
-    }, [dispatch, items.length]);
+    };
 
-    // Stabilize portfolio data using useMemo to prevent re-randomization on every render
-    const { portfolioHoldings, totalPortfolioValue } = React.useMemo(() => {
-        const holdings = items.slice(0, 5).map(fund => ({
-            ticker: fund.isin?.substring(0, 4) || 'ELTE',
-            name: fund.scheme_name,
-            allocation: fund.scheme_category,
-            valueNum: Math.random() * 500000 + 100000,
-            weight: Math.floor(Math.random() * 20 + 5),
-            return: fund.displayMetrics.change,
-            trend: fund.displayMetrics.change.startsWith('+') ? 'up' : 'down'
-        }));
-
-        const total = holdings.reduce((acc, curr) => acc + curr.valueNum, 0);
-
-        return {
-            portfolioHoldings: holdings.map(h => ({
-                ...h,
-                value: `₹${h.valueNum.toLocaleString(undefined, { maximumFractionDigits: 0 })}`
-            })),
-            totalPortfolioValue: total
-        };
-    }, [items]);
-
-    if (loading && items.length === 0) {
-        return (
-            <div className="min-h-screen w-full flex flex-col items-center justify-center bg-[#0a0f12]">
-                <div className="w-24 h-24 border-4 border-primary border-t-transparent rounded-full animate-spin mb-8 shadow-[0_0_30px_rgba(233,195,73,0.2)]"></div>
-                <p className="text-primary font-black uppercase tracking-[0.5em] animate-pulse">Decrypting Asset Ledger...</p>
-            </div>
-        );
-    }
+    const field = (key, label, type = 'text', required = false) => (
+        <div className="flex flex-col gap-1">
+            <label className="text-[9px] font-black uppercase tracking-widest text-slate-500">{label}</label>
+            <input
+                type={type}
+                value={form[key]}
+                onChange={e => setForm(f => ({ ...f, [key]: e.target.value }))}
+                required={required}
+                className="bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-[#D4AF37]/50 transition-colors"
+            />
+        </div>
+    );
 
     return (
-        <div className="p-6 md:p-10 lg:p-12 2xl:p-16 w-full animate-fadeIn flex flex-col gap-12 transition-all duration-500">
-            {/* Compact Header */}
-            <header className="flex flex-col xl:flex-row items-start xl:items-center justify-between gap-8 pt-8">
-                <div className="space-y-1">
-                    <p className="font-label text-xs font-semibold uppercase tracking-[0.3em] text-primary">Sovereign Asset Surveillance</p>
-                    <h2 className="font-headline text-5xl font-light tracking-tight text-white uppercase">
-                        Master <span className="font-extrabold italic text-primary">Portfolio</span>
-                    </h2>
-                </div>
-                
-                <div className="flex gap-4">
-                    <button className="px-6 py-3 rounded-xl border border-outline-variant/30 text-[10px] font-black uppercase tracking-widest hover:bg-white/5 transition-all flex items-center gap-3">
-                        <span className="material-symbols-outlined text-lg">download</span>
-                        Export Statement
-                    </button>
-                    <button className="px-6 py-3 rounded-xl bg-primary text-on-primary text-[10px] font-black uppercase tracking-widest hover:brightness-110 transition-all flex items-center gap-3 shadow-2xl">
-                        <span className="material-symbols-outlined text-lg">sync</span>
-                        Rebalance Matrix
-                    </button>
-                </div>
-            </header>
-
-            {/* High-Density Status Grid */}
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-6">
-                {[
-                    { label: 'Consolidated Net Worth', val: `₹${totalPortfolioValue.toLocaleString()}`, trend: '+12.4%', icon: 'account_balance_wallet' },
-                    { label: 'Unrealized Alpha', val: '₹12,45,000', trend: '+14%', icon: 'insights' },
-                    { label: 'Realized Gains', val: '₹4,50,000', trend: '+5.2%', icon: 'payments' },
-                    { label: 'Dividend Stream', val: '₹84,000', trend: 'Monthly', icon: 'currency_exchange' },
-                    { label: 'System Health', val: '98.5%', trend: 'Tier-1', icon: 'shield_moon' },
-                ].map((stat, i) => (
-                    <div key={i} className="bg-surface-container-low/40 backdrop-blur-xl p-6 rounded-2xl border border-outline-variant/10 shadow-xl group hover:border-primary/30 transition-all">
-                        <div className="flex items-start justify-between mb-4">
-                            <span className="text-[10px] font-black text-slate-500 uppercase tracking-widest">{stat.label}</span>
-                            <span className="material-symbols-outlined text-primary/40 group-hover:text-primary transition-colors text-xl">{stat.icon}</span>
-                        </div>
-                        <div className="text-2xl font-black text-white tracking-widest mb-1">{stat.val}</div>
-                        <div className="text-[10px] font-black text-secondary tracking-widest opacity-80 uppercase">{stat.trend}</div>
+        <div className="fixed inset-0 bg-black/70 backdrop-blur-sm z-50 flex items-center justify-center p-4"
+             onClick={onClose}>
+            <div className="bg-[#161c22] border border-white/8 rounded-2xl p-6 w-full max-w-md shadow-2xl"
+                 onClick={e => e.stopPropagation()}>
+                <h3 className="text-base font-bold text-white mb-4">Add Holding</h3>
+                <form onSubmit={handleSubmit} className="flex flex-col gap-3">
+                    {field('symbol', 'Symbol / Scheme Code', 'text', true)}
+                    <div className="flex flex-col gap-1">
+                        <label className="text-[9px] font-black uppercase tracking-widest text-slate-500">Type</label>
+                        <select
+                            value={form.asset_type}
+                            onChange={e => setForm(f => ({ ...f, asset_type: e.target.value }))}
+                            className="bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-[#D4AF37]/50"
+                        >
+                            <option value="STOCK">Stock</option>
+                            <option value="FUND">Mutual Fund</option>
+                        </select>
                     </div>
-                ))}
+                    {field('quantity', 'Quantity', 'number', true)}
+                    {field('avg_cost', 'Avg Cost (₹)', 'number', true)}
+                    {field('buy_date', 'Buy Date', 'date', true)}
+                    {field('broker', 'Broker / AMC')}
+                    {form.asset_type === 'FUND' && field('folio_number', 'Folio Number')}
+                    {error && <p className="text-red-400 text-xs">{error}</p>}
+                    <div className="flex gap-3 pt-2">
+                        <button type="button" onClick={onClose}
+                            className="flex-1 py-2.5 rounded-xl border border-white/10 text-sm text-slate-400 hover:text-white transition-colors">
+                            Cancel
+                        </button>
+                        <button type="submit" disabled={saving}
+                            className="flex-1 py-2.5 rounded-xl bg-gradient-to-r from-[#e9c349] to-[#b8942e] text-[#0f1419] text-sm font-black uppercase tracking-widest disabled:opacity-50">
+                            {saving ? 'Saving...' : 'Save'}
+                        </button>
+                    </div>
+                </form>
             </div>
+        </div>
+    );
+};
 
-            {/* High-Density Ledger Table */}
-            <div className="bg-surface-container-low/20 backdrop-blur-3xl rounded-3xl border border-outline-variant/10 overflow-hidden shadow-2xl mb-12">
-                <div className="w-full overflow-x-auto">
-                    <table className="w-full text-left border-collapse">
-                        <thead>
-                            <tr className="border-b border-outline-variant/10 bg-white/[0.02]">
-                                <th className="px-8 py-5 text-[10px] uppercase tracking-widest text-slate-500 font-black">Asset Identity</th>
-                                <th className="px-8 py-5 text-[10px] uppercase tracking-widest text-slate-500 font-black text-center">Weight</th>
-                                <th className="px-8 py-5 text-[10px] uppercase tracking-widest text-slate-500 font-black text-center">Liquidity Value</th>
-                                <th className="px-8 py-5 text-[10px] uppercase tracking-widest text-slate-500 font-black text-right">Alpha (1Y)</th>
-                                <th className="px-8 py-5 text-[10px] uppercase tracking-widest text-slate-500 font-black text-center">Protocol Status</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            {portfolioHoldings.map((asset, i) => (
-                                <tr key={i} className="border-b border-outline-variant/5 hover:bg-white/[0.03] transition-all group">
-                                    <td className="px-8 py-6">
-                                        <div className="flex items-center gap-6">
-                                            <div className="w-12 h-12 rounded-xl bg-white/5 border border-white/10 flex items-center justify-center font-black text-sm text-primary group-hover:scale-110 transition-transform">
-                                                {asset.ticker}
-                                            </div>
-                                            <div>
-                                                <div className="font-bold text-lg text-white group-hover:text-primary transition-colors tracking-tight">
-                                                    {asset.name}
-                                                </div>
-                                                <div className="text-[10px] text-slate-500 font-black tracking-widest uppercase opacity-60">
-                                                    {asset.allocation}
-                                                </div>
-                                            </div>
-                                        </div>
-                                    </td>
-                                    <td className="px-8 py-6 text-center">
-                                        <div className="text-lg font-black text-white tracking-widest">
-                                            {asset.weight}%
-                                        </div>
-                                    </td>
-                                    <td className="px-8 py-6 text-center">
-                                        <div className="text-xl font-bold text-white tracking-tight">
-                                            {asset.value}
-                                        </div>
-                                    </td>
-                                    <td className="px-8 py-6 text-right">
-                                        <div className={`text-xl font-black ${asset.trend === 'up' ? 'text-secondary' : 'text-error'} tracking-tighter`}>
-                                            {asset.return}
-                                        </div>
-                                    </td>
-                                    <td className="px-8 py-6 text-center">
-                                        <div className="flex items-center justify-center gap-2">
-                                            <span className="material-symbols-outlined text-2xl text-secondary animate-pulse">verified</span>
-                                            <span className="text-[9px] font-black text-secondary tracking-widest uppercase">Verified</span>
-                                        </div>
-                                    </td>
-                                </tr>
-                            ))}
-                        </tbody>
-                    </table>
+// ── Portfolio Page ────────────────────────────────────────────────────────────
+
+const Portfolio = () => {
+    const [holdings, setHoldings] = useState([]);
+    const [enriched, setEnriched] = useState([]);
+    const [loading, setLoading] = useState(true);
+    const [showAdd, setShowAdd] = useState(false);
+
+    const loadHoldings = useCallback(async () => {
+        try {
+            const raw = await portfolioService.getHoldings();
+            setHoldings(raw);
+            enrichHoldings(raw);
+        } catch (err) {
+            console.error('[Portfolio] Failed to load holdings:', err);
+        } finally {
+            setLoading(false);
+        }
+    }, []);
+
+    const enrichHoldings = async (raw) => {
+        const results = await Promise.allSettled(
+            raw.map(async (h) => {
+                let currentPrice;
+                try {
+                    if (h.asset_type === 'STOCK') {
+                        const detail = await stockService.getStockDetail(h.symbol);
+                        currentPrice = detail?.latest_close;
+                    } else {
+                        const detail = await fundService.getFundDetail(h.symbol);
+                        currentPrice = detail?.metrics?.current_nav;
+                    }
+                } catch {
+                    // Offline or not cached — show dashes
+                }
+                const invested = h.avg_cost * h.quantity;
+                const currentValue = currentPrice ? currentPrice * h.quantity : undefined;
+                const pnl = currentValue !== undefined ? currentValue - invested : undefined;
+                const pnlPct = pnl !== undefined && invested > 0 ? (pnl / invested) * 100 : undefined;
+                return { ...h, currentPrice, currentValue, pnl, pnlPct, invested };
+            })
+        );
+        setEnriched(
+            results
+                .filter(r => r.status === 'fulfilled')
+                .map(r => r.value)
+        );
+    };
+
+    useEffect(() => { loadHoldings(); }, [loadHoldings]);
+
+    const handleDelete = async (id) => {
+        if (!window.confirm('Remove this holding?')) return;
+        try {
+            await portfolioService.deleteHolding(id);
+            await loadHoldings();
+        } catch (err) {
+            console.error('[Portfolio] Delete failed:', err);
+        }
+    };
+
+    const fmt = (n) => n != null ? `₹${Math.abs(n).toLocaleString('en-IN', { maximumFractionDigits: 0 })}` : '—';
+    const fmtPct = (n) => n != null ? `${n >= 0 ? '+' : ''}${n.toFixed(2)}%` : '—';
+
+    const totalInvested = enriched.reduce((s, h) => s + h.invested, 0);
+    const totalCurrent  = enriched.reduce((s, h) => s + (h.currentValue ?? h.invested), 0);
+    const totalPnl      = totalCurrent - totalInvested;
+    const totalPnlPct   = totalInvested > 0 ? (totalPnl / totalInvested) * 100 : 0;
+
+    return (
+        <div className="min-h-screen bg-[#0a0f12] p-6 md:p-10">
+            <div className="max-w-6xl mx-auto">
+                {/* Header */}
+                <div className="flex items-center justify-between mb-8">
+                    <div>
+                        <h1 className="text-2xl font-headline font-bold text-white">Portfolio</h1>
+                        <p className="text-[11px] text-slate-500 uppercase tracking-widest mt-1">
+                            {enriched.length} holding{enriched.length !== 1 ? 's' : ''}
+                        </p>
+                    </div>
+                    <button
+                        onClick={() => setShowAdd(true)}
+                        className="flex items-center gap-2 px-5 py-2.5 bg-gradient-to-r from-[#e9c349] to-[#b8942e] text-[#0f1419] rounded-xl text-[11px] font-black uppercase tracking-widest"
+                    >
+                        <span className="material-symbols-outlined text-[16px]">add</span>
+                        Add Holding
+                    </button>
                 </div>
+
+                {/* Summary Cards */}
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-8">
+                    {[
+                        { label: 'Invested', value: fmt(totalInvested), color: 'text-white' },
+                        { label: 'Current Value', value: fmt(totalCurrent), color: 'text-white' },
+                        {
+                            label: 'Total P&L',
+                            value: `${totalPnl >= 0 ? '+' : '-'}${fmt(totalPnl)} (${fmtPct(totalPnlPct)})`,
+                            color: totalPnl >= 0 ? 'text-emerald-400' : 'text-red-400',
+                        },
+                    ].map(card => (
+                        <div key={card.label} className="bg-[#161c22] border border-white/8 rounded-2xl p-5">
+                            <p className="text-[9px] font-black uppercase tracking-widest text-slate-500 mb-2">{card.label}</p>
+                            <p className={`text-xl font-bold ${card.color}`}>{card.value}</p>
+                        </div>
+                    ))}
+                </div>
+
+                {/* Holdings Table */}
+                {loading ? (
+                    <div className="flex justify-center py-16">
+                        <div className="w-10 h-10 border-2 border-[#D4AF37] border-t-transparent rounded-full animate-spin" />
+                    </div>
+                ) : enriched.length === 0 ? (
+                    <div className="text-center py-16">
+                        <span className="material-symbols-outlined text-6xl text-slate-700 font-thin">account_balance_wallet</span>
+                        <p className="text-slate-500 text-sm mt-4">No holdings yet. Add your first holding.</p>
+                    </div>
+                ) : (
+                    <div className="bg-[#161c22] border border-white/8 rounded-2xl overflow-hidden">
+                        <div className="overflow-x-auto">
+                            <table className="w-full">
+                                <thead>
+                                    <tr className="border-b border-white/5">
+                                        {['Symbol', 'Type', 'Qty', 'Avg Cost', 'Current', 'P&L', 'P&L %', ''].map(h => (
+                                            <th key={h} className="px-4 py-3 text-left text-[9px] font-black uppercase tracking-widest text-slate-500">{h}</th>
+                                        ))}
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {enriched.map(h => (
+                                        <tr key={h.id} className="border-b border-white/4 hover:bg-white/2 transition-colors">
+                                            <td className="px-4 py-3 text-sm font-bold text-white">{h.symbol}</td>
+                                            <td className="px-4 py-3">
+                                                <span className={`text-[9px] font-black uppercase tracking-widest px-2 py-0.5 rounded-full
+                                                    ${h.asset_type === 'STOCK' ? 'bg-blue-500/10 text-blue-400' : 'bg-purple-500/10 text-purple-400'}`}>
+                                                    {h.asset_type}
+                                                </span>
+                                            </td>
+                                            <td className="px-4 py-3 text-sm text-slate-300">{h.quantity}</td>
+                                            <td className="px-4 py-3 text-sm text-slate-300">{fmt(h.avg_cost)}</td>
+                                            <td className="px-4 py-3 text-sm text-slate-300">
+                                                {h.currentPrice ? fmt(h.currentPrice) : '—'}
+                                            </td>
+                                            <td className={`px-4 py-3 text-sm font-semibold
+                                                ${h.pnl == null ? 'text-slate-500' : h.pnl >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
+                                                {h.pnl != null ? `${h.pnl >= 0 ? '+' : '-'}${fmt(h.pnl)}` : '—'}
+                                            </td>
+                                            <td className={`px-4 py-3 text-sm font-semibold
+                                                ${h.pnlPct == null ? 'text-slate-500' : h.pnlPct >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
+                                                {fmtPct(h.pnlPct)}
+                                            </td>
+                                            <td className="px-4 py-3">
+                                                <button
+                                                    onClick={() => handleDelete(h.id)}
+                                                    className="text-slate-600 hover:text-red-400 transition-colors"
+                                                    title="Remove holding"
+                                                >
+                                                    <span className="material-symbols-outlined text-[16px]">delete</span>
+                                                </button>
+                                            </td>
+                                        </tr>
+                                    ))}
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                )}
             </div>
 
-
-
+            {showAdd && (
+                <AddHoldingModal
+                    onClose={() => setShowAdd(false)}
+                    onSaved={() => { setShowAdd(false); loadHoldings(); }}
+                />
+            )}
         </div>
     );
 };
