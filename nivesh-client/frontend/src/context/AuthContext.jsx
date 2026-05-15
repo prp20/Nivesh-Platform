@@ -17,13 +17,14 @@ export const AuthProvider = ({ children }) => {
     useEffect(() => {
         const initAuth = async () => {
             try {
-                const resp = await fetch('http://localhost:8001/status');
+                const baseUrl = import.meta.env.VITE_API_URL || 'http://localhost:8001';
+                const resp = await fetch(`${baseUrl}/status`);
                 if (resp.ok) {
                     const status = await resp.json();
                     // last_connected_at is set by the login endpoint and cleared on logout
                     if (status.last_connected_at) {
                         // Read stored username from preferences
-                        const prefsResp = await fetch('http://localhost:8001/local/preferences');
+                        const prefsResp = await fetch(`${baseUrl}/local/preferences`);
                         const prefs = prefsResp.ok ? await prefsResp.json() : {};
                         setUser({ username: prefs.last_login_username ?? 'user' });
                     }
