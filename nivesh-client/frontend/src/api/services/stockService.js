@@ -1,131 +1,57 @@
 import apiClient from '../apiClient';
 
 const stockService = {
-  getStocks: async (params) => {
-    const response = await apiClient.get('/stocks', { params });
-    return response.data;
-  },
+    getStocks: async (params) => {
+        const response = await apiClient.get('/proxy/stocks', { params });
+        return response.data;
+    },
 
-  searchStocks: async (q) => {
-    const response = await apiClient.get('/stocks/search', { params: { q } });
-    return response.data;
-  },
+    searchStocks: async (q) => {
+        const response = await apiClient.get('/proxy/stocks/search', { params: { q } });
+        return response.data;
+    },
 
-  getStockDetail: async (symbol) => {
-    const response = await apiClient.get(`/stocks/${symbol}`);
-    return response.data;
-  },
+    getStockDetail: async (symbol) => {
+        const response = await apiClient.get(`/proxy/stocks/${symbol.toUpperCase()}`);
+        return response.data;
+    },
 
-  getPriceHistory: async (symbol, params) => {
-    const response = await apiClient.get(`/stocks/${symbol}/price`, { params });
-    return response.data;
-  },
+    getScreener: async (filters) => {
+        const response = await apiClient.get('/proxy/stocks/screener', { params: filters });
+        return response.data;
+    },
 
-  getFundamentals: async (symbol, params) => {
-    const response = await apiClient.get(`/stocks/${symbol}/fundamentals`, { params });
-    return response.data;
-  },
+    getCompare: async (symbols) => {
+        const response = await apiClient.get('/proxy/stocks', {
+            params: { symbols: symbols.join(',') }
+        });
+        return response.data;
+    },
 
-  getShareholding: async (symbol, params) => {
-    const response = await apiClient.get(`/stocks/${symbol}/shareholding`, { params });
-    return response.data;
-  },
+    // Pipeline status (read-only — ingestion runs server-side)
+    getPipelineStatus: async () => {
+        const response = await apiClient.get('/proxy/sync/status');
+        return response.data;
+    },
 
-  getRatios: async (symbol) => {
-    const response = await apiClient.get(`/stocks/${symbol}/ratios`);
-    return response.data;
-  },
+    // Price history — not yet in proxy; return empty for now
+    getPriceHistory: async () => ({ data: [] }),
 
-  getTechnicals: async (symbol, timeframe = "1d") => {
-    const response = await apiClient.get(`/stocks/${symbol}/technicals`, { params: { timeframe } });
-    return response.data;
-  },
+    // Stub read-only equivalents for removed pipeline triggers
+    getFundamentals: async (symbol) => {
+        const detail = await stockService.getStockDetail(symbol);
+        return detail;
+    },
 
-  getPatterns: async (symbol) => {
-    const response = await apiClient.get(`/stocks/${symbol}/patterns`);
-    return response.data;
-  },
+    getRatios: async (symbol) => {
+        const detail = await stockService.getStockDetail(symbol);
+        return detail;
+    },
 
-  getRating: async (symbol) => {
-    const response = await apiClient.get(`/stocks/${symbol}/rating`);
-    return response.data;
-  },
-
-  getScreener: async (filters) => {
-    const response = await apiClient.get('/screener', { params: filters });
-    return response.data;
-  },
-
-  getCompare: async (symbols) => {
-    const response = await apiClient.get('/compare', { params: { symbols: symbols.join(',') } });
-    return response.data;
-  },
-
-  triggerPriceRefresh: async (symbol) => {
-    const response = await apiClient.post(`/pipeline/metrics/price-refresh/${symbol}`);
-    return response.data;
-  },
-
-  triggerDeepPriceSync: async (symbol, period = "1y") => {
-    const response = await apiClient.post(`/pipeline/prices/refresh/${symbol}`, null, { params: { period } });
-    return response.data;
-  },
-
-  triggerScreenerScrape: async (symbol, force = false) => {
-    const response = await apiClient.post(`/pipeline/screener/${symbol}`, null, { params: { force } });
-    return response.data;
-  },
-
-  triggerTechnicalAnalysis: async (symbol) => {
-    const response = await apiClient.post(`/pipeline/technical/${symbol}`);
-    return response.data;
-  },
-
-  triggerRatingCompute: async (symbol) => {
-    const response = await apiClient.post(`/pipeline/ratings/${symbol}`);
-    return response.data;
-  },
-
-  getPipelineStatus: async () => {
-    const response = await apiClient.get('/pipeline/status');
-    return response.data;
-  },
-
-  triggerBulkPriceSync: async () => {
-    const response = await apiClient.post('/pipeline/prices/all');
-    return response.data;
-  },
-
-  triggerBulkScreenerScrape: async () => {
-    const response = await apiClient.post('/pipeline/screener/all');
-    return response.data;
-  },
-
-  triggerBulkRatingCompute: async () => {
-    const response = await apiClient.post('/pipeline/ratings/all');
-    return response.data;
-  },
-
-  // Mock CRUD operations
-  createStock: async (data) => {
-    console.log("Mock createStock called with:", data);
-    return Promise.resolve({ success: true, message: "Mock: Stock created successfully.", data });
-  },
-
-  updateStock: async (symbol, data) => {
-    console.log(`Mock updateStock for ${symbol} called with:`, data);
-    return Promise.resolve({ success: true, message: `Mock: Stock ${symbol} updated.`, data });
-  },
-
-  deleteStock: async (symbol) => {
-    console.log(`Mock deleteStock called for ${symbol}`);
-    return Promise.resolve({ success: true, message: `Mock: Stock ${symbol} deleted.` });
-  },
-
-  getAgentInsights: async (symbol) => {
-    const response = await apiClient.post(`/pipeline/fundamentals/run/${symbol}`);
-    return response.data;
-  }
+    getTechnicals: async (symbol) => {
+        const detail = await stockService.getStockDetail(symbol);
+        return detail;
+    },
 };
 
 export default stockService;
