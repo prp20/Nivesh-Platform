@@ -1,23 +1,26 @@
 import apiClient from '../apiClient';
 
 const authService = {
+    /**
+     * POST /auth/login — forwards to Render server, stores JWT in SQLite.
+     * Returns { access_token, token_type, expires_in }.
+     * React never sees the raw JWT after this point.
+     */
     login: async (username, password) => {
-        const formData = new FormData();
-        formData.append('username', username);
-        formData.append('password', password);
-
-        const response = await apiClient.post('/auth/login', formData, {
-            headers: {
-                'Content-Type': 'multipart/form-data',
-            },
-        });
+        const response = await apiClient.post('/auth/login', { username, password });
         return response.data;
     },
 
-    getMe: async (token) => {
-        const config = token ? { headers: { Authorization: `Bearer ${token}` } } : {};
-        const response = await apiClient.get('/auth/me', config);
-        return response.data;
+    /**
+     * POST /auth/logout — clears stored tokens from SQLite.
+     * Best-effort: local logout always succeeds even if server unreachable.
+     */
+    logout: async () => {
+        try {
+            await apiClient.post('/auth/logout');
+        } catch {
+            // Ignore — local SQLite tokens are cleared regardless
+        }
     },
 };
 
