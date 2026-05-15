@@ -1,8 +1,10 @@
 import React from 'react';
 import toast, { Toaster } from 'react-hot-toast';
-import { BrowserRouter as Router, Routes, Route, Navigate, useParams } from 'react-router-dom';
+import { BrowserRouter as Router, Routes, Route, Navigate, useParams, Outlet } from 'react-router-dom';
 import Dashboard from './pages/Dashboard';
 import Portfolio from './pages/Portfolio';
+import Watchlist from './pages/Watchlist';
+import AgentChat from './pages/AgentChat';
 import StockListing from './pages/StockListing';
 import Screener from './pages/Screener';
 import MFListing from './pages/MFListing';
@@ -10,8 +12,9 @@ import MFCompare from './pages/MFCompare';
 import IndicesListing from './pages/IndicesListing';
 import Login from './pages/Login';
 import { ThemeProvider } from './context/ThemeContext';
-import { AuthProvider, useAuth } from './context/AuthContext';
+import { AuthProvider } from './context/AuthContext';
 import Layout from './components/Layout';
+import ProtectedRoute from './components/ProtectedRoute';
 import StockDetail from './pages/StockDetail';
 import MFDetail from './pages/MFDetail';
 import IndexDetail from './pages/IndexDetail';
@@ -33,51 +36,43 @@ const IndexDetailRoute = () => {
   return <IndexDetail benchmarkCode={benchmarkCode} />;
 }
 
-const AppContent = () => {
-  const { user, loading } = useAuth();
-  
-  if (loading) return (
-      <div className="min-h-screen bg-[#0f1419] flex items-center justify-center">
-          <div className="w-12 h-12 border-2 border-[#D4AF37] border-t-transparent rounded-full animate-spin"></div>
-      </div>
-  );
-
-  return (
-    <Layout>
-      <Routes>
-        {/* Public Routes */}
-        <Route path="/" element={<Navigate to="/dashboard" replace />} />
-        <Route path="/dashboard" element={<Dashboard />} />
-        <Route path="/login" element={!user ? <Login /> : <Navigate to="/dashboard" replace />} />
-        
-        {/* Protected Routes */}
-        <Route path="/portfolio" element={user ? <Portfolio /> : <Navigate to="/login" replace />} />
-        <Route path="/stocks" element={user ? <StockListing /> : <Navigate to="/login" replace />} />
-        <Route path="/stocks/:symbol" element={user ? <StockDetailRoute /> : <Navigate to="/login" replace />} />
-        <Route path="/stock-compare" element={user ? <StockCompare /> : <Navigate to="/login" replace />} />
-        <Route path="/screener" element={user ? <Screener /> : <Navigate to="/login" replace />} />
-        <Route path="/mf" element={user ? <MFListing /> : <Navigate to="/login" replace />} />
-        <Route path="/mf/:schemeCode" element={user ? <MFDetailRoute /> : <Navigate to="/login" replace />} />
-        <Route path="/compare" element={user ? <MFCompare /> : <Navigate to="/login" replace />} />
-        <Route path="/indices" element={user ? <IndicesListing /> : <Navigate to="/login" replace />} />
-        <Route path="/indices/:benchmarkCode" element={user ? <IndexDetailRoute /> : <Navigate to="/login" replace />} />
-        <Route path="/admin" element={user ? <Admin /> : <Navigate to="/login" replace />} />
-        
-        <Route path="*" element={<Navigate to="/dashboard" replace />} />
-      </Routes>
-    </Layout>
-  );
+const LayoutWrapper = () => {
+  const outlet = <Outlet />;
+  return <Layout>{outlet}</Layout>;
 };
-
-
 
 function App() {
   return (
     <Router>
       <ThemeProvider>
         <AuthProvider>
-          <AppContent />
-          <Toaster 
+          <Routes>
+            {/* Public Routes */}
+            <Route path="/login" element={<Login />} />
+
+            {/* Protected Routes */}
+            <Route element={<ProtectedRoute />}>
+              <Route element={<LayoutWrapper />}>
+                <Route path="/" element={<Navigate to="/dashboard" replace />} />
+                <Route path="/dashboard" element={<Dashboard />} />
+                <Route path="/stocks" element={<StockListing />} />
+                <Route path="/stocks/:symbol" element={<StockDetailRoute />} />
+                <Route path="/stock-compare" element={<StockCompare />} />
+                <Route path="/screener" element={<Screener />} />
+                <Route path="/mf" element={<MFListing />} />
+                <Route path="/mf/:schemeCode" element={<MFDetailRoute />} />
+                <Route path="/compare" element={<MFCompare />} />
+                <Route path="/indices" element={<IndicesListing />} />
+                <Route path="/indices/:benchmarkCode" element={<IndexDetailRoute />} />
+                <Route path="/admin" element={<Admin />} />
+                <Route path="/portfolio" element={<Portfolio />} />
+                <Route path="/watchlist" element={<Watchlist />} />
+                <Route path="/agent" element={<AgentChat />} />
+                <Route path="*" element={<Navigate to="/dashboard" replace />} />
+              </Route>
+            </Route>
+          </Routes>
+          <Toaster
             position="top-right"
             toastOptions={{
               style: {
