@@ -5,6 +5,7 @@ import { useSelector } from 'react-redux';
 import fundService from '../api/services/fundService';
 import stockService from '../api/services/stockService';
 import { useAuth } from '../context/AuthContext';
+import SyncStatusBar from './SyncStatusBar';
 
 // ─── Error Boundary ───────────────────────────────────────────────────────────
 
@@ -231,6 +232,30 @@ const TopNavBar = ({ onMobileMenuClick, isMobileMenuOpen }) => {
                 >
                     <span className="material-symbols-outlined text-[15px] font-thin">account_balance_wallet</span>
                     Portfolio
+                </NavLink>
+
+                {/* Watchlist — direct link */}
+                <NavLink
+                    to="/watchlist"
+                    className={({ isActive }) =>
+                        `flex items-center gap-1.5 text-[10px] font-black uppercase tracking-[0.18em] transition-all duration-200 px-1 py-1 rounded-lg
+                        ${isActive ? 'text-primary' : 'text-slate-400 hover:text-white'}`
+                    }
+                >
+                    <span className="material-symbols-outlined text-[15px] font-thin">bookmark</span>
+                    Watchlist
+                </NavLink>
+
+                {/* Agent — direct link */}
+                <NavLink
+                    to="/agent"
+                    className={({ isActive }) =>
+                        `flex items-center gap-1.5 text-[10px] font-black uppercase tracking-[0.18em] transition-all duration-200 px-1 py-1 rounded-lg
+                        ${isActive ? 'text-primary' : 'text-slate-400 hover:text-white'}`
+                    }
+                >
+                    <span className="material-symbols-outlined text-[15px] font-thin">smart_toy</span>
+                    Agent
                 </NavLink>
             </nav>
 
@@ -462,6 +487,18 @@ const MobileMenu = ({ onClose }) => {
             ],
         },
         {
+            label: 'Watchlist',
+            items: [
+                { to: '/watchlist', icon: 'bookmark', label: 'Watchlist' },
+            ],
+        },
+        {
+            label: 'Agent',
+            items: [
+                { to: '/agent', icon: 'smart_toy', label: 'Nivesh Agent' },
+            ],
+        },
+        {
             label: 'Settings',
             items: [
                 { to: '/admin?tab=dashboard', icon: 'admin_panel_settings', label: 'Command Center' },
@@ -531,6 +568,7 @@ const Layout = ({ children }) => {
                 onMobileMenuClick={() => setIsMobileMenuOpen((v) => !v)}
                 isMobileMenuOpen={isMobileMenuOpen}
             />
+            <SyncStatusBar />
 
             {/* Mobile Drawer */}
             <AnimatePresence>
