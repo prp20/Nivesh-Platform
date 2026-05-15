@@ -69,6 +69,55 @@ async def proxy_fund_compare(
         raise HTTPException(503, "Server offline and no cached data available")
 
 
+@router.get("/funds/amcs")
+async def proxy_fund_amcs(db: AsyncSession = Depends(get_db)):
+    cache_key = "funds:amcs"
+    cached, is_fresh = await get_cached(db, cache_key)
+    if is_fresh:
+        return cached
+    try:
+        async with ServerClient(db) as client:
+            data = await client.get("/api/v1/funds/amcs")
+        await set_cached(db, cache_key, data, 86400)
+        return data
+    except OfflineError:
+        return cached if cached else []
+
+
+@router.get("/funds/categories")
+async def proxy_fund_categories(db: AsyncSession = Depends(get_db)):
+    cache_key = "funds:categories"
+    cached, is_fresh = await get_cached(db, cache_key)
+    if is_fresh:
+        return cached
+    try:
+        async with ServerClient(db) as client:
+            data = await client.get("/api/v1/funds/categories")
+        await set_cached(db, cache_key, data, 86400)
+        return data
+    except OfflineError:
+        return cached if cached else []
+
+
+@router.get("/funds/categories/{category}/subcategories")
+async def proxy_fund_subcategories(
+    category: str, db: AsyncSession = Depends(get_db)
+):
+    cache_key = f"funds:subcategories:{category}"
+    cached, is_fresh = await get_cached(db, cache_key)
+    if is_fresh:
+        return cached
+    try:
+        async with ServerClient(db) as client:
+            data = await client.get(
+                f"/api/v1/funds/categories/{category}/subcategories"
+            )
+        await set_cached(db, cache_key, data, 86400)
+        return data
+    except OfflineError:
+        return cached if cached else []
+
+
 @router.get("/funds")
 async def proxy_fund_list(
     request: Request,
@@ -136,6 +185,23 @@ async def proxy_fund_detail(
         if cached:
             return _offline_wrap(cached)
         raise HTTPException(503, "Server offline")
+
+
+@router.get("/funds/{scheme_code}/similar")
+async def proxy_fund_similar(
+    scheme_code: str, db: AsyncSession = Depends(get_db)
+):
+    cache_key = f"funds:similar:{scheme_code}"
+    cached, is_fresh = await get_cached(db, cache_key)
+    if is_fresh:
+        return cached
+    try:
+        async with ServerClient(db) as client:
+            data = await client.get(f"/api/v1/funds/{scheme_code}/similar")
+        await set_cached(db, cache_key, data, 3600)
+        return data
+    except OfflineError:
+        return cached if cached else []
 
 
 # ── Benchmarks ────────────────────────────────────────────────────────────────
@@ -231,6 +297,25 @@ async def proxy_stock_list(
         if cached:
             return _offline_wrap(cached)
         raise HTTPException(503, "Server offline")
+
+
+@router.get("/stocks/search")
+async def proxy_stock_search(
+    q: str = Query(...),
+    db: AsyncSession = Depends(get_db),
+):
+    """Stock symbol/name search. Declared BEFORE /stocks/{symbol} to avoid route shadowing."""
+    cache_key = f"stocks:search:{q.upper()}"
+    cached, is_fresh = await get_cached(db, cache_key)
+    if is_fresh:
+        return cached
+    try:
+        async with ServerClient(db) as client:
+            data = await client.get("/api/v1/stocks/search", params={"q": q})
+        await set_cached(db, cache_key, data, 300)
+        return data
+    except OfflineError:
+        return cached if cached else {"results": []}
 
 
 @router.get("/stocks/{symbol}")
