@@ -1,42 +1,22 @@
 import axios from 'axios';
 
+// All API calls go to the local client FastAPI on port 8001.
+// The client backend injects the JWT for /proxy/* calls.
+// React never handles JWT tokens directly.
 const apiClient = axios.create({
-    baseURL: import.meta.env.VITE_API_URL || '/api/v1',
-    headers: {
-        'Content-Type': 'application/json',
-    },
+    baseURL: import.meta.env.VITE_API_URL || 'http://localhost:8001',
+    headers: { 'Content-Type': 'application/json' },
 });
 
-// Request interceptor to add JWT token
-apiClient.interceptors.request.use(
-    (config) => {
-        try {
-            const token = localStorage.getItem('nivesh_token');
-            if (token) {
-                config.headers.Authorization = `Bearer ${token}`;
-            }
-        } catch (storageError) {
-            console.warn("Failed to set authentication header", storageError);
-        }
-        return config;
-    },
-    (error) => Promise.reject(error)
-);
+// No request interceptor — client backend handles auth headers server-side.
 
-// Response interceptor for global error handling
+// Response interceptor: on 401, the client's refresh logic already tried and
+// gave up. Signal auth expiry to AuthContext via a custom event.
 apiClient.interceptors.response.use(
     (response) => response,
     (error) => {
         if (error.response?.status === 401) {
-            try {
-                localStorage.removeItem('nivesh_token');
-            } catch (storageError) {
-                console.warn("Failed to clear token on 401", storageError);
-            }
-            // Force reload to login to ensure clean state
-            if (!window.location.pathname.includes('/login')) {
-                window.location.href = '/login';
-            }
+            window.dispatchEvent(new CustomEvent('auth:session-expired'));
         }
         return Promise.reject(error);
     }
