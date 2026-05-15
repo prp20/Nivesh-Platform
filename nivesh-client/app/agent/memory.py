@@ -11,6 +11,7 @@ existing PUT /agent/memory/{key} endpoint logic, for use by runner.py).
 
 import logging
 
+from sqlalchemy import func as sa_func
 from sqlalchemy import select
 from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -51,7 +52,7 @@ async def save_memory_item(
     db: AsyncSession,
     key: str,
     value: str,
-    confidence: str = "inferred",
+    confidence: str = "medium",
     source: str = "agent_inferred",
 ) -> None:
     """
@@ -63,7 +64,13 @@ async def save_memory_item(
     )
     stmt = stmt.on_conflict_do_update(
         index_elements=["key"],
-        set_={"value": value, "confidence": confidence},
+        set_={
+            "value": value,
+            "confidence": confidence,
+            "updated_at": sa_func.now(),  # Core INSERT bypasses ORM onupdate hook
+            # Note: source is intentionally excluded — user_stated facts keep
+            # their source even when the agent later re-infers the same key.
+        },
     )
     await db.execute(stmt)
     # Caller is responsible for commit
