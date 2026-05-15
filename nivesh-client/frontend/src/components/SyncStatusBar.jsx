@@ -62,7 +62,7 @@ const SyncStatusBar = () => {
                 ${isOnline ? 'text-emerald-400' : 'text-amber-400'}`}
             >
                 {isOnline
-                    ? `Connected · Last sync ${lastSync} · ${status.cached_resources} cached`
+                    ? `Connected · Last sync ${lastSync} · ${status.cached_resources ?? 0} cached`
                     : `Offline — showing cached data · last sync ${lastSync}`
                 }
             </span>
