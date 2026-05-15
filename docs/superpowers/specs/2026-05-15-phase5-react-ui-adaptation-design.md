@@ -127,10 +127,17 @@ Remove pipeline trigger methods — server-side ingestion only.
 **Session detection on mount:**
 ```
 GET /status
-  → is_online: true → read username from GET /local/preferences
-  → isAuthenticated = true, username = prefs.last_login_username
-  → any error / is_online: false → isLoading = false, not authenticated
+  → success (any response) → check last_connected_at field
+    → last_connected_at is set → user logged in before
+      → GET /local/preferences → read last_login_username
+      → isAuthenticated = true (token may still be valid; proxy calls test it lazily)
+    → last_connected_at is null → never logged in → show login
+  → client unreachable (network error) → isLoading = false, not authenticated
 ```
+
+Note: `is_online` reflects server connectivity, not token validity. A user can be
+authenticated while offline (stored refresh token in SQLite). Session detection
+uses `last_connected_at` (set on first login, cleared on logout) not `is_online`.
 
 **login():**
 ```
