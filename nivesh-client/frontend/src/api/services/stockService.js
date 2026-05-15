@@ -21,12 +21,8 @@ const stockService = {
         return response.data;
     },
 
-    getCompare: async (symbols) => {
-        const response = await apiClient.get('/proxy/stocks', {
-            params: { symbols: symbols.join(',') }
-        });
-        return response.data;
-    },
+    // Stub: no /proxy/stocks/compare endpoint yet — Phase 6 will add it
+    getCompare: async (_symbols) => ({ data: [] }),
 
     // Pipeline status (read-only — ingestion runs server-side)
     getPipelineStatus: async () => {
@@ -35,7 +31,7 @@ const stockService = {
     },
 
     // Price history — not yet in proxy; return empty for now
-    getPriceHistory: async () => ({ data: [] }),
+    getPriceHistory: async (_symbol) => ({ data: [] }),
 
     // Stub read-only equivalents for removed pipeline triggers
     getFundamentals: async (symbol) => {
