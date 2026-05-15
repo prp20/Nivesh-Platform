@@ -21,6 +21,8 @@ ENV/
 .env
 .env.*
 !.env.example
+!nivesh-client/frontend/.env
+!nivesh-client/frontend/.env.development
 
 # Database files — never commit
 *.db
