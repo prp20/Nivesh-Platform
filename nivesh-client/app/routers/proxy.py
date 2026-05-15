@@ -227,6 +227,25 @@ async def proxy_benchmarks(
         raise HTTPException(503, "Server offline")
 
 
+@router.get("/benchmarks/{code}")
+async def proxy_benchmark_detail(
+    code: str, db: AsyncSession = Depends(get_db)
+):
+    cache_key = f"benchmarks:detail:{code}"
+    cached, is_fresh = await get_cached(db, cache_key)
+    if is_fresh:
+        return cached
+    try:
+        async with ServerClient(db) as client:
+            data = await client.get(f"/api/v1/benchmarks/{code}")
+        await set_cached(db, cache_key, data, settings.CACHE_TTL_BENCHMARKS)
+        return data
+    except OfflineError:
+        if cached:
+            return _offline_wrap(cached)
+        raise HTTPException(503, "Server offline")
+
+
 @router.get("/benchmarks/{code}/nav")
 async def proxy_benchmark_nav(
     code: str,
