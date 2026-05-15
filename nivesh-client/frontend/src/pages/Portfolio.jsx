@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import portfolioService from '../api/services/portfolioService';
 import fundService from '../api/services/fundService';
 import stockService from '../api/services/stockService';
@@ -98,47 +98,52 @@ const Portfolio = () => {
     const [enriched, setEnriched] = useState([]);
     const [loading, setLoading] = useState(true);
     const [showAdd, setShowAdd] = useState(false);
+    const mountedRef = useRef(true);
+
+    useEffect(() => {
+        mountedRef.current = true;
+        return () => { mountedRef.current = false; };
+    }, []);
 
     const loadHoldings = useCallback(async () => {
         try {
             const raw = await portfolioService.getHoldings();
+            if (!mountedRef.current) return;
             setHoldings(raw);
-            enrichHoldings(raw);
+            const results = await Promise.allSettled(
+                raw.map(async (h) => {
+                    let currentPrice;
+                    try {
+                        if (h.asset_type === 'STOCK') {
+                            const detail = await stockService.getStockDetail(h.symbol);
+                            currentPrice = detail?.latest_close;
+                        } else {
+                            const detail = await fundService.getFundDetail(h.symbol);
+                            currentPrice = detail?.metrics?.current_nav;
+                        }
+                    } catch {
+                        // Offline or not cached — price stays undefined, shows —
+                    }
+                    const invested = h.avg_cost * h.quantity;
+                    const currentValue = currentPrice ? currentPrice * h.quantity : undefined;
+                    const pnl = currentValue !== undefined ? currentValue - invested : undefined;
+                    const pnlPct = pnl !== undefined && invested > 0 ? (pnl / invested) * 100 : undefined;
+                    return { ...h, currentPrice, currentValue, pnl, pnlPct, invested };
+                })
+            );
+            if (!mountedRef.current) return;
+            // Map both fulfilled and rejected entries — rejected get raw holding with — values
+            setEnriched(results.map((r, i) =>
+                r.status === 'fulfilled'
+                    ? r.value
+                    : { ...raw[i], invested: raw[i].avg_cost * raw[i].quantity }
+            ));
         } catch (err) {
             console.error('[Portfolio] Failed to load holdings:', err);
         } finally {
-            setLoading(false);
+            if (mountedRef.current) setLoading(false);
         }
     }, []);
-
-    const enrichHoldings = async (raw) => {
-        const results = await Promise.allSettled(
-            raw.map(async (h) => {
-                let currentPrice;
-                try {
-                    if (h.asset_type === 'STOCK') {
-                        const detail = await stockService.getStockDetail(h.symbol);
-                        currentPrice = detail?.latest_close;
-                    } else {
-                        const detail = await fundService.getFundDetail(h.symbol);
-                        currentPrice = detail?.metrics?.current_nav;
-                    }
-                } catch {
-                    // Offline or not cached — show dashes
-                }
-                const invested = h.avg_cost * h.quantity;
-                const currentValue = currentPrice ? currentPrice * h.quantity : undefined;
-                const pnl = currentValue !== undefined ? currentValue - invested : undefined;
-                const pnlPct = pnl !== undefined && invested > 0 ? (pnl / invested) * 100 : undefined;
-                return { ...h, currentPrice, currentValue, pnl, pnlPct, invested };
-            })
-        );
-        setEnriched(
-            results
-                .filter(r => r.status === 'fulfilled')
-                .map(r => r.value)
-        );
-    };
 
     useEffect(() => { loadHoldings(); }, [loadHoldings]);
 
