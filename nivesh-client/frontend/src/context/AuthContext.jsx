@@ -1,5 +1,6 @@
 import React, { createContext, useState, useContext, useEffect, useCallback } from 'react';
 import authService from '../api/services/authService';
+import apiClient from '../api/apiClient';
 
 const AuthContext = createContext();
 
@@ -50,9 +51,8 @@ export const AuthProvider = ({ children }) => {
         try {
             await authService.login(username, password);
             // Store username in local preferences for session persistence across page refreshes
-            await fetch(
-                `http://localhost:8001/local/preferences/last_login_username?value=${encodeURIComponent(username)}`,
-                { method: 'PUT' }
+            await apiClient.put(
+                `/local/preferences/last_login_username?value=${encodeURIComponent(username)}`
             );
             setUser({ username });
         } catch (err) {
@@ -70,16 +70,14 @@ export const AuthProvider = ({ children }) => {
 
     const logout = useCallback(async () => {
         await authService.logout();
-        // Clear stored username from preferences
-        try {
-            await fetch(
-                'http://localhost:8001/local/preferences/last_login_username?value=',
-                { method: 'PUT' }
-            );
-        } catch {
-            // Best-effort
-        }
+        // Clear auth state immediately — don't wait for the preference update
         setUser(null);
+        // Best-effort: clear stored username (non-blocking)
+        try {
+            await apiClient.put('/local/preferences/last_login_username?value=');
+        } catch {
+            // Ignore — user is already logged out in state
+        }
     }, []);
 
     return (
