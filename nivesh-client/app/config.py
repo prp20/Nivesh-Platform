@@ -40,6 +40,10 @@ class Settings(BaseSettings):
     HEALTH_PING_INTERVAL_S: int = 60      # How often to ping /health
     CACHE_CLEANUP_INTERVAL_S: int = 3600  # How often to delete expired cache rows
 
+    # ── Agentic layer ─────────────────────────────────────────────────────────
+    ANTHROPIC_API_KEY: str = ""           # Set in ~/.nivesh/.env
+    AGENT_MODEL: str = "claude-sonnet-4-6"
+
     class Config:
         env_file = str(Path.home() / ".nivesh" / ".env")
         extra = "ignore"
