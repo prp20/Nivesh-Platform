@@ -8,7 +8,6 @@ All server data goes through /proxy/* (which handles caching + JWT).
 User data (portfolio) goes through /local/portfolio/* (SQLite-only).
 """
 
-import json
 import logging
 
 import httpx
@@ -214,6 +213,13 @@ async def execute_tool(name: str, tool_input: dict) -> dict:
 
 async def _dispatch(client: httpx.AsyncClient, name: str, tool_input: dict) -> dict:
     """Route a tool name to its HTTP call. Called inside execute_tool."""
+    try:
+        return await _do_dispatch(client, name, tool_input)
+    except KeyError as e:
+        return {"error": f"Tool {name} is missing required input: {e}"}
+
+
+async def _do_dispatch(client: httpx.AsyncClient, name: str, tool_input: dict) -> dict:
 
     if name == "get_stock_detail":
         symbol = tool_input["symbol"].upper().strip()
