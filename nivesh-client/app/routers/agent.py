@@ -6,15 +6,18 @@ The /chat endpoint delegates to run_turn() which runs the LangGraph
 supervisor + specialist (stock/fund/portfolio) graph via ChatGroq.
 """
 
+import json
 import logging
 from typing import Optional
 
+import httpx
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 from sqlalchemy import select, update
 from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from ..config import settings
 from ..database import get_db
 from ..models.agent import AgentMemory, AgentMessage, AgentSession
 
@@ -195,6 +198,37 @@ async def chat(
         "reply": reply,
         "session_id": session_id,
     }
+
+
+# ── Direct stock analysis (no tool calling) ───────────────────────────────────
+
+@router.post("/analyze/{symbol}")
+async def analyze_stock(symbol: str):
+    """
+    Run the 3-pillar stock scoring pipeline and return a structured analysis.
+
+    Fetches stock data from the local proxy (cached, auth-injected), then runs
+    fundamental + technical + valuation scoring and generates an LLM narrative.
+    No tool calling — single deterministic pipeline.
+    """
+    if not settings.GROQ_API_KEY:
+        raise HTTPException(503, "GROQ_API_KEY not configured — add it to ~/.nivesh/.env")
+
+    sym = symbol.upper().strip()
+
+    # Fetch stock data from local proxy (handles JWT + caching)
+    async with httpx.AsyncClient(base_url="http://localhost:8001", timeout=30.0) as client:
+        resp = await client.get(f"/api/v1/proxy/stocks/{sym}")
+
+    if resp.status_code == 404:
+        raise HTTPException(404, f"Stock '{sym}' not found")
+    if resp.status_code != 200:
+        raise HTTPException(502, f"Proxy returned HTTP {resp.status_code}")
+
+    stock_data = resp.json()
+
+    from ..agent.stock_analyser import run_full_analysis
+    return await run_full_analysis(stock_data, settings.GROQ_API_KEY, settings.AGENT_MODEL)
 
 
 # ── Memory ────────────────────────────────────────────────────────────────────
