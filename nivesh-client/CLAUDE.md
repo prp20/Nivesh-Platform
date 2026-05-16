@@ -12,7 +12,7 @@ Local application that runs on the user's machine. Thin FastAPI backend serving 
 - **APScheduler** — background sync scheduler
 - **httpx** + **tenacity** — async HTTP client with retry for server calls
 - **React** (Vite) — UI in `frontend/src/`
-- **Anthropic SDK** — LLM calls for agentic layer
+- **ChatGroq** (`langchain-groq`) + **LangGraph** — agentic layer: supervisor + 3 specialist ReAct agents
 
 ## Directory Structure
 
@@ -38,8 +38,10 @@ nivesh-client/
 │   │   ├── http_client.py← httpx client, JWT injection, auto-refresh, retry
 │   │   └── delta.py      ← Staleness detection, from_date computation
 │   └── agent/
-│       ├── runner.py     ← LLM agent loop
-│       ├── tools.py      ← fetch_stock, compare_funds, screen_stocks, etc.
+│       ├── runner.py     ← run_turn(): LangGraph graph invocation + SQLite persistence
+│       ├── supervisor.py ← LangGraph StateGraph: supervisor → stock/fund/portfolio agents
+│       ├── agents.py     ← build_stock/fund/portfolio_agent() ReAct agents
+│       ├── tools.py      ← 7 @tool async functions (STOCK_TOOLS, FUND_TOOLS, PORTFOLIO_TOOLS)
 │       └── memory.py     ← Read/write agent_memory table
 ├── frontend/             ← React UI (copied from original project)
 │   └── src/
@@ -61,6 +63,7 @@ nivesh-client/
 | `NIVESH_SERVER_URL` | `https://nivesh-server.onrender.com` |
 | `CLIENT_PORT` | `8001` |
 | `SQLITE_DB_PATH` | `~/.nivesh/nivesh_client.db` |
+| `GROQ_API_KEY` | `gsk_...` — required for agentic chat (`/agent/sessions/<id>/chat`) |
 
 ## JWT Auth Pattern
 
