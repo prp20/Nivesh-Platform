@@ -12,6 +12,8 @@ import asyncio
 import logging
 from contextlib import asynccontextmanager
 
+import pytz
+
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from fastapi import Depends, FastAPI
 from fastapi.middleware.cors import CORSMiddleware
@@ -22,7 +24,7 @@ from .config import settings
 from .database import AsyncSessionLocal, engine, get_db
 from .models.auth import ServerConfig
 from .models.cache import CacheEntry
-from .routers import agent, auth, local, proxy
+from .routers import agent, auth, local, proxy, sync as sync_router
 
 logging.basicConfig(
     level=logging.INFO,
@@ -85,8 +87,67 @@ async def lifespan(app: FastAPI):
         id="cache_cleanup",
         replace_existing=True,
     )
+
+    # ── Token refresh job ──────────────────────────────────────────────────────
+    from .services.token_refresh import refresh_if_expiring_soon
+    from .services.http_client import SessionExpiredError
+
+    async def _token_refresh():
+        async with AsyncSessionLocal() as db:
+            try:
+                refreshed = await refresh_if_expiring_soon(db, window_seconds=300)
+                if refreshed:
+                    logger.info("[token_refresh] Access token refreshed proactively")
+            except SessionExpiredError:
+                logger.warning(
+                    "[token_refresh] Refresh token expired — user must log in again"
+                )
+            except Exception as exc:
+                logger.error("[token_refresh] Unexpected error: %s", exc)
+
+    scheduler.add_job(
+        _token_refresh,
+        "interval",
+        minutes=5,
+        id="token_refresh",
+        replace_existing=True,
+    )
+
+    # ── Portfolio price enrichment job (market hours) ──────────────────────────
+    from apscheduler.triggers.cron import CronTrigger
+    from .services.portfolio_sync import sync_portfolio_prices, sync_watchlist_prices
+
+    IST = pytz.timezone("Asia/Kolkata")
+
+    async def _portfolio_sync():
+        async with AsyncSessionLocal() as db:
+            try:
+                p = await sync_portfolio_prices(db)
+                w = await sync_watchlist_prices(db)
+                logger.info(
+                    "[portfolio_sync] Scheduled run: %d holdings, %d watchlist refreshed",
+                    p, w,
+                )
+            except Exception as exc:
+                logger.error("[portfolio_sync] Scheduled run failed: %s", exc)
+
+    scheduler.add_job(
+        _portfolio_sync,
+        CronTrigger(
+            day_of_week="mon-fri",
+            hour="9-16",
+            minute="*/30",
+            timezone=IST,
+        ),
+        id="portfolio_sync",
+        replace_existing=True,
+    )
+
     scheduler.start()
-    logger.info("[startup] APScheduler started (health_ping, cache_cleanup)")
+    logger.info(
+        "[startup] APScheduler started "
+        "(health_ping, cache_cleanup, token_refresh, portfolio_sync)"
+    )
 
     # ── 4. Warm cache in background (non-blocking) ────────────────────────────
     async def _warm():
@@ -132,6 +193,7 @@ app.include_router(auth.router)
 app.include_router(local.router)
 app.include_router(proxy.router)
 app.include_router(agent.router)
+app.include_router(sync_router.router)
 
 
 # ── System endpoints ──────────────────────────────────────────────────────────
