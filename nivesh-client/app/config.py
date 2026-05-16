@@ -41,8 +41,8 @@ class Settings(BaseSettings):
     CACHE_CLEANUP_INTERVAL_S: int = 3600  # How often to delete expired cache rows
 
     # ── Agentic layer ─────────────────────────────────────────────────────────
-    ANTHROPIC_API_KEY: str = ""           # Set in ~/.nivesh/.env
-    AGENT_MODEL: str = "claude-sonnet-4-6"
+    GROQ_API_KEY: str = ""                # Set in ~/.nivesh/.env (gsk_...)
+    AGENT_MODEL: str = "llama-3.3-70b-versatile"
 
     class Config:
         env_file = str(Path.home() / ".nivesh" / ".env")
