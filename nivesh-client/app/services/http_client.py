@@ -55,6 +55,7 @@ class ServerClient:
             base_url=settings.NIVESH_SERVER_URL,
             timeout=30,
             headers=self._auth_headers(),
+            follow_redirects=True,
         )
         return self
 
@@ -128,7 +129,7 @@ class ServerClient:
         if not token_row or not token_row.refresh_token:
             raise SessionExpiredError("No refresh token stored")
 
-        async with httpx.AsyncClient(base_url=settings.NIVESH_SERVER_URL) as c:
+        async with httpx.AsyncClient(base_url=settings.NIVESH_SERVER_URL, follow_redirects=True) as c:
             resp = await c.post(
                 "/api/v1/auth/refresh",
                 json={"refresh_token": token_row.refresh_token},

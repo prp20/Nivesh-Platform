@@ -171,6 +171,17 @@ def _safe_div(num: Optional[float], den: Optional[float]) -> Optional[float]:
     return round(num / den, 3)
 
 
+def _strip_plus(data: dict) -> dict:
+    """
+    Normalize screener.in field names by stripping trailing '+' aggregation markers.
+
+    screener.in appends '+' to aggregated/multi-year fields (e.g. 'Sales+', 'Net Profit+',
+    'Borrowings+') but not to non-aggregated fields ('Equity Capital', 'Total Assets').
+    Stripping the suffix lets _f() match keys without needing '+' variants.
+    """
+    return {k.rstrip("+"): v for k, v in data.items()}
+
+
 def _compute_ratios(
     stock_id: int,
     period_end: date,
@@ -187,8 +198,13 @@ def _compute_ratios(
       PL: 'Revenue', 'Sales', 'Net Profit', 'EPS', 'Interest', 'Dividend Payout %'
       BS: 'Total Assets', 'Total Equity', 'Total Debt', 'Equity Capital',
           'Reserves', 'Book Value'
-      CF: 'Cash from Operations', 'Capex'
+      CF: 'Cash from Operations', 'Cash from Operating Activity', 'Capex'
     """
+    # Normalize screener.in keys — strip trailing '+' aggregation markers
+    pl = _strip_plus(pl)
+    bs = _strip_plus(bs)
+    cf = _strip_plus(cf)
+
     # ── P&L line items ────────────────────────────────────────────────────────
     revenue      = _f(pl, "Revenue", "Sales", "Net Sales")
     net_profit   = _f(pl, "Net Profit", "PAT")
@@ -201,24 +217,39 @@ def _compute_ratios(
     dps          = _f(pl, "Dividend Per Share", "DPS")
 
     # ── Balance sheet line items ───────────────────────────────────────────────
-    total_equity   = _f(bs, "Total Equity", "Equity Capital", "Shareholders Equity")
     equity_capital = _f(bs, "Equity Capital")
     reserves       = _f(bs, "Reserves")
     total_debt     = _f(bs, "Total Debt", "Borrowings")
     total_assets   = _f(bs, "Total Assets", "Balance Sheet Size")
     book_value     = _f(bs, "Book Value", "Book Value Per Share")
 
+    # screener.in has no combined 'Total Equity' field — derive from components
+    total_equity = _f(bs, "Total Equity", "Shareholders Equity")
+    if total_equity is None and equity_capital is not None and reserves is not None:
+        total_equity = equity_capital + reserves
+    elif total_equity is None and equity_capital is not None:
+        total_equity = equity_capital
+
+    # Book value per share: screener.in doesn't store this; derive from total equity / shares
+    # Shares = equity_capital (Cr) * 1e7 / par_value; par usually ₹10 → shares = equity_capital * 1e6
+    book_value = _f(bs, "Book Value", "Book Value Per Share")
+
     # ── Cash flow line items ──────────────────────────────────────────────────
-    cfo   = _f(cf, "Cash from Operations", "Operating Cash Flow")
+    cfo   = _f(cf, "Cash from Operations", "Operating Cash Flow", "Cash from Operating Activity")
     capex = _f(cf, "Capex", "Capital Expenditure", "Fixed Assets Purchased")
     if capex is not None:
         capex = abs(capex)  # screener shows capex as negative
 
     # ── Derived metrics ───────────────────────────────────────────────────────
-    fcf = (cfo - capex) if cfo is not None and capex is not None else None
+    # Use computed FCF (cfo - capex) when both available; fall back to screener's own FCF field
+    fcf = (cfo - capex) if cfo is not None and capex is not None else _f(cf, "Free Cash Flow")
 
-    # Shares outstanding from equity capital (in crores, assume par 10)
-    shares = (equity_capital * 1e7 / 10) if equity_capital else None  # par value ₹10
+    # Shares outstanding from equity capital (in crores, assume par ₹10)
+    shares = (equity_capital * 1e7 / 10) if equity_capital else None  # shares count
+
+    # Derive book value per share from total equity when not directly available
+    if book_value is None and total_equity is not None and shares:
+        book_value = round(total_equity * 1e7 / shares, 2)
 
     # Revenue per share
     revenue_ps = _safe_div(revenue, shares / 1e7 if shares else None) if shares else None

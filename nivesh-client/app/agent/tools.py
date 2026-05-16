@@ -23,6 +23,7 @@ from langchain_core.tools import tool
 logger = logging.getLogger(__name__)
 
 _BASE_URL = "http://localhost:8001"
+_API_PREFIX = "/api/v1"
 
 
 # ── Stock tools ────────────────────────────────────────────────────────────────
@@ -41,7 +42,7 @@ async def get_stock_detail(symbol: str) -> str:
     sym = symbol.upper().strip()
     try:
         async with httpx.AsyncClient(base_url=_BASE_URL, timeout=30.0) as client:
-            resp = await client.get(f"/proxy/stocks/{sym}")
+            resp = await client.get(f"{_API_PREFIX}/proxy/stocks/{sym}")
         if resp.status_code == 200:
             return json.dumps(resp.json())
         return json.dumps({"error": f"Stock {sym} not found (HTTP {resp.status_code})"})
@@ -64,7 +65,7 @@ async def search_stocks(query: str) -> str:
     """
     try:
         async with httpx.AsyncClient(base_url=_BASE_URL, timeout=30.0) as client:
-            resp = await client.get("/proxy/stocks/search", params={"q": query.strip()})
+            resp = await client.get(f"{_API_PREFIX}/proxy/stocks/search", params={"q": query.strip()})
         if resp.status_code == 200:
             return json.dumps(resp.json())
         return json.dumps({"results": [], "error": f"Search failed (HTTP {resp.status_code})"})
@@ -118,7 +119,7 @@ async def screen_stocks(
             params[key] = val
     try:
         async with httpx.AsyncClient(base_url=_BASE_URL, timeout=30.0) as client:
-            resp = await client.get("/proxy/stocks/screener", params=params)
+            resp = await client.get(f"{_API_PREFIX}/proxy/stocks/screener", params=params)
         if resp.status_code == 200:
             return json.dumps(resp.json())
         return json.dumps({"results": [], "total": 0, "error": f"Screener failed (HTTP {resp.status_code})"})
@@ -142,7 +143,7 @@ async def get_fund_detail(scheme_code: str) -> str:
     code = str(scheme_code).strip()
     try:
         async with httpx.AsyncClient(base_url=_BASE_URL, timeout=30.0) as client:
-            resp = await client.get(f"/proxy/funds/{code}")
+            resp = await client.get(f"{_API_PREFIX}/proxy/funds/{code}")
         if resp.status_code == 200:
             return json.dumps(resp.json())
         return json.dumps({"error": f"Fund {code} not found (HTTP {resp.status_code})"})
@@ -164,7 +165,7 @@ async def compare_funds(scheme_codes: list[str]) -> str:
     codes_str = ",".join(str(c).strip() for c in scheme_codes)
     try:
         async with httpx.AsyncClient(base_url=_BASE_URL, timeout=30.0) as client:
-            resp = await client.get("/proxy/funds/compare", params={"scheme_codes": codes_str})
+            resp = await client.get(f"{_API_PREFIX}/proxy/funds/compare", params={"scheme_codes": codes_str})
         if resp.status_code == 200:
             return json.dumps(resp.json())
         return json.dumps({"error": f"Fund comparison failed (HTTP {resp.status_code})"})
@@ -184,7 +185,7 @@ async def get_portfolio() -> str:
     """
     try:
         async with httpx.AsyncClient(base_url=_BASE_URL, timeout=30.0) as client:
-            resp = await client.get("/local/portfolio/holdings")
+            resp = await client.get(f"{_API_PREFIX}/local/portfolio/holdings")
         if resp.status_code == 200:
             holdings = resp.json()
             return json.dumps({"holdings": holdings, "count": len(holdings)})
@@ -203,7 +204,7 @@ async def get_market_overview() -> str:
     """
     try:
         async with httpx.AsyncClient(base_url=_BASE_URL, timeout=30.0) as client:
-            resp = await client.get("/proxy/benchmarks", params={"limit": 10})
+            resp = await client.get(f"{_API_PREFIX}/proxy/benchmarks", params={"limit": 10})
         if resp.status_code == 200:
             return json.dumps(resp.json())
         return json.dumps({"error": "Market overview unavailable"})

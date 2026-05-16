@@ -11,12 +11,15 @@ Lifespan order:
 import asyncio
 import logging
 from contextlib import asynccontextmanager
+from pathlib import Path
 
 import pytz
 
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from fastapi import Depends, FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import FileResponse
+from fastapi.staticfiles import StaticFiles
 from sqlalchemy import func, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -188,12 +191,12 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# ── Routers ───────────────────────────────────────────────────────────────────
-app.include_router(auth.router)
-app.include_router(local.router)
-app.include_router(proxy.router)
-app.include_router(agent.router)
-app.include_router(sync_router.router)
+# ── Routers (all under /api/v1 — matches VITE_API_URL in production build) ───
+app.include_router(auth.router,       prefix="/api/v1")
+app.include_router(local.router,      prefix="/api/v1")
+app.include_router(proxy.router,      prefix="/api/v1")
+app.include_router(agent.router,      prefix="/api/v1")
+app.include_router(sync_router.router, prefix="/api/v1")
 
 
 # ── System endpoints ──────────────────────────────────────────────────────────
@@ -204,7 +207,7 @@ async def client_health():
     return {"status": "ok", "port": settings.CLIENT_PORT}
 
 
-@app.get("/status", tags=["system"])
+@app.get("/api/v1/status", tags=["system"])
 async def client_status(db: AsyncSession = Depends(get_db)):
     """
     Client health + connectivity summary.
@@ -230,3 +233,23 @@ async def client_status(db: AsyncSession = Depends(get_db)):
         "cached_resources": cache_count,
         "db_path": settings.SQLITE_DB_PATH,
     }
+
+
+# ── React SPA — serve built frontend ─────────────────────────────────────────
+# Must be registered AFTER all API routes so the catch-all doesn't shadow them.
+_BUILD_DIR = Path(__file__).parent.parent / "frontend" / "dist"
+
+if _BUILD_DIR.exists():
+    # Vite puts all hashed JS/CSS chunks in assets/ — serve them efficiently.
+    _assets_dir = _BUILD_DIR / "assets"
+    if _assets_dir.exists():
+        app.mount("/assets", StaticFiles(directory=str(_assets_dir)), name="static-assets")
+
+    @app.get("/{full_path:path}", include_in_schema=False)
+    async def serve_spa(full_path: str):
+        # Serve public files that Vite copies to dist root (favicon, icons, etc.)
+        target = _BUILD_DIR / full_path
+        if target.is_file():
+            return FileResponse(str(target))
+        # All other paths → SPA shell (React Router handles client-side routing)
+        return FileResponse(str(_BUILD_DIR / "index.html"))

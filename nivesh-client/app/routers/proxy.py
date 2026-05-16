@@ -23,7 +23,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..config import settings
 from ..database import get_db
-from ..services.cache import get_cached, make_cache_key, set_cached
+from ..services.cache import get_cached, invalidate, make_cache_key, set_cached
 from ..services.http_client import OfflineError, ServerClient
 
 logger = logging.getLogger(__name__)
@@ -260,7 +260,7 @@ async def proxy_benchmark_nav(
 
     try:
         async with ServerClient(db) as client:
-            data = await client.get(f"/api/v1/benchmarks/{code}/nav", params=params)
+            data = await client.get(f"/api/v1/benchmark-navs/{code}", params=params)
         await set_cached(db, cache_key, data, settings.CACHE_TTL_BENCHMARKS)
         return data
     except OfflineError:
@@ -310,12 +310,17 @@ async def proxy_stock_list(
     try:
         async with ServerClient(db) as client:
             data = await client.get("/api/v1/stocks", params=params)
-        await set_cached(db, cache_key, data, settings.CACHE_TTL_STOCK_LIST)
-        return data
     except OfflineError:
         if cached:
             return _offline_wrap(cached)
         raise HTTPException(503, "Server offline")
+
+    try:
+        await set_cached(db, cache_key, data, settings.CACHE_TTL_STOCK_LIST)
+    except Exception as exc:
+        logger.warning("[cache] failed to cache stocks:list — %s", exc)
+
+    return data
 
 
 @router.get("/stocks/search")
@@ -337,6 +342,55 @@ async def proxy_stock_search(
         return cached if cached else {"results": []}
 
 
+@router.get("/stocks/{symbol}/price")
+async def proxy_stock_price(
+    symbol: str,
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+):
+    """OHLCV price history. Supports interval=1d|1w|1mo and limit. 30-min TTL.
+    Cache also invalidated when pipeline price triggers run for this symbol."""
+    params = dict(request.query_params)
+    cache_key = make_cache_key(f"stocks:price:{symbol.upper()}", params)
+    cached, is_fresh = await get_cached(db, cache_key)
+    if is_fresh:
+        return cached
+
+    try:
+        async with ServerClient(db) as client:
+            data = await client.get(f"/api/v1/stocks/{symbol.upper()}/price", params=params)
+        await set_cached(db, cache_key, data, 1800)
+        return data
+    except OfflineError:
+        if cached:
+            return _offline_wrap(cached)
+        raise HTTPException(503, "Server offline")
+
+
+@router.get("/stocks/{symbol}/fundamentals")
+async def proxy_stock_fundamentals(
+    symbol: str,
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+):
+    """Financial statements (PL/BS/CF). 12-hour TTL — changes only after screener scrape."""
+    params = dict(request.query_params)
+    cache_key = make_cache_key(f"stocks:fundamentals:{symbol.upper()}", params)
+    cached, is_fresh = await get_cached(db, cache_key)
+    if is_fresh:
+        return cached
+
+    try:
+        async with ServerClient(db) as client:
+            data = await client.get(f"/api/v1/stocks/{symbol.upper()}/fundamentals", params=params)
+        await set_cached(db, cache_key, data, 43200)
+        return data
+    except OfflineError:
+        if cached:
+            return _offline_wrap(cached)
+        raise HTTPException(503, "Server offline")
+
+
 @router.get("/stocks/{symbol}")
 async def proxy_stock_detail(
     symbol: str, db: AsyncSession = Depends(get_db)
@@ -349,12 +403,17 @@ async def proxy_stock_detail(
     try:
         async with ServerClient(db) as client:
             data = await client.get(f"/api/v1/stocks/{symbol.upper()}")
-        await set_cached(db, cache_key, data, settings.CACHE_TTL_STOCK_DETAIL)
-        return data
     except OfflineError:
         if cached:
             return _offline_wrap(cached)
         raise HTTPException(503, "Server offline")
+
+    try:
+        await set_cached(db, cache_key, data, settings.CACHE_TTL_STOCK_DETAIL)
+    except Exception as exc:
+        logger.warning("[cache] failed to cache stocks:detail:%s — %s", symbol.upper(), exc)
+
+    return data
 
 
 # ── ETL / Pipeline Status ─────────────────────────────────────────────────────
@@ -376,3 +435,65 @@ async def proxy_sync_status(db: AsyncSession = Depends(get_db)):
         if cached:
             return _offline_wrap(cached)
         return {"runs": [], "total": 0, "_offline": True}
+
+
+# ── Pipeline Triggers (admin operations forwarded to server) ──────────────────
+#
+# After each successful trigger the stock detail cache for that symbol is
+# invalidated so the next GET /proxy/stocks/{symbol} fetches fresh data from
+# the server instead of serving stale SQLite cache.
+
+
+async def _invalidate_stock_cache(db: AsyncSession, symbol: str) -> None:
+    """Remove stock detail + price cache entries so next read hits server."""
+    try:
+        await invalidate(db, f"stocks:detail:{symbol.upper()}")
+        await invalidate(db, f"stocks:price:{symbol.upper()}")
+        logger.debug("[cache] invalidated stocks:detail + price for %s", symbol.upper())
+    except Exception as exc:
+        logger.warning("[cache] invalidation failed for %s: %s", symbol.upper(), exc)
+
+
+@router.post("/pipeline/prices/refresh/{symbol}")
+async def proxy_price_sync(symbol: str, db: AsyncSession = Depends(get_db)):
+    """Deep price history sync for a single stock. Invalidates stock detail cache."""
+    async with ServerClient(db) as client:
+        result = await client.post(f"/api/v1/pipeline/prices/refresh/{symbol.upper()}")
+    await _invalidate_stock_cache(db, symbol)
+    return result
+
+
+@router.post("/pipeline/metrics/price-refresh/{symbol}")
+async def proxy_price_refresh(symbol: str, db: AsyncSession = Depends(get_db)):
+    """Recompute PE/PB/PS ratios for a single stock. Invalidates stock detail cache."""
+    async with ServerClient(db) as client:
+        result = await client.post(f"/api/v1/pipeline/metrics/price-refresh/{symbol.upper()}")
+    await _invalidate_stock_cache(db, symbol)
+    return result
+
+
+@router.post("/pipeline/technical/{symbol}")
+async def proxy_technical_analysis(symbol: str, db: AsyncSession = Depends(get_db)):
+    """Run technical analysis (RSI, MACD, etc.) for a single stock. Invalidates stock detail cache."""
+    async with ServerClient(db) as client:
+        result = await client.post(f"/api/v1/pipeline/technical/{symbol.upper()}")
+    await _invalidate_stock_cache(db, symbol)
+    return result
+
+
+@router.post("/pipeline/screener/{symbol}")
+async def proxy_screener_scrape(symbol: str, db: AsyncSession = Depends(get_db)):
+    """Trigger screener.in fundamental scrape for a single stock. Invalidates stock detail cache."""
+    async with ServerClient(db) as client:
+        result = await client.post(f"/api/v1/pipeline/screener/{symbol.upper()}")
+    await _invalidate_stock_cache(db, symbol)
+    return result
+
+
+@router.post("/pipeline/ratings/{symbol}")
+async def proxy_rating_compute(symbol: str, db: AsyncSession = Depends(get_db)):
+    """Recompute composite rating for a single stock. Invalidates stock detail cache."""
+    async with ServerClient(db) as client:
+        result = await client.post(f"/api/v1/pipeline/ratings/{symbol.upper()}")
+    await _invalidate_stock_cache(db, symbol)
+    return result

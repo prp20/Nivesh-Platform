@@ -164,11 +164,86 @@ async def _get_latest_close_in_session(
 
 async def _run_fund_metrics_pipeline(db: AsyncSession) -> None:
     """
-    Recompute all fund + benchmark metrics by delegating to app/analytics.py.
+    Recompute fund_metrics for every active fund.
 
-    Called by scheduler._run_fund_metrics() which handles EtlRun lifecycle.
+    For each fund:
+      1. Fetch NAV history from fund_nav_history (up to 3 years).
+      2. Optionally fetch benchmark NAV history if fund has a benchmark_index_code.
+      3. Call analytics.compute_all_metrics (sync, CPU-bound) in a thread executor.
+      4. Upsert results into fund_metrics.
+
+    Called by scheduler._run_fund_metrics() which manages the EtlRun lifecycle.
     """
+    import asyncio
+    from sqlalchemy import select as sa_select
     from app.analytics import compute_all_metrics
+    from app.crud import get_fund_nav_history, get_benchmark_nav_history, upsert_fund_metrics
+    from app.models import FundMaster
 
-    await compute_all_metrics(db)
-    logger.info("[fund_metrics] compute_all_metrics completed")
+    result = await db.execute(
+        sa_select(FundMaster).where(FundMaster.is_active.is_(True))
+    )
+    funds = result.scalars().all()
+    logger.info("[fund_metrics] Computing metrics for %d active funds", len(funds))
+
+    loop = asyncio.get_event_loop()
+    updated = 0
+
+    for fund in funds:
+        try:
+            nav_rows = await get_fund_nav_history(db, fund.scheme_code, limit=1100)
+            if not nav_rows:
+                continue
+
+            nav_history = [
+                {"nav_date": row.nav_date.isoformat(), "nav_value": float(row.nav_value)}
+                for row in nav_rows
+            ]
+
+            benchmark_history = None
+            if fund.benchmark_index_code:
+                bench_rows = await get_benchmark_nav_history(
+                    db, fund.benchmark_index_code, limit=1100
+                )
+                if bench_rows:
+                    benchmark_history = [
+                        {"nav_date": row.nav_date.isoformat(), "index_value": float(row.index_value)}
+                        for row in bench_rows
+                    ]
+
+            # compute_all_metrics is synchronous and CPU-bound — run off the event loop
+            metrics = await loop.run_in_executor(
+                None, compute_all_metrics, nav_history, benchmark_history
+            )
+            if not metrics:
+                continue
+
+            metrics_row = {k: v for k, v in {
+                "scheme_code":          fund.scheme_code,
+                "current_nav":          metrics.get("current_nav"),
+                "nav_date":             metrics.get("nav_date"),
+                "standard_deviation":   metrics.get("std_dev"),
+                "sharpe_ratio":         metrics.get("sharpe"),
+                "sortino_ratio":        metrics.get("sortino"),
+                "maximum_drawdown":     metrics.get("max_drawdown"),
+                "cagr_3year":           metrics.get("cagr_3year"),
+                "cagr_5year":           metrics.get("cagr_5year"),
+                "absolute_return_1y":   metrics.get("absolute_return_1y"),
+                "absolute_return_3y":   metrics.get("absolute_return_3y"),
+                "absolute_return_5y":   metrics.get("absolute_return_5y"),
+                "absolute_return_10y":  metrics.get("absolute_return_10y"),
+                "short_term_return_6m": metrics.get("short_term_return_6m"),
+                "alpha":                metrics.get("alpha"),
+                "beta":                 metrics.get("beta"),
+                "upside_capture":       metrics.get("upside_capture"),
+                "downside_capture":     metrics.get("downside_capture"),
+                "tracking_error":       metrics.get("tracking_error"),
+                "information_ratio":    metrics.get("information_ratio"),
+            }.items() if v is not None}
+
+            await upsert_fund_metrics(db, metrics_row)
+            updated += 1
+        except Exception as exc:
+            logger.error("[fund_metrics] Failed for %s: %s", fund.scheme_code, exc)
+
+    logger.info("[fund_metrics] Completed: %d/%d funds updated", updated, len(funds))

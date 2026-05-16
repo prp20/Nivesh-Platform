@@ -188,12 +188,14 @@ async def _compute_for_stock(
 
     await upsert_technical_indicators(db, upsert_rows)
 
+    latest = upsert_rows[-1] if upsert_rows else None
+
     # Free memory immediately
     del opens, highs, lows, closes, volumes, indicators, upsert_rows
     gc.collect()
 
     if return_latest:
-        return upsert_rows[-1] if upsert_rows else None
+        return latest
     return True
 
 

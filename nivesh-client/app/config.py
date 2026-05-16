@@ -5,7 +5,9 @@ Reads from ~/.nivesh/.env file and environment variables.
 All settings can be overridden via environment variables.
 """
 
+import os
 from pathlib import Path
+from pydantic import field_validator
 from pydantic_settings import BaseSettings
 
 # Default DB path: ~/.nivesh/client.db
@@ -22,6 +24,11 @@ class Settings(BaseSettings):
     # ── Client app ────────────────────────────────────────────────────────────
     CLIENT_PORT: int = 8001
     SQLITE_DB_PATH: str = str(_DEFAULT_DB_PATH)
+
+    @field_validator("SQLITE_DB_PATH", mode="before")
+    @classmethod
+    def expand_db_path(cls, v: str) -> str:
+        return str(Path(os.path.expandvars(os.path.expanduser(v))).resolve())
     DEBUG: bool = False
 
     # ── Cache TTLs (seconds) ──────────────────────────────────────────────────
