@@ -202,7 +202,8 @@ async def get_stock(
             ti.rsi_14, ti.macd_hist, ti.macd_line, ti.macd_signal,
             ti.sma_20, ti.sma_50, ti.sma_200, ti.ema_9, ti.ema_21,
             ti.obv, ti.vwap_20, ti.cci_20, ti.beta_1y, ti.rs_6m_vs_nifty,
-            ti.pct_from_52w_high, ti.pct_from_52w_low
+            ti.pct_from_52w_high, ti.pct_from_52w_low,
+            ti.adx_14, ti.stoch_k
         FROM stocks s
         LEFT JOIN LATERAL (
             SELECT close, high, low, volume, price_date
@@ -221,7 +222,7 @@ async def get_stock(
         ) r_rt ON TRUE
         LEFT JOIN LATERAL (
             SELECT *
-            FROM technical_indicators WHERE stock_id = s.id AND timeframe = '1d' ORDER BY ind_date DESC LIMIT 1
+            FROM technical_indicators WHERE stock_id = s.id AND timeframe = '1D' ORDER BY ind_date DESC LIMIT 1
         ) ti ON TRUE
         WHERE s.symbol = :symbol AND s.is_active = TRUE
     """
