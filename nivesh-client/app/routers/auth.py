@@ -134,3 +134,41 @@ async def logout(db: AsyncSession = Depends(get_db)):
     await db.execute(delete(AuthToken).where(AuthToken.id == 1))
     await db.commit()
     logger.info("User logged out — tokens cleared from SQLite")
+
+
+@router.get("/status")
+async def auth_status(db: AsyncSession = Depends(get_db)):
+    """
+    Returns login state without hitting the server.
+    React calls this on load to decide whether to show Login or Dashboard.
+
+    Response when logged in:
+      { logged_in: true, username: "prasad",
+        expires_at: "2026-05-16T14:30:00+00:00", expires_in_seconds: 720 }
+
+    Response when not logged in:
+      { logged_in: false, username: null, expires_at: null, expires_in_seconds: null }
+    """
+    result = await db.execute(select(AuthToken).where(AuthToken.id == 1))
+    row = result.scalar_one_or_none()
+
+    if not row:
+        return {
+            "logged_in": False,
+            "username": None,
+            "expires_at": None,
+            "expires_in_seconds": None,
+        }
+
+    expires_at = row.expires_at
+    if expires_at.tzinfo is None:
+        expires_at = expires_at.replace(tzinfo=timezone.utc)
+
+    expires_in = int((expires_at - datetime.now(timezone.utc)).total_seconds())
+
+    return {
+        "logged_in": True,
+        "username": row.username,
+        "expires_at": expires_at.isoformat(),
+        "expires_in_seconds": expires_in,
+    }
