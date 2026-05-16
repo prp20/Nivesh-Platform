@@ -1,8 +1,9 @@
-import React, { useEffect, useState, useRef } from "react";
+import React, { useEffect, useState } from "react";
 import { useParams, Link, useNavigate } from "react-router-dom";
 import { useDispatch, useSelector } from "react-redux";
 import { fetchStockDetail, triggerFullStockSync } from "../store/slices/stocksSlice";
 import stockService from "../api/services/stockService";
+import apiClient from "../api/apiClient";
 import { motion, AnimatePresence } from 'framer-motion';
 import { AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer } from 'recharts';
 import toast from 'react-hot-toast';
@@ -26,9 +27,6 @@ export default function StockDetail() {
   const [loadingInsights, setLoadingInsights] = useState(false);
   const [isSummaryExpanded, setIsSummaryExpanded] = useState(false);
   const [isRatiosExpanded, setIsRatiosExpanded] = useState(false);
-  const fundamentalsPollRef = useRef(null);
-  const safetyTimeoutRef = useRef(null);
-
   const timeframes = [
     { id: '1M', interval: '1d', limit: 20 },
     { id: '6M', interval: '1d', limit: 120 },
@@ -49,104 +47,35 @@ export default function StockDetail() {
     if (symbol && detail?.symbol === symbol) {
       const tf = timeframes.find(t => t.id === activeTimeframe) || timeframes[2];
       stockService.getPriceHistory(symbol, { interval: tf.interval, limit: tf.limit })
-        .then(res => setPriceHistory(res.data))
+        .then(res => setPriceHistory(res.data || []))
         .catch(err => console.error("Failed to fetch price history:", err));
-
-      stockService.getRatios(symbol)
-        .then(res => {
-          if (res.records && res.records.length > 0) {
-            setRatios(res.records[0]);
-          }
-        })
-        .catch(err => console.error("Failed to fetch ratios:", err));
     }
   }, [symbol, detail?.symbol, activeTimeframe]);
 
-  const handleSyncDaily = async () => {
-    // Clear any existing poll
-    if (fundamentalsPollRef.current) {
-      clearInterval(fundamentalsPollRef.current);
-      fundamentalsPollRef.current = null;
+  // Populate financial ratios directly from detail — all ratio fields are returned
+  // by GET /api/v1/stocks/{symbol} as flat fields (pe_ratio, roe, debt_equity, etc.)
+  useEffect(() => {
+    if (detail && detail.symbol === symbol) {
+      setRatios(detail);
     }
+  }, [detail, symbol]);
 
+  const handleSyncDaily = async () => {
     setSyncingPrices(true);
-    const triggerTime = new Date();
-
     try {
-      // 1. Deep Price Sync (1y history)
       await stockService.triggerDeepPriceSync(symbol, "1y");
-      
-      // 2. Price-Dependent Ratio Refresh (PE, PB, etc.)
       await stockService.triggerPriceRefresh(symbol);
-      
-      // 3. Technical Analysis (RSI, MACD, etc.)
       await stockService.triggerTechnicalAnalysis(symbol);
-      
-      // 4. Start Fundamental Scrape (Background)
-      await stockService.triggerScreenerScrape(symbol, true);
-      
-      // 5. Recompute Composite Ratings
+      await stockService.triggerScreenerScrape(symbol, true);  // background on server
       await stockService.triggerRatingCompute(symbol);
 
-      // Polling for Fundamental Scrape completion
-      const stopPolling = () => {
-        if (fundamentalsPollRef.current) {
-          clearInterval(fundamentalsPollRef.current);
-          fundamentalsPollRef.current = null;
-        }
-        if (safetyTimeoutRef.current) {
-          clearTimeout(safetyTimeoutRef.current);
-          safetyTimeoutRef.current = null;
-        }
-      };
-
-      const poll = async () => {
-        try {
-          const statusRes = await stockService.getPipelineStatus();
-          const job = (statusRes.jobs || []).find(
-            j => j.job_name === 'fundamental_scrape_single' &&
-              new Date(j.started_at) >= triggerTime
-          );
-
-          if (job?.status === 'SUCCESS') {
-            stopPolling();
-            const [rat, fund, hist] = await Promise.all([
-              stockService.getRatios(symbol),
-              stockService.getFundamentals(symbol, { statement_type: stmtType, limit: 5 }),
-              stockService.getPriceHistory(symbol, { 
-                interval: (timeframes.find(t => t.id === activeTimeframe) || timeframes[2]).interval, 
-                limit: (timeframes.find(t => t.id === activeTimeframe) || timeframes[2]).limit 
-              })
-            ]);
-
-            if (rat.records?.length > 0) setRatios(rat.records[0]);
-            setFundamentals(fund);
-            setPriceHistory(hist.data);
-            dispatch(fetchStockDetail(symbol));
-            toast.success('Full market and fundamental data synchronised');
-            setSyncingPrices(false);
-          } else if (job?.status === 'FAILED') {
-            stopPolling();
-            toast.error('Fundamental sync failed on the server.');
-            setSyncingPrices(false);
-          }
-        } catch (pollErr) {
-          console.error('Status poll error:', pollErr);
-        }
-      };
-
-      fundamentalsPollRef.current = setInterval(poll, 5000);
-
-      // Safety timeout
-      safetyTimeoutRef.current = setTimeout(() => {
-        stopPolling();
-        setSyncingPrices(false);
-        toast.error('Sync timed out. Price data refreshed, but fundamentals pending.');
-      }, 300000);
-
+      // Cache was invalidated server-side; re-fetch brings in fresh TA + ratios + price
+      dispatch(fetchStockDetail(symbol));
+      toast.success('Market data synchronised. Fundamental scrape running in background.');
     } catch (error) {
       console.error('Sync failed:', error);
       toast.error('Failed to sync asset data. Please try again.');
+    } finally {
       setSyncingPrices(false);
     }
   };
@@ -155,23 +84,15 @@ export default function StockDetail() {
     if (!symbol) return;
     setLoadingInsights(true);
     try {
-      const data = await stockService.getAgentInsights(symbol);
-      setAgentInsights(data);
+      const response = await apiClient.post(`/agent/analyze/${symbol.toUpperCase()}`);
+      setAgentInsights(response.data);  // pass raw API response directly
     } catch (err) {
       console.error("Failed to fetch agent insights:", err);
-      toast.error("Cloud resonance failure: Could not synthesize AI insights.");
+      toast.error("Analysis failed. Check server logs or GROQ_API_KEY.");
     } finally {
       setLoadingInsights(false);
     }
   };
-
-  // Cleanup polling on unmount
-  useEffect(() => {
-    return () => {
-      if (fundamentalsPollRef.current) clearInterval(fundamentalsPollRef.current);
-      if (safetyTimeoutRef.current) clearTimeout(safetyTimeoutRef.current);
-    };
-  }, []);
 
   useEffect(() => {
     if (symbol && activeTab === "fundamentals" && ["PL", "BS", "CF"].includes(stmtType)) {
@@ -201,7 +122,7 @@ export default function StockDetail() {
     }
   }, [activeTab, symbol, agentInsights, loadingInsights]);
 
-  if (status === "loading" || !detail) {
+  if (!detail) {
     return (
       <div className="min-h-screen bg-surface flex flex-col items-center justify-center p-6">
         <div className="w-24 h-24 border-4 border-primary border-t-transparent rounded-full animate-spin mb-8 shadow-[0_0_30px_rgba(233,195,73,0.2)]"></div>
@@ -283,7 +204,7 @@ export default function StockDetail() {
               <span className="material-symbols-outlined text-primary text-lg">account_balance_wallet</span>
             </div>
             <div className="flex items-end gap-2">
-              <p className="font-headline text-4xl font-extrabold text-white capitalize">{detail.market_cap_cat.toUpperCase() || 'N/A'}</p>
+              <p className="font-headline text-4xl font-extrabold text-white capitalize">{detail.market_cap_cat?.toUpperCase() || 'N/A'}</p>
               {/* <div className="flex flex-col mb-1">
                 <span className="text-[10px] text-secondary font-black uppercase">Tier 1</span>
                 <span className="text-[8px] text-slate-600 uppercase font-bold tracking-tighter">Equity Scale</span>
@@ -313,7 +234,7 @@ export default function StockDetail() {
               <span className="material-symbols-outlined text-primary text-lg">domain</span>
             </div>
             <div className="flex items-end gap-2">
-              <p className="font-headline text-3xl font-extrabold text-white uppercase tracking-tighter leading-tight">{detail.industry.toUpperCase() || '—'}</p>
+              <p className="font-headline text-3xl font-extrabold text-white uppercase tracking-tighter leading-tight">{detail.industry?.toUpperCase() || '—'}</p>
               {/* <div className="flex flex-col mb-1 shrink-0">
                 <span className="text-[10px] text-secondary font-black uppercase">Consensus</span>
                 <span className="text-[8px] text-slate-600 uppercase font-bold tracking-tighter">Institutional</span>
@@ -585,7 +506,6 @@ export default function StockDetail() {
                 data={agentInsights}
                 loading={loadingInsights}
                 onRefresh={fetchInsights}
-                symbol={symbol}
               />
             </motion.div>
           )}
@@ -725,7 +645,7 @@ function ShareholdingTab({ data, loading }) {
   );
 }
 
-function AgentInsightsTab({ data, loading, onRefresh, symbol }) {
+function AgentInsightsTab({ data, loading, onRefresh }) {
   if (loading) {
     return (
       <div className="flex flex-col items-center justify-center p-20 space-y-8 animate-pulse">
@@ -750,47 +670,51 @@ function AgentInsightsTab({ data, loading, onRefresh, symbol }) {
     );
   }
 
+  const score = data.overall_health_score ?? 0;
+  const maxScore = 95;
+  const circumference = 552.92;
+  const offset = circumference - (circumference * score) / maxScore;
+
   return (
     <div className="space-y-12 animate-fadeIn pb-20">
-      {/* Header Score & Reasoning */}
+      {/* Header: Score Ring + Narrative */}
       <div className="flex flex-col lg:flex-row gap-8">
+        {/* Score ring */}
         <div className="lg:w-1/3 glass-panel p-10 rounded-[3rem] border border-white/5 flex flex-col items-center justify-center relative overflow-hidden">
           <div className="absolute inset-0 bg-gradient-to-br from-primary/10 to-transparent pointer-events-none"></div>
-          <p className="text-[10px] text-slate-500 font-black uppercase tracking-[0.4em] mb-6 relative z-10">Composite Alpha Score</p>
+          <p className="text-[10px] text-slate-500 font-black uppercase tracking-[0.4em] mb-6 relative z-10">Composite Health Score</p>
           <div className="relative w-48 h-48 flex items-center justify-center z-10">
             <svg className="w-full h-full transform -rotate-90">
               <circle cx="96" cy="96" r="88" stroke="currentColor" strokeWidth="2" fill="transparent" className="text-white/5" />
               <circle
                 cx="96" cy="96" r="88" stroke="currentColor" strokeWidth="10" fill="transparent"
-                strokeDasharray={552.92}
-                strokeDashoffset={552.92 - (552.92 * (data.composite_score || 0)) / 100}
+                strokeDasharray={circumference}
+                strokeDashoffset={offset}
                 className="text-primary drop-shadow-[0_0_10px_rgba(233,195,73,0.5)]"
                 strokeLinecap="round"
               />
             </svg>
             <div className="absolute inset-0 flex flex-col items-center justify-center">
-              <span className="text-5xl font-headline font-black text-white">{data.composite_score?.toFixed(1) || '0.0'}</span>
-              <span className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Quantum Rank</span>
+              <span className="text-5xl font-headline font-black text-white">{score.toFixed(1)}</span>
+              <span className="text-[10px] font-black text-slate-500 uppercase tracking-widest">out of {maxScore}</span>
             </div>
           </div>
           <div className="mt-8 px-6 py-2 bg-primary/10 border border-primary/20 rounded-full z-10">
-            <span className="text-[10px] font-black text-primary uppercase tracking-widest">{data.reasoning_label}</span>
+            <span className="text-[10px] font-black text-primary uppercase tracking-widest">{data.rating_label ?? '—'}</span>
           </div>
         </div>
 
+        {/* Narrative */}
         <div className="lg:flex-1 glass-panel p-10 rounded-[3rem] border border-white/5 relative overflow-hidden">
           <div className="absolute top-0 right-0 p-8 opacity-10">
             <span className="material-symbols-outlined text-8xl text-primary">format_quote</span>
           </div>
           <h4 className="text-[10px] font-black uppercase tracking-[0.4em] text-slate-500 mb-6">Neural Synthesis</h4>
-          <p className="text-xl md:text-2xl font-headline font-light italic leading-relaxed text-white/90 relative z-10">
-            "{data.reasoning_text}"
+          <p className="text-base md:text-lg font-headline font-light leading-relaxed text-white/90 relative z-10">
+            {data.full_narrative}
           </p>
-          <div className="mt-12 flex justify-between items-center relative z-10">
-            <div className="flex items-center gap-3">
-              <div className="w-2 h-2 rounded-full bg-secondary animate-pulse"></div>
-              <span className="text-[9px] font-black text-slate-500 uppercase tracking-widest">Model Version {data.score_version}</span>
-            </div>
+          <div className="mt-10 flex justify-between items-center relative z-10">
+            <span className="text-[9px] font-black text-slate-600 uppercase tracking-widest">Score v2.0 — Capped at 95</span>
             <button
               onClick={onRefresh}
               className="flex items-center gap-2 px-6 py-2 rounded-xl border border-white/5 hover:bg-white/5 transition-all group"
@@ -802,47 +726,49 @@ function AgentInsightsTab({ data, loading, onRefresh, symbol }) {
         </div>
       </div>
 
-      {/* Granular Pillar Scores */}
+      {/* Three Signal Cards */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
-        <ScoreCard
-          title="Profit & Loss"
-          score={data.pl_results?.score}
+        <SignalCard
+          title="Fundamental"
+          signal={data.fundamental_signal}
+          score={data.fundamental_score}
+          badge={`${data.fundamental_score ?? '—'}/95`}
           metrics={[
-            { label: 'Revenue CAGR', value: `${data.pl_results?.metrics?.rev_cagr?.toFixed(2)}%` },
-            { label: 'PAT CAGR', value: `${data.pl_results?.metrics?.pat_cagr?.toFixed(2)}%` },
-            { label: 'Latest OPM', value: `${data.pl_results?.metrics?.latest_opm?.toFixed(2)}%` }
+            { label: 'ROE',        value: data.fundamental_metrics?.roe ?? '—' },
+            { label: 'ROCE',       value: data.fundamental_metrics?.roce ?? '—' },
+            { label: 'PAT Margin', value: data.fundamental_metrics?.pat_margin ?? '—' },
           ]}
-          accent="primary"
         />
-        <ScoreCard
-          title="Balance Sheet"
-          score={data.bs_results?.score}
+        <SignalCard
+          title="Technical"
+          signal={data.technical_signal}
+          badge={data.technical_votes?.summary ?? '—'}
           metrics={[
-            { label: 'Debt/Equity', value: data.bs_results?.metrics?.debt_to_equity?.toFixed(2) },
-            { label: 'Current Ratio', value: data.bs_results?.metrics?.current_ratio?.toFixed(2) },
-            { label: 'Reserves CAGR', value: `${data.bs_results?.metrics?.reserves_cagr?.toFixed(2)}%` }
+            { label: 'RSI-14',    value: data.technical_metrics?.rsi_14 ?? '—' },
+            { label: 'MACD Hist', value: data.technical_metrics?.macd_hist ?? '—' },
+            { label: 'vs SMA50',  value: data.technical_metrics?.vs_sma ?? '—' },
           ]}
-          accent="secondary"
         />
-        <ScoreCard
-          title="Cash Flow"
-          score={data.cf_results?.score}
+        <SignalCard
+          title="Valuation"
+          signal={data.valuation_signal}
+          badge={data.valuation_counts?.summary ?? '—'}
           metrics={[
-            { label: 'CFO/PAT', value: data.cf_results?.metrics?.cfo_to_pat?.toFixed(2) },
-            { label: 'FCF +ve Years', value: data.cf_results?.metrics?.fcf_positive_years }
+            { label: 'PE',        value: data.valuation_metrics?.pe_ratio ?? '—' },
+            { label: 'PB',        value: data.valuation_metrics?.pb_ratio ?? '—' },
+            { label: 'EV/EBITDA', value: data.valuation_metrics?.ev_ebitda ?? '—' },
           ]}
-          accent="error"
         />
       </div>
 
-      {/* Pipeline Logs */}
+      {/* Pipeline Trace */}
       <div className="glass-panel rounded-[2rem] border border-white/5 overflow-hidden">
         <div className="px-8 py-4 bg-white/5 flex items-center justify-between">
           <h5 className="text-[9px] font-black uppercase tracking-[0.4em] text-slate-500">Pipeline Execution Trace</h5>
           <span className="text-[10px] font-bold text-secondary font-headline uppercase tracking-widest">{data.status}</span>
         </div>
         <div className="p-8 space-y-2 bg-black/20">
-          {data.logs?.map((log, i) => (
+          {(data.logs ?? []).map((log, i) => (
             <div key={i} className="flex gap-4 font-mono text-[10px]">
               <span className="text-slate-700">[{i + 1}]</span>
               <span className="text-slate-400">{log}</span>
@@ -854,22 +780,43 @@ function AgentInsightsTab({ data, loading, onRefresh, symbol }) {
   );
 }
 
-function ScoreCard({ title, score, metrics, accent }) {
-  const accentColor = accent === 'primary' ? 'text-primary' : accent === 'secondary' ? 'text-secondary' : 'text-error';
-  const borderColor = accent === 'primary' ? 'group-hover:border-primary/20' : accent === 'secondary' ? 'group-hover:border-secondary/20' : 'group-hover:border-error/20';
+// ── Signal colours ─────────────────────────────────────────────────────────────
+const SIGNAL_COLOURS = {
+  STRONG:      { text: 'text-emerald-400', border: 'border-emerald-400/20', bg: 'bg-emerald-400/10' },
+  BULLISH:     { text: 'text-emerald-400', border: 'border-emerald-400/20', bg: 'bg-emerald-400/10' },
+  UNDERVALUED: { text: 'text-emerald-400', border: 'border-emerald-400/20', bg: 'bg-emerald-400/10' },
+  GOOD:        { text: 'text-amber-400',   border: 'border-amber-400/20',   bg: 'bg-amber-400/10'   },
+  NEUTRAL:     { text: 'text-amber-400',   border: 'border-amber-400/20',   bg: 'bg-amber-400/10'   },
+  FAIR:        { text: 'text-amber-400',   border: 'border-amber-400/20',   bg: 'bg-amber-400/10'   },
+  WEAK:        { text: 'text-red-400',     border: 'border-red-400/20',     bg: 'bg-red-400/10'     },
+  POOR:        { text: 'text-red-400',     border: 'border-red-400/20',     bg: 'bg-red-400/10'     },
+  BEARISH:     { text: 'text-red-400',     border: 'border-red-400/20',     bg: 'bg-red-400/10'     },
+  OVERVALUED:  { text: 'text-red-400',     border: 'border-red-400/20',     bg: 'bg-red-400/10'     },
+};
+
+function SignalCard({ title, signal, badge, score, metrics }) {
+  const colours = SIGNAL_COLOURS[signal] ?? { text: 'text-slate-400', border: 'border-white/5', bg: 'bg-white/5' };
 
   return (
-    <div className={`glass-panel p-8 rounded-[2.5rem] border border-white/5 relative overflow-hidden group ${borderColor} transition-colors`}>
-      <h5 className="text-[10px] font-black text-slate-500 uppercase tracking-[0.3em] mb-6">{title}</h5>
-      <div className="flex items-baseline gap-2 mb-8">
-        <span className={`text-4xl font-headline font-black ${accentColor}`}>{score?.toFixed(1) || '0.0'}</span>
-        <span className="text-xs text-slate-600 font-bold uppercase tracking-tighter">/100</span>
+    <div className={`glass-panel p-8 rounded-[2.5rem] border border-white/5 hover:${colours.border} transition-colors`}>
+      <h5 className="text-[10px] font-black text-slate-500 uppercase tracking-[0.3em] mb-4">{title}</h5>
+
+      {/* Signal badge */}
+      <div className={`inline-flex px-4 py-1.5 rounded-full ${colours.bg} border ${colours.border} mb-4`}>
+        <span className={`text-[10px] font-black uppercase tracking-widest ${colours.text}`}>{signal ?? '—'}</span>
       </div>
-      <div className="space-y-4">
+
+      {/* Score (fundamental only) or vote summary */}
+      <p className={`text-3xl font-headline font-black mb-6 ${colours.text}`}>
+        {score != null ? `${score}` : badge}
+      </p>
+
+      {/* Key metrics */}
+      <div className="space-y-3">
         {metrics.map((m, i) => (
-          <div key={i} className="flex justify-between items-center py-2 border-b border-white/[0.02]">
+          <div key={i} className="flex justify-between items-center py-1.5 border-b border-white/[0.03]">
             <span className="text-[10px] text-slate-600 font-bold uppercase tracking-widest">{m.label}</span>
-            <span className="text-sm font-headline font-bold text-white tracking-tighter">{m.value}</span>
+            <span className="text-xs font-headline font-bold text-white/80">{m.value}</span>
           </div>
         ))}
       </div>
