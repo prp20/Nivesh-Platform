@@ -62,7 +62,7 @@ cd frontend && npm run dev
 | P4 | Done | Client: SQLite + local API — FastAPI :8001, SQLAlchemy/aiosqlite, Alembic, APScheduler, proxy/local/agent/auth routers |
 | P5 | Done | Client: React UI adaptation — proxy routes, auth overhaul (no localStorage), Portfolio/Watchlist/AgentChat pages, ProtectedRoute, SyncStatusBar |
 | P6 | Done | Client: Agentic layer — LangGraph supervisor + 3 specialist ReAct agents (stock/fund/portfolio) via ChatGroq (llama-3.3-70b-versatile), 7 @tool async functions, SQLite message persistence |
-| P7 | Pending | Client: Sync engine + JWT refresh |
+| P7 | Done | Client: Sync engine + JWT refresh — proactive token refresh (5-min scheduler), portfolio/watchlist price enrichment (market-hours cron), GET /auth/status, POST /sync/force, GET /sync/client-status |
 | P8 | Pending | CI/CD + production hardening |
 
 ## Keeping CLAUDE.md Up to Date

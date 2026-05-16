@@ -9,7 +9,8 @@ Local application that runs on the user's machine. Thin FastAPI backend serving 
 - **FastAPI** + **Uvicorn** — local API on port 8001
 - **SQLAlchemy (async)** + **aiosqlite** — ORM → SQLite
 - **Alembic** — SQLite schema migrations (auto-run on startup)
-- **APScheduler** — background sync scheduler
+- **APScheduler** — background sync scheduler (health_ping, cache_cleanup, token_refresh, portfolio_sync)
+- **pytz** — IST-aware APScheduler cron triggers (portfolio_sync market-hours job)
 - **httpx** + **tenacity** — async HTTP client with retry for server calls
 - **React** (Vite) — UI in `frontend/src/`
 - **ChatGroq** (`langchain-groq`) + **LangGraph** — agentic layer: supervisor + 3 specialist ReAct agents
