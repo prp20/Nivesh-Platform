@@ -522,6 +522,9 @@ async def run_full_analysis(stock_data: dict, groq_api_key: str, model: str) -> 
     )
     logs.append("LLM narrative generated")
 
+    t_score = float(_T_MAP[t_result["technical_signal"]])
+    v_score = float(_V_MAP[v_result["valuation_signal"]])
+
     return {
         "symbol": stock_data.get("symbol", ""),
         "company_name": stock_data.get("company_name", ""),
@@ -533,10 +536,12 @@ async def run_full_analysis(stock_data: dict, groq_api_key: str, model: str) -> 
         "fundamental_signal": f_result["fundamental_signal"],
         "fundamental_reasoning": f_result["fundamental_reasoning"],
         "fundamental_metrics": f_result["fundamental_metrics"],
+        "technical_score": t_score,
         "technical_signal": t_result["technical_signal"],
         "technical_reasoning": t_result["technical_reasoning"],
         "technical_votes": t_result["technical_votes"],
         "technical_metrics": t_result["technical_metrics"],
+        "valuation_score": v_score,
         "valuation_signal": v_result["valuation_signal"],
         "valuation_reasoning": v_result["valuation_reasoning"],
         "valuation_counts": v_result["valuation_counts"],

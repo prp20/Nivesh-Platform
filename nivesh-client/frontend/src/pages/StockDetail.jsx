@@ -742,6 +742,7 @@ function AgentInsightsTab({ data, loading, onRefresh }) {
         <SignalCard
           title="Technical"
           signal={data.technical_signal}
+          score={data.technical_score}
           badge={data.technical_votes?.summary ?? '—'}
           metrics={[
             { label: 'RSI-14',    value: data.technical_metrics?.rsi_14 ?? '—' },
@@ -752,6 +753,7 @@ function AgentInsightsTab({ data, loading, onRefresh }) {
         <SignalCard
           title="Valuation"
           signal={data.valuation_signal}
+          score={data.valuation_score}
           badge={data.valuation_counts?.summary ?? '—'}
           metrics={[
             { label: 'PE',        value: data.valuation_metrics?.pe_ratio ?? '—' },
