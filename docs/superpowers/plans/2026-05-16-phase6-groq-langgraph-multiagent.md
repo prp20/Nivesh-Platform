@@ -17,12 +17,12 @@
 | All agent CRUD endpoints + `/chat` wired to `run_turn` | ✅ Done | `app/routers/agent.py` |
 | `agent_sessions`, `agent_messages`, `agent_memory` tables | ✅ Done | `app/models/agent.py` |
 | `memory.py` — `load_memory_context`, `save_memory_item` | ✅ Done | `app/agent/memory.py` |
-| `tools.py` — Anthropic format, `execute_tool` dispatcher | ❌ Replace | `app/agent/tools.py` |
-| `runner.py` — Anthropic SDK manual loop | ❌ Replace | `app/agent/runner.py` |
-| `agents.py` — does not exist | ❌ Create | `app/agent/agents.py` |
-| `supervisor.py` — does not exist | ❌ Create | `app/agent/supervisor.py` |
-| `anthropic>=0.51.0` in requirements | ❌ Remove | `nivesh-client/requirements.txt` |
-| `ANTHROPIC_API_KEY` in config | ❌ Replace | `app/config.py` |
+| `tools.py` — 7 LangChain @tool async functions (STOCK/FUND/PORTFOLIO_TOOLS) | ✅ Done | `app/agent/tools.py` |
+| `runner.py` — run_turn uses LangGraph supervisor + ChatGroq | ✅ Done | `app/agent/runner.py` |
+| `agents.py` — 3 specialist ReAct agents | ✅ Done | `app/agent/agents.py` |
+| `supervisor.py` — LangGraph StateGraph with RouteDecision routing | ✅ Done | `app/agent/supervisor.py` |
+| `langchain-groq/langgraph/langchain/langchain-core` in requirements | ✅ Done | `nivesh-client/requirements.txt` |
+| `GROQ_API_KEY` + `AGENT_MODEL=llama-3.3-70b-versatile` in config | ✅ Done | `app/config.py` |
 
 ---
 
