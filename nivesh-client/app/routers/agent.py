@@ -1,14 +1,9 @@
 """
 Agent router — /agent/*
 
-Session storage and message persistence for the local agent.
-Phase 4: builds the storage + API scaffolding.
-Phase 6: wires in the actual LLM call (Anthropic API).
-
-The message model is designed to store LangGraph state dicts
-(matching ScoringStateSchema pattern from the server):
-  - content_json stores the full state dict
-  - content_text stores a human-readable summary for UI display
+Session management and chat endpoint for the Nivesh multi-agent system.
+The /chat endpoint delegates to run_turn() which runs the LangGraph
+supervisor + specialist (stock/fund/portfolio) graph via ChatGroq.
 """
 
 import logging
@@ -33,7 +28,7 @@ class SessionCreate(BaseModel):
     title: Optional[str] = None
     context_type: str = "general"    # 'stock' | 'fund' | 'portfolio' | 'general'
     context_id: Optional[str] = None
-    model_used: str = "claude-sonnet-4-6"
+    model_used: str = "llama-3.3-70b-versatile"
 
 
 class MessageCreate(BaseModel):
@@ -147,8 +142,8 @@ async def chat(
     """
     Main chat endpoint.
 
-    Phase 4: stores the user message, returns a placeholder response.
-    Phase 6: replaces the placeholder with actual LLM call + tool execution.
+    Stores the user message, runs the LangGraph supervisor + specialist agents,
+    persists the response, and returns the final reply text.
     """
     # Verify session exists
     result = await db.execute(
@@ -185,11 +180,20 @@ async def chat(
 
     await db.commit()
 
-    # Phase 4 placeholder — Phase 6 wires the actual LLM
+    # ── Phase 6: call agent runner ─────────────────────────────────────────
+    try:
+        from ..agent.runner import run_turn
+        reply = await run_turn(session_id, body.message, db)
+    except Exception as exc:
+        logger.error("Agent runner failed for session %d: %s", session_id, exc)
+        reply = (
+            "Sorry, I encountered an error processing your request. "
+            "Check that GROQ_API_KEY is set in ~/.nivesh/.env"
+        )
+
     return {
-        "reply": "Agent not yet connected (Phase 6). Message stored successfully.",
+        "reply": reply,
         "session_id": session_id,
-        "sequence_num": last_seq + 1,
     }
 
 
