@@ -89,13 +89,23 @@ async def sync_benchmark_list(db: AsyncSession) -> bool:
 
 async def run_startup_sync(db: AsyncSession) -> None:
     """
-    Runs once on client startup (in background).
+    Runs once on client startup (in background, non-blocking).
     Warms the cache with the most commonly accessed data.
+    Portfolio/watchlist sync is best-effort — OfflineError is caught per-function.
     """
+    from .portfolio_sync import sync_portfolio_prices, sync_watchlist_prices
+
     logger.info("[startup] Warming cache...")
     await sync_fund_list(db)
     await sync_benchmark_list(db)
-    logger.info("[startup] Cache warm complete")
+
+    p_count = await sync_portfolio_prices(db)
+    w_count = await sync_watchlist_prices(db)
+    logger.info(
+        "[startup] Cache warm complete — portfolio: %d symbols, watchlist: %d symbols",
+        p_count,
+        w_count,
+    )
 
 
 # Re-export cleanup_expired so main.py can import it from here
