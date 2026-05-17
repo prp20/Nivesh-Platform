@@ -383,7 +383,34 @@ async def proxy_stock_fundamentals(
     try:
         async with ServerClient(db) as client:
             data = await client.get(f"/api/v1/stocks/{symbol.upper()}/fundamentals", params=params)
-        await set_cached(db, cache_key, data, 43200)
+        # Don't cache empty results — screener scrape may not have run yet
+        if data and data.get("records"):
+            await set_cached(db, cache_key, data, 43200)
+        return data
+    except OfflineError:
+        if cached:
+            return _offline_wrap(cached)
+        raise HTTPException(503, "Server offline")
+
+
+@router.get("/stocks/{symbol}/shareholding")
+async def proxy_stock_shareholding(
+    symbol: str,
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+):
+    """Shareholding pattern (promoter/FII/DII). 24-hour TTL."""
+    params = dict(request.query_params)
+    cache_key = make_cache_key(f"stocks:shareholding:{symbol.upper()}", params)
+    cached, is_fresh = await get_cached(db, cache_key)
+    if is_fresh:
+        return cached
+
+    try:
+        async with ServerClient(db) as client:
+            data = await client.get(f"/api/v1/stocks/{symbol.upper()}/shareholding", params=params)
+        if data and data.get("records"):
+            await set_cached(db, cache_key, data, 86400)
         return data
     except OfflineError:
         if cached:
@@ -428,13 +455,13 @@ async def proxy_sync_status(db: AsyncSession = Depends(get_db)):
 
     try:
         async with ServerClient(db) as client:
-            data = await client.get("/api/v1/sync/status")
+            data = await client.get("/api/v1/pipeline/status")
         await set_cached(db, cache_key, data, settings.CACHE_TTL_ETL_STATUS)
         return data
     except OfflineError:
         if cached:
             return _offline_wrap(cached)
-        return {"runs": [], "total": 0, "_offline": True}
+        return {"jobs": [], "_offline": True}
 
 
 # ── Pipeline Triggers (admin operations forwarded to server) ──────────────────
@@ -445,11 +472,14 @@ async def proxy_sync_status(db: AsyncSession = Depends(get_db)):
 
 
 async def _invalidate_stock_cache(db: AsyncSession, symbol: str) -> None:
-    """Remove stock detail + price cache entries so next read hits server."""
+    """Remove stock detail, price, fundamentals, and shareholding cache entries."""
     try:
-        await invalidate(db, f"stocks:detail:{symbol.upper()}")
-        await invalidate(db, f"stocks:price:{symbol.upper()}")
-        logger.debug("[cache] invalidated stocks:detail + price for %s", symbol.upper())
+        sym = symbol.upper()
+        await invalidate(db, f"stocks:detail:{sym}")
+        await invalidate(db, f"stocks:price:{sym}")
+        await invalidate(db, f"stocks:fundamentals:{sym}")
+        await invalidate(db, f"stocks:shareholding:{sym}")
+        logger.debug("[cache] invalidated stocks:detail+price+fundamentals+shareholding for %s", sym)
     except Exception as exc:
         logger.warning("[cache] invalidation failed for %s: %s", symbol.upper(), exc)
 

@@ -96,12 +96,22 @@ export default function StockDetail() {
 
   useEffect(() => {
     if (symbol && activeTab === "fundamentals" && ["PL", "BS", "CF"].includes(stmtType)) {
+      const controller = new AbortController();
+      setFundamentals(null);
       setLoadingFundamentals(true);
       stockService
-        .getFundamentals(symbol, { statement_type: stmtType, limit: 5 })
-        .then(setFundamentals)
-        .catch(err => console.error("Failed to fetch fundamentals:", err))
-        .finally(() => setLoadingFundamentals(false));
+        .getFundamentals(symbol, { statement_type: stmtType, limit: 5 }, controller.signal)
+        .then(data => {
+          setFundamentals(data);
+          setLoadingFundamentals(false);
+        })
+        .catch(err => {
+          if (!controller.signal.aborted) {
+            console.error("Failed to fetch fundamentals:", err);
+            setLoadingFundamentals(false);
+          }
+        });
+      return () => controller.abort();
     }
   }, [symbol, activeTab, stmtType]);
 
@@ -646,6 +656,8 @@ function ShareholdingTab({ data, loading }) {
 }
 
 function AgentInsightsTab({ data, loading, onRefresh }) {
+  const [selectedPillar, setSelectedPillar] = React.useState(null);
+
   if (loading) {
     return (
       <div className="flex flex-col items-center justify-center p-20 space-y-8 animate-pulse">
@@ -726,7 +738,7 @@ function AgentInsightsTab({ data, loading, onRefresh }) {
         </div>
       </div>
 
-      {/* Three Signal Cards */}
+      {/* Three Signal Cards — clickable for detail popup */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
         <SignalCard
           title="Fundamental"
@@ -738,6 +750,14 @@ function AgentInsightsTab({ data, loading, onRefresh }) {
             { label: 'ROCE',       value: data.fundamental_metrics?.roce ?? '—' },
             { label: 'PAT Margin', value: data.fundamental_metrics?.pat_margin ?? '—' },
           ]}
+          onClick={() => setSelectedPillar({
+            title: 'Fundamental Analysis',
+            signal: data.fundamental_signal,
+            score: data.fundamental_score,
+            scoreSuffix: '/95',
+            reasoning: data.fundamental_reasoning,
+            metrics: data.fundamental_metrics,
+          })}
         />
         <SignalCard
           title="Technical"
@@ -749,6 +769,14 @@ function AgentInsightsTab({ data, loading, onRefresh }) {
             { label: 'MACD Hist', value: data.technical_metrics?.macd_hist ?? '—' },
             { label: 'vs SMA50',  value: data.technical_metrics?.vs_sma ?? '—' },
           ]}
+          onClick={() => setSelectedPillar({
+            title: 'Technical Analysis',
+            signal: data.technical_signal,
+            score: data.technical_score,
+            scoreSuffix: '',
+            reasoning: data.technical_reasoning,
+            metrics: data.technical_metrics,
+          })}
         />
         <SignalCard
           title="Valuation"
@@ -760,8 +788,23 @@ function AgentInsightsTab({ data, loading, onRefresh }) {
             { label: 'PB',        value: data.valuation_metrics?.pb_ratio ?? '—' },
             { label: 'EV/EBITDA', value: data.valuation_metrics?.ev_ebitda ?? '—' },
           ]}
+          onClick={() => setSelectedPillar({
+            title: 'Valuation Analysis',
+            signal: data.valuation_signal,
+            score: data.valuation_score,
+            scoreSuffix: '',
+            reasoning: data.valuation_reasoning,
+            metrics: data.valuation_metrics,
+          })}
         />
       </div>
+
+      {/* Pillar Detail Modal */}
+      <AnimatePresence>
+        {selectedPillar && (
+          <PillarModal pillar={selectedPillar} onClose={() => setSelectedPillar(null)} />
+        )}
+      </AnimatePresence>
 
       {/* Pipeline Trace */}
       <div className="glass-panel rounded-[2rem] border border-white/5 overflow-hidden">
@@ -796,19 +839,25 @@ const SIGNAL_COLOURS = {
   OVERVALUED:  { text: 'text-red-400',     border: 'border-red-400/20',     bg: 'bg-red-400/10'     },
 };
 
-function SignalCard({ title, signal, badge, score, metrics }) {
+function SignalCard({ title, signal, badge, score, metrics, onClick }) {
   const colours = SIGNAL_COLOURS[signal] ?? { text: 'text-slate-400', border: 'border-white/5', bg: 'bg-white/5' };
 
   return (
-    <div className={`glass-panel p-8 rounded-[2.5rem] border border-white/5 hover:${colours.border} transition-colors`}>
-      <h5 className="text-[10px] font-black text-slate-500 uppercase tracking-[0.3em] mb-4">{title}</h5>
+    <div
+      onClick={onClick}
+      className={`glass-panel p-8 rounded-[2.5rem] border border-white/5 hover:${colours.border} transition-all cursor-pointer hover:scale-[1.02] active:scale-[0.98]`}
+    >
+      <div className="flex justify-between items-start mb-4">
+        <h5 className="text-[10px] font-black text-slate-500 uppercase tracking-[0.3em]">{title}</h5>
+        <span className="material-symbols-outlined text-slate-700 text-sm">open_in_new</span>
+      </div>
 
       {/* Signal badge */}
       <div className={`inline-flex px-4 py-1.5 rounded-full ${colours.bg} border ${colours.border} mb-4`}>
         <span className={`text-[10px] font-black uppercase tracking-widest ${colours.text}`}>{signal ?? '—'}</span>
       </div>
 
-      {/* Score (fundamental only) or vote summary */}
+      {/* Score or vote summary */}
       <p className={`text-3xl font-headline font-black mb-6 ${colours.text}`}>
         {score != null ? `${score}` : badge}
       </p>
@@ -822,6 +871,93 @@ function SignalCard({ title, signal, badge, score, metrics }) {
           </div>
         ))}
       </div>
+
+      <p className="text-[9px] text-slate-700 uppercase tracking-widest mt-4 text-center">Click for full analysis</p>
     </div>
+  );
+}
+
+function _noteColour(note) {
+  const n = note.toLowerCase();
+  if (/bullish|uptrend|strong trend|cheap|outperforming|above 52w|above sma/.test(n)) return 'text-emerald-400';
+  if (/bearish|downtrend|expensive|underperforming|overvalued|\(0\//.test(n)) return 'text-red-400';
+  if (/n\/a|neutral|fair|skipped/.test(n)) return 'text-slate-500';
+  return 'text-white/80';
+}
+
+function PillarModal({ pillar, onClose }) {
+  const colours = SIGNAL_COLOURS[pillar.signal] ?? { text: 'text-slate-400', border: 'border-white/5', bg: 'bg-white/5' };
+  const notes = (pillar.reasoning ?? '').split('. ').filter(Boolean);
+  const metricEntries = Object.entries(pillar.metrics ?? {});
+
+  return (
+    <motion.div
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      exit={{ opacity: 0 }}
+      className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm"
+      onClick={onClose}
+    >
+      <motion.div
+        initial={{ opacity: 0, y: 30, scale: 0.96 }}
+        animate={{ opacity: 1, y: 0, scale: 1 }}
+        exit={{ opacity: 0, y: 20, scale: 0.96 }}
+        transition={{ type: 'spring', damping: 25, stiffness: 300 }}
+        onClick={e => e.stopPropagation()}
+        className="glass-panel rounded-[2.5rem] border border-white/10 shadow-2xl w-full max-w-2xl max-h-[85vh] overflow-y-auto"
+      >
+        {/* Header */}
+        <div className="flex items-center justify-between p-8 border-b border-white/5">
+          <div>
+            <p className="text-[10px] font-black text-slate-500 uppercase tracking-[0.3em] mb-1">{pillar.title}</p>
+            <div className={`inline-flex px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-widest ${colours.bg} border ${colours.border} ${colours.text}`}>
+              {pillar.signal}
+            </div>
+          </div>
+          <div className="text-right">
+            <p className={`text-4xl font-headline font-black ${colours.text}`}>
+              {pillar.score != null ? pillar.score : '—'}{pillar.scoreSuffix}
+            </p>
+          </div>
+        </div>
+
+        {/* Metrics grid */}
+        {metricEntries.length > 0 && (
+          <div className="p-8 border-b border-white/5">
+            <p className="text-[10px] font-black text-slate-600 uppercase tracking-[0.3em] mb-4">Key Metrics</p>
+            <div className="grid grid-cols-2 gap-3">
+              {metricEntries.map(([k, v]) => (
+                <div key={k} className="bg-white/[0.03] rounded-xl px-4 py-3 flex justify-between items-center">
+                  <span className="text-[10px] text-slate-500 font-bold uppercase tracking-widest">{k.replace(/_/g, ' ')}</span>
+                  <span className="text-sm font-headline font-bold text-white/90">{v ?? '—'}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* Analysis notes with pros/cons colour coding */}
+        <div className="p-8">
+          <p className="text-[10px] font-black text-slate-600 uppercase tracking-[0.3em] mb-4">Analysis Breakdown</p>
+          <div className="space-y-2">
+            {notes.map((note, i) => (
+              <div key={i} className="flex items-start gap-3 py-2 border-b border-white/[0.03]">
+                <span className={`text-lg leading-none mt-0.5 ${_noteColour(note)}`}>›</span>
+                <span className={`text-sm font-label leading-relaxed ${_noteColour(note)}`}>{note}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        <div className="p-8 pt-0">
+          <button
+            onClick={onClose}
+            className="w-full py-4 bg-white/5 hover:bg-white/10 rounded-2xl text-[10px] font-black uppercase tracking-widest text-slate-400 hover:text-white transition-all"
+          >
+            Close
+          </button>
+        </div>
+      </motion.div>
+    </motion.div>
   );
 }

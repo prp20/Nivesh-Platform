@@ -151,16 +151,33 @@ async def _scrape_stock(db: AsyncSession, stock, force: bool = False) -> bool:
 
     html = await asyncio.to_thread(_fetch_html, url)
     if html is None:
+        logger.warning("[screener] %s — HTML fetch returned None for %s", stock.symbol, url)
         return False
 
     parsed = await asyncio.to_thread(_parse_screener_html, html, stock.id)
     if not parsed:
+        logger.warning("[screener] %s — HTML parsed but returned empty result", stock.symbol)
         return False
+
+    stmts = parsed.get("statements", [])
+    sh_rows = parsed.get("shareholding", [])
+    logger.info(
+        "[screener] %s — parsed %d statement rows, %d shareholding rows from %s",
+        stock.symbol, len(stmts), len(sh_rows), url,
+    )
+    # Log which statement types were found and the first few keys of each
+    for s in stmts:
+        keys = sorted(s.get("data", {}).keys())
+        logger.info(
+            "[screener] %s %s %s — %d keys: %s",
+            stock.symbol, s["statement_type"], s.get("period_end"), len(keys),
+            keys[:10],
+        )
 
     any_changed = False
 
     # Upsert financial statements
-    for stmt_row in parsed.get("statements", []):
+    for stmt_row in stmts:
         if force:
             stmt_row = {**stmt_row, "raw_checksum": None}  # force re-upsert
         changed = await upsert_financial_statement(db, stmt_row)

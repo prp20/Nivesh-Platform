@@ -21,8 +21,8 @@ const stockService = {
     return response.data;
   },
 
-  getFundamentals: async (symbol, params) => {
-    const response = await apiClient.get(`/stocks/${symbol}/fundamentals`, { params });
+  getFundamentals: async (symbol, params, signal) => {
+    const response = await apiClient.get(`/stocks/${symbol}/fundamentals`, { params, signal });
     return response.data;
   },
 
@@ -87,7 +87,7 @@ const stockService = {
   },
 
   getPipelineStatus: async () => {
-    const response = await apiClient.get('/pipeline/status');
+    const response = await apiClient.get('/proxy/sync/status');
     return response.data;
   },
 
@@ -123,7 +123,7 @@ const stockService = {
   },
 
   getAgentInsights: async (symbol) => {
-    const response = await apiClient.post(`/pipeline/fundamentals/run/${symbol}`);
+    const response = await apiClient.post(`/agent/analyze/${symbol.toUpperCase()}`);
     return response.data;
   }
 };

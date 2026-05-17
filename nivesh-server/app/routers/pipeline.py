@@ -24,7 +24,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.security import require_admin
 from app.audit_log import AuditLog
-from app.database import get_db, raw_connection, AsyncSessionLocal
+from app.database import get_db, AsyncSessionLocal, engine
 from schemas.stocks import (
     FundamentalScoreRunRequest,
     BulkFundamentalScoreRequest,
@@ -171,26 +171,26 @@ async def trigger_price_ratio_refresh_all(
 async def trigger_price_ratio_refresh_one(
     symbol: str,
     admin: str = Depends(require_admin),
+    db: AsyncSession = Depends(get_db),
 ):
     """Synchronously refresh price-dependent ratios for a single stock. Returns updated values."""
-    from pipeline.metric_recompute import recompute_price_dependent_ratios, _get_latest_close, _fetch_stocks_with_ratios
-    from app.database import raw_connection
+    from pipeline.metric_recompute import recompute_price_dependent_ratios, _get_latest_close
+    from app.models import Stock
 
     sym = symbol.upper()
-    async with raw_connection() as conn:
-        row = await conn.fetchrow(
-            "SELECT id FROM stocks WHERE symbol=$1 AND is_active=TRUE", sym
-        )
-    if not row:
+    result = await db.execute(
+        sa.select(Stock.id).where(Stock.symbol == sym, Stock.is_active.is_(True))
+    )
+    stock_id = result.scalar_one_or_none()
+    if stock_id is None:
         raise HTTPException(status_code=404, detail=f"Stock '{sym}' not found or inactive")
 
-    stock_id = row["id"]
     close = await _get_latest_close(stock_id)
     if close is None:
         raise HTTPException(status_code=422, detail=f"No price data found for '{sym}'")
 
-    result = await recompute_price_dependent_ratios(stock_id, close)
-    return {"symbol": sym, "latest_close": close, "updated_ratios": result}
+    ratios = await recompute_price_dependent_ratios(stock_id, close)
+    return {"symbol": sym, "latest_close": close, "updated_ratios": ratios}
 
 
 # ─── Screener.in Fundamental Scraping ─────────────────────────────────────────
@@ -227,6 +227,7 @@ async def trigger_screener_scrape_one(
     background_tasks: BackgroundTasks,
     force: bool = Query(False, description="Bypass checksum and force re-scrape"),
     admin: str = Depends(require_admin),
+    db: AsyncSession = Depends(get_db),
 ):
     """
     Starts a screener.in scrape for a single stock as a background task.
@@ -234,17 +235,15 @@ async def trigger_screener_scrape_one(
     Set force=true to bypass the checksum deduplication check.
     After a successful scrape, ratio recompute is triggered automatically.
     """
-    from app.database import raw_connection
+    from app.models import Stock
 
     sym = symbol.upper()
-    async with raw_connection() as conn:
-        row = await conn.fetchrow(
-            "SELECT id FROM stocks WHERE symbol=$1 AND is_active=TRUE", sym
-        )
-    if not row:
+    result = await db.execute(
+        sa.select(Stock.id).where(Stock.symbol == sym, Stock.is_active.is_(True))
+    )
+    stock_id = result.scalar_one_or_none()
+    if stock_id is None:
         raise HTTPException(status_code=404, detail=f"Stock '{sym}' not found or inactive")
-
-    stock_id = row["id"]
 
     async def _run_scrape_and_ratios():
         from pipeline.fundamental_scraper import run_fundamental_scrape_one
@@ -273,15 +272,14 @@ async def get_screener_status(
     admin: str = Depends(require_admin),
 ):
     """Returns last scrape date per stock and flags stocks overdue for scraping."""
-    from app.database import raw_connection
-    sql = """
+    sql = sa.text("""
         SELECT
             s.symbol,
             s.company_name,
             MAX(fs.scraped_at)::date AS last_scraped,
             CASE
                 WHEN MAX(fs.scraped_at) IS NULL THEN 'NEVER'
-                WHEN MAX(fs.scraped_at) < NOW() - ($1 || ' days')::INTERVAL THEN 'OVERDUE'
+                WHEN MAX(fs.scraped_at) < NOW() - (:days || ' days')::INTERVAL THEN 'OVERDUE'
                 ELSE 'OK'
             END AS scrape_status
         FROM stocks s
@@ -289,9 +287,10 @@ async def get_screener_status(
         WHERE s.is_active = TRUE AND s.is_index = FALSE
         GROUP BY s.id, s.symbol, s.company_name
         ORDER BY last_scraped ASC NULLS FIRST
-    """
-    async with raw_connection() as conn:
-        rows = await conn.fetch(sql, str(overdue_days))
+    """)
+    async with engine.connect() as conn:
+        result = await conn.execute(sql, {"days": str(overdue_days)})
+        rows = result.mappings().all()
     data = [dict(r) for r in rows]
     overdue = [r for r in data if r["scrape_status"] in ("OVERDUE", "NEVER")]
     return {
@@ -381,21 +380,22 @@ async def trigger_rating_compute_all(
 async def trigger_rating_compute_one(
     symbol: str,
     admin: str = Depends(require_admin),
+    db: AsyncSession = Depends(get_db),
 ):
     """Synchronously recomputes the composite rating for one stock. Returns score breakdown."""
     from pipeline.rating_engine import compute_rating_for_stock
-    from app.database import raw_connection
+    from app.models import Stock
 
     sym = symbol.upper()
-    async with raw_connection() as conn:
-        row = await conn.fetchrow(
-            "SELECT id FROM stocks WHERE symbol=$1 AND is_active=TRUE", sym
-        )
-    if not row:
+    result = await db.execute(
+        sa.select(Stock.id).where(Stock.symbol == sym, Stock.is_active.is_(True))
+    )
+    stock_id = result.scalar_one_or_none()
+    if stock_id is None:
         raise HTTPException(status_code=404, detail=f"Stock '{sym}' not found or inactive")
 
     try:
-        result = await compute_rating_for_stock(row["id"], sym)
+        result = await compute_rating_for_stock(stock_id, sym)
         return result
     except Exception as e:
         logger.error(f"Rating compute failed for {sym}: {e}")
@@ -565,13 +565,73 @@ async def trigger_fundamental_scoring_bulk(
     }
 
 
+# ─── Debug / Diagnostics ─────────────────────────────────────────────────────
+
+@router.get("/debug/statements/{symbol}", summary="Inspect stored financial_statements rows for a stock")
+async def debug_financial_statements(
+    symbol: str,
+    admin: str = Depends(require_admin),
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Returns the raw JSONB keys (not values) stored in financial_statements for each
+    statement_type + period_end combination.  Use this to diagnose why ratio_engine
+    can't find certain fields — compare the stored keys against the key names the
+    ratio engine expects (e.g. 'Sales', 'Net Profit', 'EPS in Rs').
+    """
+    from app.models import Stock, FinancialStatement
+
+    sym = symbol.upper()
+    stock_result = await db.execute(
+        sa.select(Stock.id).where(Stock.symbol == sym, Stock.is_active.is_(True))
+    )
+    stock_id = stock_result.scalar_one_or_none()
+    if stock_id is None:
+        raise HTTPException(status_code=404, detail=f"Stock '{sym}' not found or inactive")
+
+    stmt_result = await db.execute(
+        sa.select(FinancialStatement)
+        .where(FinancialStatement.stock_id == stock_id)
+        .order_by(FinancialStatement.statement_type, FinancialStatement.period_end.desc())
+    )
+    rows = list(stmt_result.scalars().all())
+
+    if not rows:
+        return {
+            "symbol": sym,
+            "stock_id": stock_id,
+            "total_rows": 0,
+            "message": "No financial_statements rows found — scrape has not run or failed silently.",
+            "statements": [],
+        }
+
+    statements = []
+    for row in rows:
+        data = row.data or {}
+        statements.append({
+            "statement_type": row.statement_type,
+            "period_type":    row.period_type,
+            "period_end":     row.period_end.isoformat() if row.period_end else None,
+            "scraped_at":     row.scraped_at.isoformat() if row.scraped_at else None,
+            "row_count":      len(data),
+            "keys":           sorted(data.keys()),
+            "sample_values":  {k: v for k, v in list(data.items())[:5]},
+        })
+
+    return {
+        "symbol": sym,
+        "stock_id": stock_id,
+        "total_rows": len(rows),
+        "statements": statements,
+    }
+
+
 # ─── Overall Pipeline Status ──────────────────────────────────────────────────
 
 @router.get("/status", summary="Overall pipeline health and live progress polling")
 async def get_pipeline_status(admin: str = Depends(require_admin)):
     """Shows last run time, status, and live record counts (progress) for all pipeline jobs."""
-    from app.database import raw_connection
-    sql = """
+    sql = sa.text("""
         SELECT DISTINCT ON (pipeline_name)
             pipeline_name AS job_name,
             entity_id,
@@ -584,11 +644,12 @@ async def get_pipeline_status(admin: str = Depends(require_admin)):
             error_msg
         FROM etl_runs
         ORDER BY pipeline_name, started_at DESC
-    """
+    """)
     rows = []
     try:
-        async with raw_connection() as conn:
-            rows = await conn.fetch(sql)
+        async with engine.connect() as conn:
+            result = await conn.execute(sql)
+            rows = result.mappings().all()
     except Exception as e:
         # Graceful fallback for any connection/pool issues
         logger.error(f"Failed to fetch pipeline status: {str(e)}", exc_info=True)

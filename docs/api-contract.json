@@ -3464,6 +3464,52 @@
         ]
       }
     },
+    "/api/v1/pipeline/debug/statements/{symbol}": {
+      "get": {
+        "tags": [
+          "Pipeline Triggers"
+        ],
+        "summary": "Inspect stored financial_statements rows for a stock",
+        "description": "Returns the raw JSONB keys (not values) stored in financial_statements for each\nstatement_type + period_end combination.  Use this to diagnose why ratio_engine\ncan't find certain fields \u2014 compare the stored keys against the key names the\nratio engine expects (e.g. 'Sales', 'Net Profit', 'EPS in Rs').",
+        "operationId": "debug_financial_statements_api_v1_pipeline_debug_statements__symbol__get",
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "symbol",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Symbol"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/pipeline/status": {
       "get": {
         "tags": [

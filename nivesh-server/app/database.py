@@ -54,7 +54,11 @@ async def init_db_pool():
         try:
             _db_pool = await asyncpg.create_pool(_sync_db_url, min_size=5, max_size=20, timeout=10)
         except Exception as e:
-            logger.error(f"Failed to initialize asyncpg pool: {e}")
+            logger.error(
+                "Failed to initialize asyncpg pool: %s: %s",
+                type(e).__name__, repr(e),
+                exc_info=True,
+            )
             _db_pool = None
     return _db_pool
 

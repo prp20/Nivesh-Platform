@@ -35,8 +35,8 @@ const stockService = {
         return response.data;
     },
 
-    getFundamentals: async (symbol, params) => {
-        const response = await apiClient.get(`/proxy/stocks/${symbol.toUpperCase()}/fundamentals`, { params });
+    getFundamentals: async (symbol, params, signal) => {
+        const response = await apiClient.get(`/proxy/stocks/${symbol.toUpperCase()}/fundamentals`, { params, signal });
         return response.data;
     },
 
@@ -47,13 +47,14 @@ const stockService = {
         return { records: [detail] };
     },
 
-    getShareholding: async (_symbol, _params) => ({ records: [] }),
+    getShareholding: async (symbol, params) => {
+        const response = await apiClient.get(`/proxy/stocks/${symbol.toUpperCase()}/shareholding`, { params });
+        return response.data;
+    },
 
     getAgentInsights: async (symbol) => {
-        // Calls the direct analysis endpoint — no tool calling, no agent graph.
-        // Pre-fetches stock data server-side and runs a single LLM inference.
         const response = await apiClient.post(`/agent/analyze/${symbol.toUpperCase()}`);
-        return { reasoning_text: response.data.analysis };
+        return response.data;
     },
 
     getTechnicals: async (symbol) => {
