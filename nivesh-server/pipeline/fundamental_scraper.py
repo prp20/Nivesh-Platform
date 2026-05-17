@@ -300,7 +300,7 @@ def _parse_data_table(table) -> tuple:
             cols = tr.find_all("td")
             if not cols:
                 continue
-            label = cols[0].get_text(strip=True)
+            label = cols[0].get_text(strip=True).rstrip("+").strip()
             values = [c.get_text(strip=True).replace(",", "") for c in cols[1:]]
             rows_data.append({"label": label, "values": values})
 
@@ -392,11 +392,27 @@ def _parse_period(period_str: str) -> Optional[date]:
 
 
 def _safe_float(val: str) -> Optional[float]:
-    """Convert a string value like '1,234.56' or '12.3%' to float."""
+    """Convert a screener.in cell value to float.
+
+    Handles:
+      '1,234.56'   → 1234.56
+      '(1,234)'    → -1234.0   (Indian accounting: parentheses = negative)
+      '12.3%'      → 12.3
+      '-', '—', '' → None
+      'N/A', 'NM'  → None      (Not Meaningful — common in bank EBITDA rows)
+    """
     if not val or val in ("-", "—", ""):
         return None
+    val = str(val).strip()
+    if val.lower() in ("n/a", "na", "nil", "nm", "n.m."):
+        return None
+    # Indian accounting convention: parentheses denote negative values
+    is_negative = val.startswith("(") and val.endswith(")")
+    if is_negative:
+        val = val[1:-1].strip()
     val = val.replace(",", "").replace("%", "").strip()
     try:
-        return float(val)
+        result = float(val)
+        return -result if is_negative else result
     except ValueError:
         return None
