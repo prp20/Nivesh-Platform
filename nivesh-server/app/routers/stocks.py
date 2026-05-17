@@ -214,7 +214,8 @@ async def get_stock(
         ) p2 ON TRUE
         LEFT JOIN LATERAL (
             SELECT *
-            FROM financial_ratios WHERE stock_id = s.id AND period_type = 'annual' ORDER BY period_end DESC LIMIT 1
+            FROM financial_ratios WHERE stock_id = s.id AND period_type = 'annual'
+            ORDER BY (eps IS NOT NULL) DESC, period_end DESC LIMIT 1
         ) r ON TRUE
         LEFT JOIN LATERAL (
             SELECT rating_label, total_score, fundamental_score, technical_score

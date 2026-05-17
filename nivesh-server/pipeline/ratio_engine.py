@@ -101,6 +101,14 @@ async def compute_ratios_for_stock(
         # Compute ratios for each period; sort ascending so YoY growth can look back
         ratio_rows = []
         for (period_end, period_type), data_by_type in sorted(by_period.items()):
+            # Skip periods that have no P&L data (e.g. a Sep quarterly BS without
+            # a matching annual PL — screener.in publishes interim BS between annual PL releases)
+            if not data_by_type.get("PL"):
+                logger.debug(
+                    "[ratio_engine] stock_id=%s period=%s — no PL data, skipping ratio computation",
+                    stock_id, period_end,
+                )
+                continue
             ratio_row = _compute_ratios(
                 stock_id=stock_id,
                 period_end=period_end,
@@ -228,7 +236,7 @@ def _strip_plus(data: dict) -> dict:
     'Borrowings+') but not to non-aggregated fields ('Equity Capital', 'Total Assets').
     Stripping the suffix lets _f() match keys without needing '+' variants.
     """
-    return {k.rstrip("+"): v for k, v in data.items()}
+    return {k.rstrip("+").strip(): v for k, v in data.items()}
 
 
 def _compute_ratios(
