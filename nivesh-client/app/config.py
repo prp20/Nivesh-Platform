@@ -13,7 +13,7 @@ from pydantic_settings import BaseSettings
 # Default DB path: ~/.nivesh/client.db
 # Using user home keeps it outside the project dir
 # so reinstalling the client doesn't wipe data
-_DEFAULT_DB_PATH = Path.home() / ".nivesh" / "client.db"
+_DEFAULT_DB_PATH = Path.home() / ".nivesh" / "nivesh_client.db"
 
 
 class Settings(BaseSettings):

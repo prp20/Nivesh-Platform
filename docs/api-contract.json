@@ -3617,25 +3617,6 @@
           }
         }
       }
-    },
-    "/": {
-      "get": {
-        "tags": [
-          "root"
-        ],
-        "summary": "Fallback Root",
-        "operationId": "fallback_root__get",
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {}
-              }
-            }
-          }
-        }
-      }
     }
   },
   "components": {
